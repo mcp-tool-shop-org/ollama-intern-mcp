@@ -1,0 +1,60 @@
+{
+  "name": "@mcptoolshop/ollama-intern-mcp",
+  "version": "0.1.0",
+  "description": "MCP control plane for local cognitive labor — job-shaped tools with tiered Ollama models (instant/workhorse/deep/embed), server-enforced guardrails, and measured economics so Claude can delegate bulk work without losing control.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ollama-intern-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "verify": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "ollama",
+    "local-llm",
+    "delegation",
+    "claude",
+    "anthropic",
+    "model-context-protocol",
+    "llm-router",
+    "embeddings"
+  ],
+  "author": "mcp-tool-shop <64996768+mcp-tool-shop@users.noreply.github.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcp-tool-shop-org/ollama-intern-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mcp-tool-shop-org/ollama-intern-mcp/issues"
+  },
+  "homepage": "https://github.com/mcp-tool-shop-org/ollama-intern-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+{"id": "research-gold-001", "question": "What temperature defaults does this server use for classification vs. draft?", "source_paths": ["src/tiers.ts"], "required_citations": ["src/tiers.ts"], "forbidden_citations": ["src/tools/draft.ts", "src/tools/classify.ts"], "required_answer_substrings": ["0.1", "0.4"]}

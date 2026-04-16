@@ -1,0 +1,2 @@
+{"id": "code-001", "language": "typescript", "prompt": "Write a TypeScript function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): T that returns a debounced version of fn. Preserve the original signature. Only call fn after ms elapses without new invocations. Return type must match T."}
+{"id": "code-002", "language": "rust", "prompt": "Write a Rust function fn chunks_owned<T: Clone>(v: Vec<T>, size: usize) -> Vec<Vec<T>> that splits v into owned chunks of size `size`. The last chunk may be smaller. Return an empty vec when v is empty."}

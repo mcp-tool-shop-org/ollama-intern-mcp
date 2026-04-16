@@ -1,0 +1,1 @@
+{"id": "draft-gold-001", "language": "typescript", "prompt": "Write a function clamp(n: number, min: number, max: number): number that returns n clamped to [min, max]. If min > max, swap them first. Return only the function, no preamble.", "must_contain": ["function clamp", "return"], "must_compile": true}

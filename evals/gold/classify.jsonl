@@ -1,0 +1,1 @@
+{"id": "cls-gold-001", "text": "fix off-by-one in pagination when page size equals total count", "labels": ["feat", "fix", "chore", "docs", "refactor"], "expected": "fix"}
