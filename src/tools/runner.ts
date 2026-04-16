@@ -37,6 +37,7 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     tier: input.tier,
     logger: ctx.logger,
     allowFallback: input.allowFallback,
+    timeoutOverrideMs: ctx.timeouts,
     run: async (tier, signal) => {
       const model = resolveTier(tier, ctx.tiers);
       const req = input.build(tier, model);

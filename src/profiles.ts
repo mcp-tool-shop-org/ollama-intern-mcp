@@ -17,7 +17,7 @@
  * model picks, so one-off experiments don't require a new profile.
  */
 
-import type { TierConfig } from "./tiers.js";
+import type { Tier, TierConfig } from "./tiers.js";
 
 export type ProfileName = "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max";
 
@@ -25,7 +25,31 @@ export interface Profile {
   name: ProfileName;
   description: string;
   tiers: TierConfig;
+  /**
+   * Per-tier timeouts in ms. Lives on the profile (not as a global constant)
+   * because cold-load behavior is hardware-bound — Instant needs 15s of
+   * margin on a 16GB-VRAM dev box but only 5s on M5 Max unified memory.
+   * Found via the first live dogfood pass: all Instant calls on RTX 5080
+   * timed out at 5s before first token.
+   */
+  timeouts: Record<Tier, number>;
 }
+
+/** Timeouts sized for a 16GB-VRAM discrete-GPU box where cold load costs 3-5s. */
+const DEV_RTX5080_TIMEOUTS: Record<Tier, number> = {
+  instant: 15_000,
+  workhorse: 20_000,
+  deep: 90_000,
+  embed: 10_000,
+};
+
+/** Timeouts sized for M5 Max 128GB unified memory where cold load is ~instant. */
+const M5_MAX_TIMEOUTS: Record<Tier, number> = {
+  instant: 5_000,
+  workhorse: 20_000,
+  deep: 90_000,
+  embed: 10_000,
+};
 
 export const PROFILES: Record<ProfileName, Profile> = {
   "dev-rtx5080": {
@@ -38,6 +62,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
       deep: "qwen2.5:14b-instruct-q4_K_M",
       embed: "nomic-embed-text",
     },
+    timeouts: DEV_RTX5080_TIMEOUTS,
   },
   "dev-rtx5080-llama": {
     name: "dev-rtx5080-llama",
@@ -49,6 +74,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
       deep: "llama3.1:8b-instruct-q4_K_M",
       embed: "nomic-embed-text",
     },
+    timeouts: DEV_RTX5080_TIMEOUTS,
   },
   "m5-max": {
     name: "m5-max",
@@ -59,6 +85,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
       deep: "llama3.3:70b-instruct-q4_K_M",
       embed: "nomic-embed-text",
     },
+    timeouts: M5_MAX_TIMEOUTS,
   },
 };
 
@@ -74,6 +101,8 @@ function isProfileName(x: string | undefined): x is ProfileName {
  *   2. DEFAULT_PROFILE (dev-rtx5080)
  *
  * Per-tier env vars (INTERN_TIER_INSTANT, etc.) override the profile's picks.
+ * Profile.timeouts are not env-overridable — they are a hardware property,
+ * not a one-off tuning knob.
  */
 export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
   const name: ProfileName = isProfileName(env.INTERN_PROFILE) ? env.INTERN_PROFILE : DEFAULT_PROFILE;
@@ -84,5 +113,5 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
     deep: env.INTERN_TIER_DEEP || base.tiers.deep,
     embed: env.INTERN_EMBED_MODEL || base.tiers.embed,
   };
-  return { name, description: base.description, tiers };
+  return { name, description: base.description, tiers, timeouts: base.timeouts };
 }

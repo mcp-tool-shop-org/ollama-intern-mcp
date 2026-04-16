@@ -38,7 +38,11 @@ export async function compileCheck(
   const lang = language.toLowerCase() as SupportedLanguage;
   switch (lang) {
     case "typescript":
-      return runChecker(code, ".ts", "npx", ["-y", "typescript", "tsc", "--noEmit", "--target", "ES2022", "--module", "NodeNext", "--moduleResolution", "NodeNext"]);
+      // `npx -p typescript -- tsc ...` tells npx WHICH package provides the tsc
+      // binary. The old `npx -y typescript tsc` form treats "tsc" as an arg to
+      // a nonexistent "typescript" binary and fails with "could not determine
+      // executable to run" — found in the first live dogfood run.
+      return runChecker(code, ".ts", "npx", ["-p", "typescript", "--", "tsc", "--noEmit", "--target", "ES2022", "--module", "ESNext", "--moduleResolution", "node"]);
     case "javascript":
       return runChecker(code, ".js", "node", ["--check"]);
     case "python":
@@ -64,11 +68,14 @@ async function runChecker(
     const file = join(dir, `snippet${ext}`);
     await writeFile(file, code, "utf8");
     const args = [...baseArgs, file];
-    const { code: exitCode, stderr } = await runProcess(command, args, CHECKER_TIMEOUT_MS);
+    const { code: exitCode, stdout, stderr } = await runProcess(command, args, CHECKER_TIMEOUT_MS);
+    // tsc writes diagnostics to STDOUT, most other checkers to STDERR.
+    // Merge both so the tail is useful regardless of the tool's habits.
+    const diagnostics = [stderr, stdout].filter(Boolean).join("\n");
     return {
       compiles: exitCode === 0,
       checker: `${command} ${baseArgs.join(" ")}`.trim(),
-      stderr_tail: tail(stderr, STDERR_TAIL_CHARS),
+      stderr_tail: tail(diagnostics, STDERR_TAIL_CHARS),
     };
   } catch (err) {
     return {

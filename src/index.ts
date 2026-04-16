@@ -122,6 +122,7 @@ async function main(): Promise<void> {
   const ctx: RunContext = {
     client: new HttpOllamaClient(),
     tiers: profile.tiers,
+    timeouts: profile.timeouts,
     hardwareProfile: profile.name,
     logger: new NdjsonLogger(),
   };

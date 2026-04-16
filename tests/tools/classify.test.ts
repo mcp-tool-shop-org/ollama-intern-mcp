@@ -43,6 +43,7 @@ function makeCtx(client: OllamaClient, logger = new NullLogger()): RunContext & 
   return {
     client,
     tiers: PROFILES["dev-rtx5080"].tiers,
+    timeouts: PROFILES["dev-rtx5080"].timeouts,
     hardwareProfile: "dev-rtx5080",
     logger,
   };

@@ -58,4 +58,26 @@ describe("profiles", () => {
       expect(PROFILES[name].description.length).toBeGreaterThan(20);
     }
   });
+
+  it("dev profiles lock Instant to 15s (cold-load margin); m5-max stays at 5s", () => {
+    expect(PROFILES["dev-rtx5080"].timeouts.instant).toBe(15_000);
+    expect(PROFILES["dev-rtx5080-llama"].timeouts.instant).toBe(15_000);
+    expect(PROFILES["m5-max"].timeouts.instant).toBe(5_000);
+  });
+
+  it("Workhorse / Deep / Embed timeouts match across all profiles (hardware-invariant for those tiers)", () => {
+    const workhorse = PROFILES["m5-max"].timeouts.workhorse;
+    const deep = PROFILES["m5-max"].timeouts.deep;
+    const embed = PROFILES["m5-max"].timeouts.embed;
+    for (const p of Object.values(PROFILES)) {
+      expect(p.timeouts.workhorse).toBe(workhorse);
+      expect(p.timeouts.deep).toBe(deep);
+      expect(p.timeouts.embed).toBe(embed);
+    }
+  });
+
+  it("loadProfile carries timeouts through to caller", () => {
+    const p = loadProfile({});
+    expect(p.timeouts).toEqual(PROFILES[DEFAULT_PROFILE].timeouts);
+  });
 });
