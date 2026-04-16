@@ -10,6 +10,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 
 import { VERSION } from "./version.js";
 import { loadProfile } from "./profiles.js";
@@ -128,9 +130,24 @@ async function main(): Promise<void> {
   await server.connect(transport);
 }
 
-// Run only when invoked as a script (not when imported by tests).
-const isMain = import.meta.url === `file://${process.argv[1]}` || import.meta.url.endsWith(process.argv[1] ?? "");
-if (isMain) {
+/**
+ * Run main() only when invoked as a script, not when imported by tests.
+ *
+ * Robust-on-Windows check: normalize both sides through realpathSync +
+ * fileURLToPath so forward/backslash and symlink differences don't cause
+ * the script to no-op silently (which is what Claude Code would see as
+ * "connected then immediately disconnected").
+ */
+function isInvokedAsScript(): boolean {
+  try {
+    if (!process.argv[1]) return false;
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (isInvokedAsScript()) {
   main().catch((err) => {
     console.error(JSON.stringify(toErrorShape(err), null, 2));
     process.exit(1);

@@ -92,8 +92,27 @@ export interface OllamaClient {
   residency(model: string): Promise<Residency | null>;
 }
 
+/**
+ * Normalize an OLLAMA_HOST value.
+ *
+ * Ollama's CLI accepts `127.0.0.1:11434` (no scheme) and routes Windows users
+ * often set it that way. fetch() requires a full URL, so we coerce anything
+ * that looks like host[:port] into a proper http:// URL, and strip trailing
+ * slashes so path concatenation stays clean.
+ */
+export function normalizeOllamaHost(raw: string | undefined): string {
+  const fallback = "http://127.0.0.1:11434";
+  const value = (raw ?? "").trim();
+  if (!value) return fallback;
+  const withScheme = /^https?:\/\//i.test(value) ? value : `http://${value}`;
+  return withScheme.replace(/\/+$/, "");
+}
+
 export class HttpOllamaClient implements OllamaClient {
-  constructor(private baseUrl: string = process.env.OLLAMA_HOST || "http://127.0.0.1:11434") {}
+  private baseUrl: string;
+  constructor(baseUrl?: string) {
+    this.baseUrl = normalizeOllamaHost(baseUrl ?? process.env.OLLAMA_HOST);
+  }
 
   async generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResponse> {
     return this.post<GenerateRequest, GenerateResponse>("/api/generate", { ...req, stream: false }, signal);
