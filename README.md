@@ -43,14 +43,30 @@ Tool names encode when to reach for them. Pick the job, the tier follows.
 |---|---|---|
 | `ollama_chat` | Workhorse | Ad-hoc chat. **Use sparingly** — if you reach for this often, a specialty tool is missing. |
 
-## Tier map
+## Hardware profiles
 
-| Tier | Default model | Environment variable |
-|---|---|---|
-| Instant | `qwen2.5:14b-instruct-q4_K_M` | `INTERN_TIER_INSTANT` |
-| Workhorse | `qwen2.5-coder:32b-instruct-q4_K_M` | `INTERN_TIER_WORKHORSE` |
-| Deep | `llama3.3:70b-instruct-q4_K_M` | `INTERN_TIER_DEEP` |
-| Embed | `nomic-embed-text` | `INTERN_EMBED_MODEL` |
+The same code runs against very different hardware. Pick a profile with `INTERN_PROFILE`:
+
+| Profile | Instant | Workhorse | Deep | Embed |
+|---|---|---|---|---|
+| **`dev-rtx5080`** (default) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
+| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
+| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
+
+**Why the Qwen ladder on default dev:** same family top-to-bottom means bad outputs are tool/design problems, not cross-family mismatches. Coherent dogfooding beats simulating the eventual 70B personality.
+
+**Parity rail:** `dev-rtx5080-llama` is for running the same gold evals through Llama 8B Deep before committing to Llama on the M5 Max. Lets you measure whether family drift buys anything real.
+
+Per-tier env vars override the profile's picks when you need a one-off:
+
+| Override | Example |
+|---|---|
+| `INTERN_TIER_INSTANT` | `qwen2.5:7b-instruct-q4_K_M` |
+| `INTERN_TIER_WORKHORSE` | `qwen2.5-coder:7b-instruct-q4_K_M` |
+| `INTERN_TIER_DEEP` | `qwen2.5:14b-instruct-q4_K_M` |
+| `INTERN_EMBED_MODEL` | `nomic-embed-text` |
+
+Every envelope and NDJSON log line carries `hardware_profile` so dev numbers can be filtered out of publishable benchmark tables.
 
 ## Envelope (every tool returns this)
 
@@ -59,6 +75,7 @@ Tool names encode when to reach for them. Pick the job, the tier follows.
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
+  hardware_profile: string,   // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -83,10 +100,10 @@ Tool names encode when to reach for them. Pick the job, the tier follows.
 
 ## Observability
 
-Every call logged as one line of NDJSON to `~/.ollama-intern/log.ndjson`:
+Every call logged as one line of NDJSON to `~/.ollama-intern/log.ndjson`. The envelope (including `hardware_profile`) rides along, so bench/eval scripts can filter `dev-rtx5080` numbers out of publishable tables:
 
 ```json
-{"ts":"2026-04-16T12:00:00Z","tool":"ollama_classify","tier_used":"instant","model":"qwen2.5:14b-instruct-q4_K_M","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}
+{"kind":"call","ts":"2026-04-16T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"qwen2.5:7b-instruct-q4_K_M","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
 ```
 
 This is what lets you tune delegation instead of guessing — "this call used 5k tokens on Deep when fast would have sufficed."
@@ -106,15 +123,27 @@ Phase by hardening layer, never by amputating the surface.
 npm install -g @mcptoolshop/ollama-intern-mcp
 ```
 
-Requires [Ollama](https://ollama.com) running locally and the tier models pulled:
+Requires [Ollama](https://ollama.com) running locally and the tier models pulled.
+
+**Default dev profile (RTX 5080 16GB and similar):**
+
+```bash
+ollama pull qwen2.5:7b-instruct-q4_K_M
+ollama pull qwen2.5-coder:7b-instruct-q4_K_M
+ollama pull qwen2.5:14b-instruct-q4_K_M
+ollama pull nomic-embed-text
+export OLLAMA_MAX_LOADED_MODELS=4
+export OLLAMA_KEEP_ALIVE=-1
+```
+
+**M5 Max profile (once you're on a 128GB-unified box):**
 
 ```bash
 ollama pull qwen2.5:14b-instruct-q4_K_M
 ollama pull qwen2.5-coder:32b-instruct-q4_K_M
 ollama pull llama3.3:70b-instruct-q4_K_M
 ollama pull nomic-embed-text
-export OLLAMA_MAX_LOADED_MODELS=4
-export OLLAMA_KEEP_ALIVE=-1
+export INTERN_PROFILE=m5-max
 ```
 
 ## Claude Code config
@@ -127,15 +156,14 @@ export OLLAMA_KEEP_ALIVE=-1
       "args": ["-y", "@mcptoolshop/ollama-intern-mcp"],
       "env": {
         "OLLAMA_HOST": "http://127.0.0.1:11434",
-        "INTERN_TIER_INSTANT": "qwen2.5:14b-instruct-q4_K_M",
-        "INTERN_TIER_WORKHORSE": "qwen2.5-coder:32b-instruct-q4_K_M",
-        "INTERN_TIER_DEEP": "llama3.3:70b-instruct-q4_K_M",
-        "INTERN_EMBED_MODEL": "nomic-embed-text"
+        "INTERN_PROFILE": "dev-rtx5080"
       }
     }
   }
 }
 ```
+
+Switch profiles by changing `INTERN_PROFILE` to `dev-rtx5080-llama` or `m5-max`. Per-tier env vars (`INTERN_TIER_INSTANT`, etc.) still override profile picks when you need a one-off swap.
 
 ## License
 

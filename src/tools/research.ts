@@ -18,13 +18,12 @@ import { z } from "zod";
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
 import { InternError } from "../errors.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { parseCitations, validateCitations, type ValidatedCitation } from "../guardrails/citations.js";
 import { timestamp } from "../observability.js";
+import type { RunContext } from "../runContext.js";
 
 export const researchSchema = z.object({
   question: z.string().min(1).describe("The question to answer."),
@@ -90,7 +89,7 @@ function splitAnswerAndSources(raw: string): { answer: string; sources: string }
 
 export async function handleResearch(
   input: ResearchInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<ResearchResult>> {
   const perFileMax = input.per_file_max_chars ?? 40_000;
   const sources = await loadSources(input.source_paths, perFileMax);
@@ -99,9 +98,7 @@ export async function handleResearch(
   const envelope = await runTool<ResearchResult>({
     tool: "ollama_research",
     tier: "deep",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, sources),
@@ -120,7 +117,7 @@ export async function handleResearch(
 
   if (warnings.length > 0) {
     envelope.warnings = [...(envelope.warnings ?? []), ...warnings];
-    await deps.logger.log({
+    await ctx.logger.log({
       kind: "guardrail",
       ts: timestamp(),
       tool: "ollama_research",

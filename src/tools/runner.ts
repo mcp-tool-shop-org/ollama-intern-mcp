@@ -5,22 +5,20 @@
  * Tools describe *what* they want; the runner handles *how*.
  */
 
-import type { OllamaClient, GenerateRequest } from "../ollama.js";
+import type { GenerateRequest } from "../ollama.js";
 import { countTokens } from "../ollama.js";
-import type { Tier, TierConfig } from "../tiers.js";
+import type { Tier } from "../tiers.js";
 import { resolveTier } from "../tiers.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
 import { callEvent } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
+import type { RunContext } from "../runContext.js";
 
 export interface RunToolInput<T> {
   tool: string;
   tier: Tier;
-  tierConfig: TierConfig;
-  client: OllamaClient;
-  logger: Logger;
+  ctx: RunContext;
   allowFallback?: boolean;
   /** Build the generate request for the given (possibly-fallback) tier. */
   build: (tier: Tier, model: string) => GenerateRequest;
@@ -32,16 +30,17 @@ export interface RunToolInput<T> {
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   const startedAt = Date.now();
+  const { ctx } = input;
 
   const { value, actualTier, fallbackFrom } = await runWithTimeoutAndFallback({
     tool: input.tool,
     tier: input.tier,
-    logger: input.logger,
+    logger: ctx.logger,
     allowFallback: input.allowFallback,
     run: async (tier, signal) => {
-      const model = resolveTier(tier, input.tierConfig);
+      const model = resolveTier(tier, ctx.tiers);
       const req = input.build(tier, model);
-      const resp = await input.client.generate(req, signal);
+      const resp = await ctx.client.generate(req, signal);
       return { resp, model };
     },
   });
@@ -49,12 +48,13 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   const { resp, model } = value;
   const tokens = countTokens(resp);
   const result = input.parse(resp.response);
-  const residency = await input.client.residency(model);
+  const residency = await ctx.client.residency(model);
 
   const envelope = buildEnvelope<T>({
     result,
     tier: actualTier,
     model,
+    hardwareProfile: ctx.hardwareProfile,
     tokensIn: tokens.in,
     tokensOut: tokens.out,
     startedAt,
@@ -63,6 +63,6 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     ...(input.warnings ? { warnings: input.warnings } : {}),
   });
 
-  await input.logger.log(callEvent(input.tool, envelope));
+  await ctx.logger.log(callEvent(input.tool, envelope));
   return envelope;
 }

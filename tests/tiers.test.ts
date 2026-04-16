@@ -1,40 +1,31 @@
 import { describe, it, expect } from "vitest";
 import {
-  loadTierConfig,
   resolveTier,
-  DEFAULT_TIER_CONFIG,
   TIER_TIMEOUT_MS,
   TIER_FALLBACK,
+  type TierConfig,
 } from "../src/tiers.js";
 
-describe("tiers", () => {
-  it("loads defaults when env is empty", () => {
-    const cfg = loadTierConfig({});
-    expect(cfg).toEqual(DEFAULT_TIER_CONFIG);
-  });
+describe("resolveTier", () => {
+  const cfg: TierConfig = { instant: "a", workhorse: "b", deep: "c", embed: "d" };
 
-  it("overrides each tier from env independently", () => {
-    const cfg = loadTierConfig({
-      INTERN_TIER_INSTANT: "a",
-      INTERN_TIER_WORKHORSE: "b",
-      INTERN_TIER_DEEP: "c",
-      INTERN_EMBED_MODEL: "d",
-    });
-    expect(cfg).toEqual({ instant: "a", workhorse: "b", deep: "c", embed: "d" });
+  it("picks the right model per tier", () => {
+    expect(resolveTier("instant", cfg)).toBe("a");
+    expect(resolveTier("workhorse", cfg)).toBe("b");
+    expect(resolveTier("deep", cfg)).toBe("c");
+    expect(resolveTier("embed", cfg)).toBe("d");
   });
+});
 
-  it("resolveTier picks the right model", () => {
-    const cfg = loadTierConfig({});
-    expect(resolveTier("instant", cfg)).toBe(DEFAULT_TIER_CONFIG.instant);
-    expect(resolveTier("deep", cfg)).toBe(DEFAULT_TIER_CONFIG.deep);
-  });
-
-  it("timeouts escalate from instant to deep", () => {
+describe("TIER_TIMEOUT_MS", () => {
+  it("escalates from instant to deep", () => {
     expect(TIER_TIMEOUT_MS.instant).toBeLessThan(TIER_TIMEOUT_MS.workhorse);
     expect(TIER_TIMEOUT_MS.workhorse).toBeLessThan(TIER_TIMEOUT_MS.deep);
   });
+});
 
-  it("fallback cascade is deep -> workhorse -> instant -> null; embed has no fallback", () => {
+describe("TIER_FALLBACK", () => {
+  it("cascades deep -> workhorse -> instant -> null; embed has no fallback", () => {
     expect(TIER_FALLBACK.deep).toBe("workhorse");
     expect(TIER_FALLBACK.workhorse).toBe("instant");
     expect(TIER_FALLBACK.instant).toBeNull();

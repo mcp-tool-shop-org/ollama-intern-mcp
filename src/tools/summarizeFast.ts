@@ -8,10 +8,9 @@
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
+import type { RunContext } from "../runContext.js";
 
 export const summarizeFastSchema = z.object({
   text: z.string().min(1).describe("Text to summarize (best under ~4k tokens — use summarize_deep for longer inputs)."),
@@ -39,15 +38,13 @@ function buildPrompt(input: SummarizeFastInput): string {
 
 export async function handleSummarizeFast(
   input: SummarizeFastInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<SummarizeResult>> {
   const maxWords = input.max_words ?? 80;
   return runTool<SummarizeResult>({
     tool: "ollama_summarize_fast",
     tier: "instant",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

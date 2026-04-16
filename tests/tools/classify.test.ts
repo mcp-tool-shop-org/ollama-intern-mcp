@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { handleClassify } from "../../src/tools/classify.js";
-import { DEFAULT_TIER_CONFIG } from "../../src/tiers.js";
+import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
   OllamaClient,
@@ -12,6 +12,7 @@ import type {
   EmbedResponse,
 } from "../../src/ollama.js";
 import type { Residency } from "../../src/envelope.js";
+import type { RunContext } from "../../src/runContext.js";
 
 class MockClient implements OllamaClient {
   public lastGenerate?: GenerateRequest;
@@ -38,32 +39,42 @@ class MockClient implements OllamaClient {
   }
 }
 
+function makeCtx(client: OllamaClient, logger = new NullLogger()): RunContext & { logger: NullLogger } {
+  return {
+    client,
+    tiers: PROFILES["dev-rtx5080"].tiers,
+    hardwareProfile: "dev-rtx5080",
+    logger,
+  };
+}
+
 describe("handleClassify", () => {
-  it("returns label/confidence with instant tier and populates envelope", async () => {
+  it("returns label/confidence on instant tier with dev-rtx5080 model and stamps hardware_profile", async () => {
     const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
-    const logger = new NullLogger();
+    const ctx = makeCtx(client);
     const env = await handleClassify(
       { text: "patch null pointer in auth", labels: ["feat", "fix", "chore"] },
-      { client, tierConfig: DEFAULT_TIER_CONFIG, logger },
+      ctx,
     );
     expect(env.result.label).toBe("fix");
     expect(env.result.confidence).toBe(0.9);
     expect(env.result.below_threshold).toBe(false);
     expect(env.tier_used).toBe("instant");
-    expect(env.model).toBe(DEFAULT_TIER_CONFIG.instant);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    expect(env.hardware_profile).toBe("dev-rtx5080");
     expect(env.tokens_in).toBe(50);
     expect(env.tokens_out).toBe(10);
     expect(env.residency?.in_vram).toBe(true);
-    expect(logger.events).toHaveLength(1);
-    expect(logger.events[0].kind).toBe("call");
+    expect(ctx.logger.events).toHaveLength(1);
+    expect(ctx.logger.events[0].kind).toBe("call");
   });
 
   it("nulls the label when below threshold and allow_none=true", async () => {
     const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.4 }));
-    const logger = new NullLogger();
+    const ctx = makeCtx(client);
     const env = await handleClassify(
       { text: "ambiguous", labels: ["feat", "fix"], allow_none: true },
-      { client, tierConfig: DEFAULT_TIER_CONFIG, logger },
+      ctx,
     );
     expect(env.result.label).toBeNull();
     expect(env.result.below_threshold).toBe(true);
@@ -71,10 +82,9 @@ describe("handleClassify", () => {
 
   it("gracefully handles non-JSON output with zero confidence", async () => {
     const client = new MockClient("garbage not json");
-    const logger = new NullLogger();
     const env = await handleClassify(
       { text: "x", labels: ["a", "b"] },
-      { client, tierConfig: DEFAULT_TIER_CONFIG, logger },
+      makeCtx(client),
     );
     expect(env.result.label).toBeNull();
     expect(env.result.confidence).toBe(0);
@@ -84,7 +94,7 @@ describe("handleClassify", () => {
     const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
     await handleClassify(
       { text: "x", labels: ["a", "b"] },
-      { client, tierConfig: DEFAULT_TIER_CONFIG, logger: new NullLogger() },
+      makeCtx(client),
     );
     expect(client.lastGenerate?.format).toBe("json");
   });

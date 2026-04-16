@@ -21,6 +21,8 @@ export interface Envelope<T> {
   result: T;
   tier_used: Tier;
   model: string;
+  /** Active hardware profile (e.g. "dev-rtx5080", "m5-max"). Lets bench/eval runs keep dev numbers out of publishable tables. */
+  hardware_profile: string;
   tokens_in: number;
   tokens_out: number;
   elapsed_ms: number;
@@ -35,6 +37,7 @@ export interface EnvelopeBuilderInput<T> {
   result: T;
   tier: Tier;
   model: string;
+  hardwareProfile: string;
   tokensIn: number;
   tokensOut: number;
   startedAt: number;
@@ -48,6 +51,7 @@ export function buildEnvelope<T>(input: EnvelopeBuilderInput<T>): Envelope<T> {
     result: input.result,
     tier_used: input.tier,
     model: input.model,
+    hardware_profile: input.hardwareProfile,
     tokens_in: input.tokensIn,
     tokens_out: input.tokensOut,
     elapsed_ms: Date.now() - input.startedAt,

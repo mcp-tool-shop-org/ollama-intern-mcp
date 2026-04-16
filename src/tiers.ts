@@ -1,8 +1,9 @@
 /**
- * Tier map — the single source of truth for which model backs which tool.
+ * Tier shape and constants — tier→model selection lives in ./profiles.ts.
  *
  * Claude picks the tier by picking the tool. Tools declare their tier;
- * resolveTier() turns a Tier into the concrete model name from env.
+ * resolveTier() turns a Tier into the concrete model name from a TierConfig,
+ * which comes from the active Profile.
  */
 
 export type Tier = "instant" | "workhorse" | "deep" | "embed";
@@ -12,23 +13,6 @@ export interface TierConfig {
   workhorse: string;
   deep: string;
   embed: string;
-}
-
-/** Default models — matched to Phase 0 research on M-series hardware. */
-export const DEFAULT_TIER_CONFIG: TierConfig = {
-  instant: "qwen2.5:14b-instruct-q4_K_M",
-  workhorse: "qwen2.5-coder:32b-instruct-q4_K_M",
-  deep: "llama3.3:70b-instruct-q4_K_M",
-  embed: "nomic-embed-text",
-};
-
-export function loadTierConfig(env: NodeJS.ProcessEnv = process.env): TierConfig {
-  return {
-    instant: env.INTERN_TIER_INSTANT || DEFAULT_TIER_CONFIG.instant,
-    workhorse: env.INTERN_TIER_WORKHORSE || DEFAULT_TIER_CONFIG.workhorse,
-    deep: env.INTERN_TIER_DEEP || DEFAULT_TIER_CONFIG.deep,
-    embed: env.INTERN_EMBED_MODEL || DEFAULT_TIER_CONFIG.embed,
-  };
 }
 
 export function resolveTier(tier: Tier, config: TierConfig): string {

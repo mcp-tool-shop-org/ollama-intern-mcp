@@ -2,11 +2,12 @@ import { describe, it, expect } from "vitest";
 import { buildEnvelope, isEvicted, type Residency } from "../src/envelope.js";
 
 describe("envelope", () => {
-  it("builds with required fields and omits optional ones", () => {
+  it("builds with required fields including hardware_profile, omits optional ones", () => {
     const env = buildEnvelope({
       result: { ok: true },
       tier: "instant",
       model: "qwen2.5:14b",
+      hardwareProfile: "dev-rtx5080",
       tokensIn: 10,
       tokensOut: 20,
       startedAt: Date.now() - 100,
@@ -14,6 +15,7 @@ describe("envelope", () => {
     });
     expect(env.tier_used).toBe("instant");
     expect(env.model).toBe("qwen2.5:14b");
+    expect(env.hardware_profile).toBe("dev-rtx5080");
     expect(env.tokens_in).toBe(10);
     expect(env.tokens_out).toBe(20);
     expect(env.elapsed_ms).toBeGreaterThanOrEqual(100);
@@ -27,6 +29,7 @@ describe("envelope", () => {
       result: null,
       tier: "workhorse",
       model: "x",
+      hardwareProfile: "dev-rtx5080",
       tokensIn: 0,
       tokensOut: 0,
       startedAt: Date.now(),
@@ -38,15 +41,29 @@ describe("envelope", () => {
 
   it("carries warnings when non-empty, omits when empty", () => {
     const withWarn = buildEnvelope({
-      result: null, tier: "deep", model: "x", tokensIn: 0, tokensOut: 0,
+      result: null, tier: "deep", model: "x", hardwareProfile: "m5-max",
+      tokensIn: 0, tokensOut: 0,
       startedAt: Date.now(), residency: null, warnings: ["stripped 1 citation"],
     });
     expect(withWarn.warnings).toEqual(["stripped 1 citation"]);
     const withoutWarn = buildEnvelope({
-      result: null, tier: "deep", model: "x", tokensIn: 0, tokensOut: 0,
+      result: null, tier: "deep", model: "x", hardwareProfile: "m5-max",
+      tokensIn: 0, tokensOut: 0,
       startedAt: Date.now(), residency: null, warnings: [],
     });
     expect(withoutWarn.warnings).toBeUndefined();
+  });
+
+  it("preserves hardware_profile verbatim so dev numbers can be filtered in reports", () => {
+    const dev = buildEnvelope({
+      result: null, tier: "instant", model: "x", hardwareProfile: "dev-rtx5080",
+      tokensIn: 0, tokensOut: 0, startedAt: Date.now(), residency: null,
+    });
+    const prod = buildEnvelope({
+      result: null, tier: "instant", model: "x", hardwareProfile: "m5-max",
+      tokensIn: 0, tokensOut: 0, startedAt: Date.now(), residency: null,
+    });
+    expect(dev.hardware_profile).not.toBe(prod.hardware_profile);
   });
 });
 

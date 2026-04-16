@@ -12,10 +12,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { VERSION } from "./version.js";
-import { loadTierConfig } from "./tiers.js";
-import { HttpOllamaClient, type OllamaClient } from "./ollama.js";
-import { NdjsonLogger, type Logger } from "./observability.js";
+import { loadProfile } from "./profiles.js";
+import { HttpOllamaClient } from "./ollama.js";
+import { NdjsonLogger } from "./observability.js";
 import { toErrorShape } from "./errors.js";
+import type { RunContext } from "./runContext.js";
 
 import { classifySchema, handleClassify } from "./tools/classify.js";
 import { triageLogsSchema, handleTriageLogs } from "./tools/triageLogs.js";
@@ -27,13 +28,7 @@ import { researchSchema, handleResearch } from "./tools/research.js";
 import { embedSchema, handleEmbed } from "./tools/embed.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
-export interface ServerDeps {
-  client: OllamaClient;
-  tierConfig: ReturnType<typeof loadTierConfig>;
-  logger: Logger;
-}
-
-export function createServer(deps: ServerDeps): McpServer {
+export function createServer(ctx: RunContext): McpServer {
   const server = new McpServer({ name: "ollama-intern-mcp", version: VERSION });
 
   const wrap = <T>(p: Promise<T>): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: true }> =>
@@ -50,7 +45,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_research",
     "FLAGSHIP. Answer a question grounded in specific files. Takes FILE PATHS (not raw text) — reads and chunks locally, returns a digest with validated citations. Use this to understand a repo/doc without burning Claude context on the full content. Citations outside source_paths are stripped server-side.",
     researchSchema.shape,
-    (args) => wrap(handleResearch(args, deps)),
+    (args) => wrap(handleResearch(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed
@@ -58,7 +53,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_embed",
     "FLAGSHIP. Produce vector embeddings for one text or a batch. Bridge from filename search to concept search over memory/, canon, doctrine, protocols. Returns model_version alongside vectors so drift is detectable.",
     embedSchema.shape,
-    (args) => wrap(handleEmbed(args, deps)),
+    (args) => wrap(handleEmbed(args, ctx)),
   );
 
   // Core — classify
@@ -66,7 +61,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_classify",
     "Single-label classification with confidence. Use for commit-type / severity / yes-no bucketing. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7).",
     classifySchema.shape,
-    (args) => wrap(handleClassify(args, deps)),
+    (args) => wrap(handleClassify(args, ctx)),
   );
 
   // Core — triage_logs
@@ -74,7 +69,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_triage_logs",
     "Stable-shape log digest: {errors, warnings, suspected_root_cause}. Use before grep-storms on long CI/test output. Returns deduplicated error strings without stack traces.",
     triageLogsSchema.shape,
-    (args) => wrap(handleTriageLogs(args, deps)),
+    (args) => wrap(handleTriageLogs(args, ctx)),
   );
 
   // Core — summarize_fast
@@ -82,7 +77,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_summarize_fast",
     "Gist of short input (best under ~4k tokens). Use as a decision gate: 'is this file worth reading in full?' Summary carries source_preview so you can spot-check fabrication.",
     summarizeFastSchema.shape,
-    (args) => wrap(handleSummarizeFast(args, deps)),
+    (args) => wrap(handleSummarizeFast(args, ctx)),
   );
 
   // Core — summarize_deep
@@ -90,7 +85,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_summarize_deep",
     "Digest of long input (~32k tokens) with optional focus. Use for doctrine/canon/long-doc distillation when Claude only needs the gist. Carries source_preview.",
     summarizeDeepSchema.shape,
-    (args) => wrap(handleSummarizeDeep(args, deps)),
+    (args) => wrap(handleSummarizeDeep(args, ctx)),
   );
 
   // Core — draft
@@ -98,7 +93,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_draft",
     "DRAFT code or prose stubs (never autonomous — Claude reviews). Pass language for a server-side compile check: envelope returns {compiles, checker, stderr_tail}. target_path pointing into memory/, .claude/, docs/canon/, games/ requires confirm_write: true.",
     draftSchema.shape,
-    (args) => wrap(handleDraft(args, deps)),
+    (args) => wrap(handleDraft(args, ctx)),
   );
 
   // Core — extract
@@ -106,7 +101,7 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_extract",
     "Schema-constrained JSON extraction using Ollama's JSON mode. Returns {ok: true, data} or {ok: false, error: 'unparseable'} — never partial.",
     extractSchema.shape,
-    (args) => wrap(handleExtract(args, deps)),
+    (args) => wrap(handleExtract(args, ctx)),
   );
 
   // Last resort — chat
@@ -114,19 +109,21 @@ export function createServer(deps: ServerDeps): McpServer {
     "ollama_chat",
     "LAST RESORT catch-all. Prefer a specialty tool above when one fits. If you reach for this often, a specialty tool is missing and should be added.",
     chatSchema.shape,
-    (args) => wrap(handleChat(args, deps)),
+    (args) => wrap(handleChat(args, ctx)),
   );
 
   return server;
 }
 
 async function main(): Promise<void> {
-  const deps: ServerDeps = {
+  const profile = loadProfile();
+  const ctx: RunContext = {
     client: new HttpOllamaClient(),
-    tierConfig: loadTierConfig(),
+    tiers: profile.tiers,
+    hardwareProfile: profile.name,
     logger: new NdjsonLogger(),
   };
-  const server = createServer(deps);
+  const server = createServer(ctx);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

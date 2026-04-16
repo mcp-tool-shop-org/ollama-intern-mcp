@@ -5,11 +5,10 @@
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { applyConfidenceThreshold, type ClassifyGuarded } from "../guardrails/confidence.js";
+import type { RunContext } from "../runContext.js";
 
 export const classifySchema = z.object({
   text: z.string().min(1).describe("The text to classify."),
@@ -48,14 +47,12 @@ function parseClassify(raw: string): { label: string | null; confidence: number 
 
 export async function handleClassify(
   input: ClassifyInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<ClassifyGuarded>> {
   return runTool<ClassifyGuarded>({
     tool: "ollama_classify",
     tier: "instant",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

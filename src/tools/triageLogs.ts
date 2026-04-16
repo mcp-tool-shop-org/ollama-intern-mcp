@@ -5,10 +5,9 @@
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
+import type { RunContext } from "../runContext.js";
 
 export const triageLogsSchema = z.object({
   log_text: z.string().min(1).describe("Raw log output to triage."),
@@ -56,14 +55,12 @@ function parse(raw: string): TriageLogsResult {
 
 export async function handleTriageLogs(
   input: TriageLogsInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<TriageLogsResult>> {
   return runTool<TriageLogsResult>({
     tool: "ollama_triage_logs",
     tier: "instant",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

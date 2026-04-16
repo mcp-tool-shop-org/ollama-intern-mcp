@@ -6,10 +6,9 @@
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
+import type { RunContext } from "../runContext.js";
 
 export const extractSchema = z.object({
   text: z.string().min(1).describe("Text to extract structured data from."),
@@ -51,14 +50,12 @@ function parse(raw: string): ExtractResult {
 
 export async function handleExtract(
   input: ExtractInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<ExtractResult>> {
   return runTool<ExtractResult>({
     tool: "ollama_extract",
     tier: "workhorse",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

@@ -8,13 +8,12 @@
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { assertWriteAllowed } from "../guardrails/writeConfirm.js";
 import { compileCheck, type CompileCheckResult } from "../guardrails/compileCheck.js";
 import { timestamp } from "../observability.js";
+import type { RunContext } from "../runContext.js";
 
 export const draftSchema = z.object({
   prompt: z.string().min(1).describe("What to draft. Be concrete."),
@@ -50,12 +49,12 @@ function buildPrompt(input: DraftInput): string {
 
 export async function handleDraft(
   input: DraftInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<DraftResult>> {
   try {
     assertWriteAllowed({ target_path: input.target_path, confirm_write: input.confirm_write });
   } catch (err) {
-    await deps.logger.log({
+    await ctx.logger.log({
       kind: "guardrail",
       ts: timestamp(),
       tool: "ollama_draft",
@@ -69,9 +68,7 @@ export async function handleDraft(
   const envelope = await runTool<DraftResult>({
     tool: "ollama_draft",
     tier: "workhorse",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

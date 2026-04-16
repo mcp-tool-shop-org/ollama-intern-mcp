@@ -5,11 +5,10 @@
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
-import type { Logger } from "../observability.js";
-import type { OllamaClient } from "../ollama.js";
-import { TEMPERATURE_BY_SHAPE, type TierConfig } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import type { SummarizeResult } from "./summarizeFast.js";
+import type { RunContext } from "../runContext.js";
 
 export const summarizeDeepSchema = z.object({
   text: z.string().min(1).describe("Long text to digest. Best for inputs that would bloat Claude's context."),
@@ -36,15 +35,13 @@ function buildPrompt(input: SummarizeDeepInput): string {
 
 export async function handleSummarizeDeep(
   input: SummarizeDeepInput,
-  deps: { client: OllamaClient; tierConfig: TierConfig; logger: Logger },
+  ctx: RunContext,
 ): Promise<Envelope<SummarizeResult>> {
   const maxWords = input.max_words ?? 250;
   return runTool<SummarizeResult>({
     tool: "ollama_summarize_deep",
     tier: "deep",
-    tierConfig: deps.tierConfig,
-    client: deps.client,
-    logger: deps.logger,
+    ctx,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),
