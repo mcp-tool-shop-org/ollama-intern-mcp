@@ -80,4 +80,21 @@ describe("profiles", () => {
     const p = loadProfile({});
     expect(p.timeouts).toEqual(PROFILES[DEFAULT_PROFILE].timeouts);
   });
+
+  it("dev profiles prewarm Instant only; m5-max prewarms nothing", () => {
+    expect(PROFILES["dev-rtx5080"].prewarm).toEqual(["instant"]);
+    expect(PROFILES["dev-rtx5080-llama"].prewarm).toEqual(["instant"]);
+    expect(PROFILES["m5-max"].prewarm).toEqual([]);
+  });
+
+  it("no profile prewarms Workhorse or Deep (VRAM pressure not yet justified)", () => {
+    for (const p of Object.values(PROFILES)) {
+      expect(p.prewarm).not.toContain("workhorse");
+      expect(p.prewarm).not.toContain("deep");
+    }
+  });
+
+  it("loadProfile carries prewarm through to caller", () => {
+    expect(loadProfile({}).prewarm).toEqual(PROFILES[DEFAULT_PROFILE].prewarm);
+  });
 });

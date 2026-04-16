@@ -18,6 +18,7 @@ import { loadProfile } from "./profiles.js";
 import { HttpOllamaClient } from "./ollama.js";
 import { NdjsonLogger } from "./observability.js";
 import { toErrorShape } from "./errors.js";
+import { runPrewarm } from "./prewarm.js";
 import type { RunContext } from "./runContext.js";
 
 import { classifySchema, handleClassify } from "./tools/classify.js";
@@ -126,6 +127,15 @@ async function main(): Promise<void> {
     hardwareProfile: profile.name,
     logger: new NdjsonLogger(),
   };
+
+  // Profile-policy prewarm: pulls Instant tier into VRAM on dev profiles
+  // before connecting transport, so the first real Claude call doesn't eat
+  // cold-load latency. Failures are logged but never throw — server startup
+  // must not depend on Ollama being reachable.
+  if (profile.prewarm.length > 0) {
+    await runPrewarm(ctx, profile.prewarm);
+  }
+
   const server = createServer(ctx);
   const transport = new StdioServerTransport();
   await server.connect(transport);

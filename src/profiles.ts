@@ -33,6 +33,14 @@ export interface Profile {
    * timed out at 5s before first token.
    */
   timeouts: Record<Tier, number>;
+  /**
+   * Tiers to prewarm on server startup. Targeted adoption aid for tiers
+   * most likely to become habit (Instant), where cold-load drag would
+   * poison early product feel. NOT a blanket "make everything hot" knob —
+   * Workhorse and Deep are deliberately excluded so VRAM pressure and
+   * unintended residency churn don't start mattering.
+   */
+  prewarm: Tier[];
 }
 
 /** Timeouts sized for a 16GB-VRAM discrete-GPU box where cold load costs 3-5s. */
@@ -63,6 +71,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
       embed: "nomic-embed-text",
     },
     timeouts: DEV_RTX5080_TIMEOUTS,
+    prewarm: ["instant"],
   },
   "dev-rtx5080-llama": {
     name: "dev-rtx5080-llama",
@@ -75,6 +84,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
       embed: "nomic-embed-text",
     },
     timeouts: DEV_RTX5080_TIMEOUTS,
+    prewarm: ["instant"],
   },
   "m5-max": {
     name: "m5-max",
@@ -86,6 +96,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
       embed: "nomic-embed-text",
     },
     timeouts: M5_MAX_TIMEOUTS,
+    prewarm: [],
   },
 };
 
@@ -113,5 +124,5 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
     deep: env.INTERN_TIER_DEEP || base.tiers.deep,
     embed: env.INTERN_EMBED_MODEL || base.tiers.embed,
   };
-  return { name, description: base.description, tiers, timeouts: base.timeouts };
+  return { name, description: base.description, tiers, timeouts: base.timeouts, prewarm: base.prewarm };
 }

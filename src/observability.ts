@@ -11,7 +11,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Envelope } from "./envelope.js";
+import type { Envelope, Residency } from "./envelope.js";
 import type { Tier } from "./tiers.js";
 
 const DEFAULT_LOG_DIR = join(homedir(), ".ollama-intern");
@@ -21,7 +21,18 @@ export type LogEvent =
   | { kind: "call"; ts: string; tool: string; envelope: Envelope<unknown> }
   | { kind: "timeout"; ts: string; tool: string; tier: Tier; timeout_ms: number }
   | { kind: "fallback"; ts: string; tool: string; from: Tier; to: Tier; reason: string }
-  | { kind: "guardrail"; ts: string; tool: string; rule: string; action: string; detail?: unknown };
+  | { kind: "guardrail"; ts: string; tool: string; rule: string; action: string; detail?: unknown }
+  | {
+      kind: "prewarm";
+      ts: string;
+      tier: Tier;
+      model: string;
+      hardware_profile: string;
+      success: boolean;
+      elapsed_ms: number;
+      residency: Residency | null;
+      error?: string;
+    };
 
 export interface Logger {
   log(event: LogEvent): Promise<void>;
