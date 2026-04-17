@@ -35,6 +35,7 @@ import { corpusSearchSchema, handleCorpusSearch } from "./tools/corpusSearch.js"
 import { corpusAnswerSchema, handleCorpusAnswer } from "./tools/corpusAnswer.js";
 import { corpusRefreshSchema, handleCorpusRefresh } from "./tools/corpusRefresh.js";
 import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
+import { incidentBriefSchema, handleIncidentBrief } from "./tools/incidentBrief.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -71,6 +72,14 @@ export function createServer(ctx: RunContext): McpServer {
     "FLAGSHIP. Answer a question from a NAMED CORPUS with chunk-grounded citations. Retrieves via corpus_search, synthesizes with the Deep tier from the retrieved chunks ONLY, and returns `{answer, citations:[{path, chunk_index, heading_path, title}], covered_sources, omitted_sources, coverage_notes, retrieval:{retrieved, top_score, weak}}`. Distinct from ollama_research: research takes source paths you explicitly hand in; corpus_answer pulls from an already-indexed corpus. Weak retrieval degrades honestly — 0 hits short-circuits without invoking the model; thin retrieval flags `weak: true`.",
     corpusAnswerSchema.shape,
     (args) => wrap(handleCorpusAnswer(args, ctx)),
+  );
+
+  // FLAGSHIP — ollama_incident_brief (structured operator brief)
+  server.tool(
+    "ollama_incident_brief",
+    "FLAGSHIP compound job. Produces a STRUCTURED OPERATOR BRIEF from log_text and/or source_paths, optionally blended with a named corpus for background context. Returns `{root_cause_hypotheses, affected_surfaces, timeline_clues, next_checks, evidence, weak, coverage_notes, corpus_used}`. Every hypothesis/surface/clue carries evidence_refs into the evidence array — refs to unknown ids are stripped server-side. Distinct from ollama_triage_logs (symptoms in one blob) and ollama_research (answer a specific question). Thin evidence degrades to weak=true with coverage_notes — never a smooth fake narrative. next_checks are INVESTIGATIVE, not remediations.",
+    incidentBriefSchema.shape,
+    (args) => wrap(handleIncidentBrief(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
