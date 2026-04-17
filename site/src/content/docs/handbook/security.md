@@ -1,0 +1,62 @@
+---
+title: Security & Threat Model
+description: What's touched, what's not, what's in the log, what's never on the wire.
+sidebar:
+  order: 6
+---
+
+## Threat model
+
+Ollama Intern MCP runs on your machine and talks only to a local Ollama instance (`http://127.0.0.1:11434` by default). The network-facing risks are small; the interesting risks are inside the box.
+
+### Primary risks
+
+1. **Hallucinated output trusted as truth.** Small local models fabricate. Mitigated by server-enforced citation stripping, confidence thresholds, `weak: true` flagging, and compile checks on code drafts.
+2. **Writes to protected truth surfaces.** Drafts must never overwrite canon, memory, or doctrine files by accident. Mitigated by a versioned protected-path list — writes targeting those paths require explicit `confirm_write: true`, enforced server-side.
+3. **Silent model eviction** (Ollama #13227). Inference quietly degrades 5–10× when a model pages to disk. Mitigated by surfacing `residency` in every call envelope — Claude can detect degradation mechanically and tell you.
+4. **Path traversal in `research` / corpus / export.** Mitigated by validating every cited path against the `source_paths` input (stripping unknowns), rejecting `..` before normalize, and gating `artifact_export_to_path` on a caller-declared `allowed_roots`.
+
+## Data touched
+
+- File paths the caller explicitly hands in (`ollama_research`, corpus tools)
+- Inline text passed to atom/brief/pack tools
+- Artifacts the caller asks to be written under `~/.ollama-intern/artifacts/` or a caller-declared `allowed_roots`
+
+## Data NOT touched
+
+- Anything outside `source_paths` / `allowed_roots`
+- Files the caller did not hand in
+- Protected paths without `confirm_write: true`
+- Existing files during export without `overwrite: true`
+
+## Network egress
+
+**Off by default.** The only outbound traffic is to the local Ollama HTTP endpoint. No cloud calls. No update pings. No crash reporting. No telemetry.
+
+## Telemetry
+
+**None.** Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson` on your machine. Prompts and inline text are not logged — only the envelope (tier, model, tokens, elapsed, residency). Nothing leaves the box.
+
+## Errors
+
+Errors follow a structured shape:
+
+```ts
+{ error: true, code: string, message: string, hint: string, retryable: boolean }
+```
+
+Stack traces are never exposed through tool results. `code` names are stable once released — treat them like an API.
+
+## Reporting a vulnerability
+
+Email: `64996768+mcp-tool-shop@users.noreply.github.com`
+
+Please do not file public issues for security bugs. Acknowledgement within 72 hours. Fixes target the latest release.
+
+## Supported versions
+
+v1.x — latest release receives security fixes.
+
+## Disclosure
+
+See [SECURITY.md](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md) in the repo for the authoritative policy.
