@@ -1,0 +1,20 @@
+{"id": "sem-001", "class": "semantic", "query": "how do we stop hallucinated source references from reaching users", "expected_paths": ["citation-validation.md"]}
+{"id": "sem-002", "class": "semantic", "query": "avoiding silent omission when an answer spans multiple documents", "expected_paths": ["coverage-contract.md"]}
+{"id": "sem-003", "class": "semantic", "query": "combining dense and lexical retrieval rails into one ranked list", "expected_paths": ["rrf-fusion.md", "hybrid-mode.md"]}
+{"id": "sem-004", "class": "semantic", "query": "ranking by keyword frequency with document length normalization", "expected_paths": ["bm25-law.md"]}
+{"id": "sem-005", "class": "semantic", "query": "warming up a local model so the first request is not cold", "expected_paths": ["prewarm-policy.md"]}
+{"id": "fact-001", "class": "fact", "query": "K = 60 in RRF", "expected_paths": ["rrf-fusion.md"], "expected_phrases": ["K = 60"]}
+{"id": "fact-002", "class": "fact", "query": "title field weight default", "expected_paths": ["bm25-law.md"], "expected_phrases": ["title = 3.0"]}
+{"id": "fact-003", "class": "fact", "query": "Ollama eviction issue 13227", "expected_paths": ["ollama-eviction.md"], "expected_phrases": ["13227"]}
+{"id": "fact-004", "class": "fact", "query": "BM25 k1 parameter value", "expected_paths": ["bm25-law.md"], "expected_phrases": ["k1 = 1.2"]}
+{"id": "fact-005", "class": "fact", "query": "m5-max prewarm behavior", "expected_paths": ["prewarm-policy.md"], "expected_phrases": ["m5-max"]}
+{"id": "proc-001", "class": "procedural", "query": "how do I pull qwen coder locally", "expected_paths": ["how-to-pull-qwen.md"]}
+{"id": "proc-002", "class": "procedural", "query": "how do I use the research tool", "expected_paths": ["how-to-use-research.md"]}
+{"id": "proc-003", "class": "procedural", "query": "how do I download llama3.1", "expected_paths": ["how-to-pull-llama.md"]}
+{"id": "proc-004", "class": "procedural", "query": "how do I build a named corpus from file paths", "expected_paths": ["how-to-index-corpus.md"]}
+{"id": "proc-005", "class": "procedural", "query": "how do I search the memory corpus", "expected_paths": ["how-to-search-corpus.md"]}
+{"id": "conf-001", "class": "confusable", "query": "which tool reads file paths and returns validated-citation answers", "expected_paths": ["ollama-research.md"]}
+{"id": "conf-002", "class": "confusable", "query": "which tool searches a persistent named corpus indexed once on disk", "expected_paths": ["ollama-corpus-search.md"]}
+{"id": "conf-003", "class": "confusable", "query": "retrieval mode that boosts exact-substring matches and short chunks", "expected_paths": ["fact-mode.md"]}
+{"id": "conf-004", "class": "confusable", "query": "retrieval mode that is metadata-only and never calls embed", "expected_paths": ["title-path-mode.md"]}
+{"id": "conf-005", "class": "confusable", "query": "ad-hoc ranker that never persists to disk", "expected_paths": ["ollama-embed-search.md"]}
