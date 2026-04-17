@@ -59,7 +59,7 @@
 ## E. Identity (soft gate — does not block ship)
 
 - [x] `[all]` Logo in README header (2026-04-17) — brand repo `mcp-tool-shop-org/brand/logos/ollama-intern-mcp/readme.png`, 1536×1024
-- [ ] `[all]` Translations (polyglot-mcp, 8 languages) — user runs locally post-README freeze
+- [x] `[all]` Translations (polyglot-mcp, 8 languages) (2026-04-17) — zh, es, fr, hi, it, ja, pt-BR via TranslateGemma 12B; language switcher in README header
 - [ ] `[org]` Landing page (@mcptoolshop/site-theme) — Phase 2 of The Treatment
 - [x] `[all]` GitHub repo metadata: description, homepage, topics (2026-04-17) — description + homepage + 10 topics set on `mcp-tool-shop-org/ollama-intern-mcp`
 

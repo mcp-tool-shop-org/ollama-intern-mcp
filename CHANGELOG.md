@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-17
+
+### Added
+
+- Translated READMEs via polyglot-mcp (TranslateGemma 12B): Chinese, Spanish, French, Hindi, Italian, Japanese, Brazilian Portuguese. README header carries a language switcher.
+
 ## [1.0.0] - 2026-04-17
 
 First stable release. 28 tools across 4 tiers, 395 tests, pre-publish hardening complete.

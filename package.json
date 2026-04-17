@@ -1,6 +1,6 @@
 {
   "name": "ollama-intern-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP control plane for local cognitive labor — job-shaped tools with tiered Ollama models (instant/workhorse/deep/embed), server-enforced guardrails, and measured economics so Claude can delegate bulk work without losing control.",
   "type": "module",
   "main": "./dist/index.js",
