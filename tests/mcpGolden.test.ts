@@ -138,7 +138,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(result?.capabilities?.tools).toBeDefined();
   }, 30_000);
 
-  it("tools/list returns all 23 registered tools with flagship tools first", async () => {
+  it("tools/list returns all 24 registered tools with flagship tools first", async () => {
     const resp = await roundTrip([
       {
         jsonrpc: "2.0",
@@ -174,6 +174,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_change_pack",
         "ollama_artifact_list",
         "ollama_artifact_read",
+        "ollama_artifact_diff",
         "ollama_embed_search",
         "ollama_embed",
         "ollama_corpus_index",
@@ -188,7 +189,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    expect(names).toHaveLength(23);
+    expect(names).toHaveLength(24);
 
     // Flagship surface discipline: retrieval/answer flagships first,
     // then briefs, then packs, then artifact tier, then ad-hoc ranker.
@@ -203,7 +204,8 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(names[8]).toBe("ollama_change_pack");
     expect(names[9]).toBe("ollama_artifact_list");
     expect(names[10]).toBe("ollama_artifact_read");
-    expect(names[11]).toBe("ollama_embed_search");
+    expect(names[11]).toBe("ollama_artifact_diff");
+    expect(names[12]).toBe("ollama_embed_search");
 
     // Chat is last-resort and MUST advertise itself that way — so Claude doesn't default to it.
     const chat = tools!.find((t) => t.name === "ollama_chat");

@@ -43,6 +43,7 @@ import { repoPackSchema, handleRepoPack } from "./tools/packs/repoPack.js";
 import { changePackSchema, handleChangePack } from "./tools/packs/changePack.js";
 import { artifactListSchema, handleArtifactList } from "./tools/artifactList.js";
 import { artifactReadSchema, handleArtifactRead } from "./tools/artifactRead.js";
+import { artifactDiffSchema, handleArtifactDiff } from "./tools/artifactDiff.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -143,6 +144,14 @@ export function createServer(ctx: RunContext): McpServer {
     "ARTIFACT. Read a single pack artifact, typed by pack. Primary: `{pack, slug}` — identity-based, collisions fail loud. Secondary: `{json_path}` — absolute path, must live under a recognized artifact dir (canonical roots + extra_artifact_dirs), must end in .json, path-traversal rejected. Returns `{metadata, artifact}` where artifact is a discriminated union on `pack` (incident_pack / repo_pack / change_pack — payloads stay distinct, never flattened).",
     artifactReadSchema.shape,
     (args) => wrap(handleArtifactRead(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_diff (structured same-pack comparison)
+  server.tool(
+    "ollama_artifact_diff",
+    "ARTIFACT. Structured diff of two same-pack artifacts. Input: `{a: {pack, slug}, b: {pack, slug}}` — must share pack; cross-pack diffs refused loudly. Returns `{pack, a, b, weak, diff}` with weak flip surfaced at top level (strong→weak or weak→strong). Lists diff as {added, removed, unchanged} matched on primary key per item kind; narrative fields as {before, after}; release_note_draft also carries a compact LCS line_diff. Evidence is SUMMARIZED (counts + referenced_paths + path_delta), never exploded chunk-by-chunk. Deterministic ordering on every list.",
+    artifactDiffSchema.shape,
+    (args) => wrap(handleArtifactDiff(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
