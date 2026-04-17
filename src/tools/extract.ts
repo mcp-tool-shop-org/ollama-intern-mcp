@@ -3,12 +3,14 @@
  * Uses Ollama's format: "json" mode. Returns {error: "unparseable"} when
  * the model's output doesn't round-trip through the caller's schema.
  *
- * Two input modes:
- *   - `text`  : single extraction, returns {ok: true, data} | {ok: false, error}
- *   - `items` : batch, returns {result.items[]: [{id, ok, result|error}]}
- *     with one shared envelope. Unique caller-provided ids required per item.
+ * Three input modes (exactly one):
+ *   - `text`        : single extraction from raw text
+ *   - `source_path` : single file read + extracted server-side (context
+ *                     preservation — caller never pre-reads the file)
+ *   - `items`       : batch of {id, text}, one shared envelope with per-item
+ *                     {id, ok, result|error}
  *
- * Exactly one of {text, items} must be provided.
+ * Exactly one of {text, source_path, items} must be provided.
  */
 
 import { z } from "zod";
@@ -16,11 +18,13 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
+import { loadSources } from "../sources.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 export const extractSchema = z.object({
-  text: z.string().min(1).optional().describe("Text to extract structured data from. Use this OR items, not both."),
+  text: z.string().min(1).optional().describe("Text to extract structured data from. Use this OR source_path OR items — exactly one."),
+  source_path: z.string().min(1).optional().describe("A single file path to read + extract from server-side. Use this instead of `text` to save Claude context — the server reads the file, Claude never sees its contents."),
   items: z
     .array(
       z.object({
@@ -33,6 +37,7 @@ export const extractSchema = z.object({
     .describe("Batch of texts to extract from, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
   schema: z.record(z.unknown()).describe("JSONSchema the output must conform to — shared across all items in a batch."),
   hint: z.string().optional().describe("Optional field-by-field hint."),
+  per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
 });
 
 export type ExtractInput = z.infer<typeof extractSchema>;
@@ -68,12 +73,15 @@ function parse(raw: string): ExtractResult {
 }
 
 function assertExactlyOneInput(input: ExtractInput): void {
-  const given = (input.text !== undefined ? 1 : 0) + (input.items !== undefined ? 1 : 0);
+  const given =
+    (input.text !== undefined ? 1 : 0) +
+    (input.source_path !== undefined ? 1 : 0) +
+    (input.items !== undefined ? 1 : 0);
   if (given !== 1) {
     throw new InternError(
       "SCHEMA_INVALID",
-      `ollama_extract: provide exactly one of "text" or "items" (given ${given}).`,
-      "Pass text for a single call, or items:[{id,text}] for a batch. Not both, not neither.",
+      `ollama_extract: provide exactly one of "text", "source_path", or "items" (given ${given}).`,
+      "Pass text for a single call, source_path to read a file server-side, or items:[{id,text}] for a batch.",
       false,
     );
   }
@@ -101,7 +109,14 @@ export async function handleExtract(
     });
   }
 
-  const text = input.text as string;
+  let text: string;
+  if (input.source_path !== undefined) {
+    const perFileMax = input.per_file_max_chars ?? 40_000;
+    const [loaded] = await loadSources([input.source_path], perFileMax);
+    text = loaded.body;
+  } else {
+    text = input.text as string;
+  }
   return runTool<ExtractResult>({
     tool: "ollama_extract",
     tier: "workhorse",

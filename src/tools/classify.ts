@@ -2,15 +2,14 @@
  * ollama_classify — single-label classification with confidence.
  * Tier: Instant.
  *
- * Two input modes:
- *   - `text` (single string)   : returns {label, confidence}
- *   - `items` (array with ids) : returns one coherent batch envelope with
- *                                result.items[] of {id, ok, result|error}.
- *     Token accounting / residency / elapsed are at the envelope level.
- *     A single malformed item never explodes the batch — the batch
- *     completes and ok_count/error_count surface the split.
+ * Three input modes (exactly one):
+ *   - `text`        : single text, classified directly
+ *   - `source_path` : single file, read + classified server-side — caller
+ *                     never pre-reads the file (context preservation)
+ *   - `items`       : batch of {id, text} — returns one batch envelope with
+ *                     per-item {id, ok, result|error}
  *
- * Exactly one of {text, items} must be provided.
+ * Exactly one of {text, source_path, items} must be provided.
  */
 
 import { z } from "zod";
@@ -19,11 +18,14 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
 import { applyConfidenceThreshold, type ClassifyGuarded } from "../guardrails/confidence.js";
+import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
+import { loadSources } from "../sources.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 export const classifySchema = z.object({
-  text: z.string().min(1).optional().describe("The single text to classify. Use this OR items, not both."),
+  text: z.string().min(1).optional().describe("The single text to classify. Use this OR source_path OR items — exactly one."),
+  source_path: z.string().min(1).optional().describe("A single file path to read + classify server-side. Use this instead of `text` to save Claude context — the server reads the file, Claude never sees its contents."),
   items: z
     .array(
       z.object({
@@ -34,9 +36,10 @@ export const classifySchema = z.object({
     .min(1)
     .optional()
     .describe("Batch of texts to classify. Each needs a stable caller-provided id so results join back to source inputs cleanly. Returns one batch envelope with per-item {id, ok, result|error} entries."),
-  labels: z.array(z.string().min(1)).min(2).describe("Candidate labels — the model picks exactly one, or null if allow_none."),
+  labels: strictStringArray({ min: 2, fieldName: "labels" }).describe("Candidate labels — the model picks exactly one, or null if allow_none."),
   allow_none: z.boolean().optional().describe("If true and confidence < threshold, return label=null instead of a weak guess."),
   threshold: z.number().min(0).max(1).optional().describe("Confidence floor (default 0.7)."),
+  per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
 });
 
 export type ClassifyInput = z.infer<typeof classifySchema>;
@@ -68,12 +71,15 @@ function parseClassify(raw: string): { label: string | null; confidence: number 
 }
 
 function assertExactlyOneInput(input: ClassifyInput): void {
-  const given = (input.text !== undefined ? 1 : 0) + (input.items !== undefined ? 1 : 0);
+  const given =
+    (input.text !== undefined ? 1 : 0) +
+    (input.source_path !== undefined ? 1 : 0) +
+    (input.items !== undefined ? 1 : 0);
   if (given !== 1) {
     throw new InternError(
       "SCHEMA_INVALID",
-      `ollama_classify: provide exactly one of "text" or "items" (given ${given}).`,
-      "Pass text for a single call, or items:[{id,text}] for a batch. Not both, not neither.",
+      `ollama_classify: provide exactly one of "text", "source_path", or "items" (given ${given}).`,
+      "Pass text for a single call, source_path to read a file server-side, or items:[{id,text}] for a batch.",
       false,
     );
   }
@@ -105,7 +111,14 @@ export async function handleClassify(
     });
   }
 
-  const text = input.text as string;
+  let text: string;
+  if (input.source_path !== undefined) {
+    const perFileMax = input.per_file_max_chars ?? 40_000;
+    const [loaded] = await loadSources([input.source_path], perFileMax);
+    text = loaded.body;
+  } else {
+    text = input.text as string;
+  }
   return runTool<ClassifyGuarded>({
     tool: "ollama_classify",
     tier: "instant",

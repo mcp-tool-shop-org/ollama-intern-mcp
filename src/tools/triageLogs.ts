@@ -15,6 +15,7 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
+import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -30,7 +31,7 @@ export const triageLogsSchema = z.object({
     .min(1)
     .optional()
     .describe("Batch of log blobs, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
-  patterns: z.array(z.string()).optional().describe("Optional regex patterns the triage should bias toward — applied to every item in a batch."),
+  patterns: strictStringArray({ min: 0, minItemLen: 0, fieldName: "patterns" }).optional().describe("Optional regex patterns the triage should bias toward — applied to every item in a batch."),
 });
 
 export type TriageLogsInput = z.infer<typeof triageLogsSchema>;

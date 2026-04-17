@@ -14,6 +14,7 @@ export type ErrorCode =
   | "EXTRACT_UNPARSEABLE"
   | "SOURCE_PATH_NOT_FOUND"
   | "SCHEMA_INVALID"
+  | "DRAFT_BANNED_PHRASE"
   | "INTERNAL";
 
 export class InternError extends Error {

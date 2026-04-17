@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { handleClassify } from "../../src/tools/classify.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
@@ -98,5 +101,70 @@ describe("handleClassify", () => {
       makeCtx(client),
     );
     expect(client.lastGenerate?.format).toBe("json");
+  });
+});
+
+describe("handleClassify — source_path mode", () => {
+  it("reads the file server-side and uses its contents as the classification text", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "classify-srcpath-"));
+    const filePath = join(dir, "commit.txt");
+    try {
+      await writeFile(filePath, "patch null pointer in auth", "utf8");
+      const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+      const env = await handleClassify(
+        { source_path: filePath, labels: ["feat", "fix", "chore"] },
+        makeCtx(client),
+      );
+      expect(env.result.label).toBe("fix");
+      expect(client.lastGenerate?.prompt).toContain("patch null pointer in auth");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects missing files with a clear SOURCE_PATH_NOT_FOUND error", async () => {
+    const client = new MockClient(JSON.stringify({ label: "x", confidence: 1 }));
+    await expect(
+      handleClassify(
+        { source_path: "F:/definitely/does/not/exist.txt", labels: ["a", "b"] },
+        makeCtx(client),
+      ),
+    ).rejects.toThrow(/SOURCE_PATH_NOT_FOUND|Cannot read source path/);
+  });
+
+  it("throws SCHEMA_INVALID when both text and source_path are passed", async () => {
+    const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+    await expect(
+      handleClassify(
+        { text: "x", source_path: "anywhere.txt", labels: ["a", "b"] },
+        makeCtx(client),
+      ),
+    ).rejects.toThrow(/exactly one of "text", "source_path", or "items"/);
+  });
+
+  it("throws SCHEMA_INVALID when none of text/source_path/items are passed", async () => {
+    const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+    await expect(
+      handleClassify({ labels: ["a", "b"] } as Parameters<typeof handleClassify>[0], makeCtx(client)),
+    ).rejects.toThrow(/exactly one of "text", "source_path", or "items"/);
+  });
+
+  it("respects per_file_max_chars when reading source_path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "classify-maxchars-"));
+    const filePath = join(dir, "big.txt");
+    try {
+      const content = "ABCDEFGHIJ".repeat(5000); // 50,000 chars
+      await writeFile(filePath, content, "utf8");
+      const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+      await handleClassify(
+        { source_path: filePath, labels: ["a", "b"], per_file_max_chars: 2000 },
+        makeCtx(client),
+      );
+      // Prompt body should contain at most the truncated window, not the full 50k.
+      const prompt = client.lastGenerate?.prompt ?? "";
+      expect(prompt.length).toBeLessThan(5000);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

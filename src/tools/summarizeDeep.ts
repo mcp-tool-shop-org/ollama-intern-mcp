@@ -17,6 +17,7 @@ import { runTool } from "./runner.js";
 import type { SummarizeResult } from "./summarizeFast.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { detectCoverage, type CoverageReport } from "../coverage.js";
+import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import type { RunContext } from "../runContext.js";
 
 /**
@@ -27,9 +28,7 @@ import type { RunContext } from "../runContext.js";
  */
 export const summarizeDeepSchema = z.object({
   text: z.string().min(1).optional().describe("Raw text to digest. Use this when you already have the content in hand."),
-  source_paths: z
-    .array(z.string().min(1))
-    .min(1)
+  source_paths: strictStringArray({ min: 1, fieldName: "source_paths" })
     .optional()
     .describe("File paths to read + chunk server-side. Use this instead of `text` to save Claude context — the tool reads the files, Claude never sees the raw content."),
   focus: z.string().optional().describe("Optional aspect to emphasize (e.g. 'combat doctrine', 'auth flow')."),

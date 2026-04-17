@@ -22,11 +22,12 @@ import { parseCitations, validateCitations, type ValidatedCitation } from "../gu
 import { timestamp } from "../observability.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { detectCoverage } from "../coverage.js";
+import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import type { RunContext } from "../runContext.js";
 
 export const researchSchema = z.object({
   question: z.string().min(1).describe("The question to answer."),
-  source_paths: z.array(z.string().min(1)).min(1).describe("Files the answer must be grounded in. Nothing outside this list is allowed as a source."),
+  source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).describe("Files the answer must be grounded in. Nothing outside this list is allowed as a source."),
   max_words: z.number().int().min(20).max(1500).optional().describe("Target answer length in words (default 300)."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read per file (default 40k)."),
 });

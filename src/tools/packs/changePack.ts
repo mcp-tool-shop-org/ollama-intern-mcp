@@ -41,12 +41,13 @@ import {
   type ChangeBriefResult,
 } from "../changeBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
+import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
 export const changePackSchema = z.object({
   diff_text: z.string().min(1).optional().describe("Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers. At least one of diff_text or source_paths is required."),
-  source_paths: z.array(z.string().min(1)).min(1).optional().describe("Changed files to read server-side (Claude does not preload). Alongside or instead of diff_text."),
+  source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).optional().describe("Changed files to read server-side (Claude does not preload). Alongside or instead of diff_text."),
   log_text: z.string().min(1).optional().describe("Optional CI log that triggered this review. When present, triage_logs runs and its signal is surfaced in the Change section."),
   corpus: z
     .string()

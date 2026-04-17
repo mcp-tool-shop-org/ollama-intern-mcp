@@ -39,12 +39,13 @@ import {
   type IncidentBriefInput,
   type IncidentBriefResult,
 } from "../incidentBrief.js";
+import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
 export const incidentPackSchema = z.object({
   log_text: z.string().min(1).optional().describe("Raw log blob. Combine with source_paths and/or corpus for richer coverage."),
-  source_paths: z.array(z.string().min(1)).min(1).optional().describe("File paths read server-side (related source, config, incident notes)."),
+  source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).optional().describe("File paths read server-side (related source, config, incident notes)."),
   corpus: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
