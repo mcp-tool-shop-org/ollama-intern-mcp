@@ -31,6 +31,7 @@ import {
   parseJsonObject,
   readString,
   readArray,
+  type AssembledEvidence,
 } from "./briefs/common.js";
 
 export const changeBriefSchema = z.object({
@@ -172,10 +173,6 @@ export async function handleChangeBrief(
   ctx: RunContext,
 ): Promise<Envelope<ChangeBriefResult>> {
   assertAtLeastOnePrimary(input);
-  const caps = {
-    breakpoints: input.max_breakpoints ?? 6,
-    checks: input.max_validation_checks ?? 8,
-  };
 
   // Fall back the corpus query to the head of diff_text or first source
   // path name so it has some grounding signal when the caller doesn't
@@ -185,13 +182,32 @@ export async function handleChangeBrief(
     : (input.source_paths?.[0] ?? "");
   const corpusQuery = input.corpus_query ?? fallback;
 
-  const { evidence, corpus_used } = await assembleEvidence({
+  const assembled = await assembleEvidence({
     diff_text: input.diff_text,
     source_paths: input.source_paths,
     corpus: input.corpus,
     corpus_query: corpusQuery,
     per_file_max_chars: input.per_file_max_chars,
   }, ctx);
+  return synthesizeChangeBrief(input, ctx, assembled);
+}
+
+/**
+ * Internal synthesis step. Takes pre-assembled evidence and runs the
+ * Deep-tier brief synthesis. Exported so the change_pack orchestrator
+ * can share one evidence assembly across brief + targeted extract
+ * without exposing a "preassembled_evidence" knob on the public tool.
+ */
+export async function synthesizeChangeBrief(
+  input: ChangeBriefInput,
+  ctx: RunContext,
+  assembled: AssembledEvidence,
+): Promise<Envelope<ChangeBriefResult>> {
+  const caps = {
+    breakpoints: input.max_breakpoints ?? 6,
+    checks: input.max_validation_checks ?? 8,
+  };
+  const { evidence, corpus_used } = assembled;
   const validIds = new Set(evidence.map((e) => e.id));
 
   const parseWarnings: string[] = [];

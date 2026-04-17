@@ -138,7 +138,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(result?.capabilities?.tools).toBeDefined();
   }, 30_000);
 
-  it("tools/list returns all 20 registered tools with flagship tools first", async () => {
+  it("tools/list returns all 21 registered tools with flagship tools first", async () => {
     const resp = await roundTrip([
       {
         jsonrpc: "2.0",
@@ -159,8 +159,8 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(tools).toBeDefined();
 
     const names = tools!.map((t) => t.name);
-    // All 20 expected tools present. The atom surface is frozen at 18;
-    // packs (incident_pack, repo_pack) are the compound-job tier above.
+    // All 21 expected tools present. Atom surface frozen at 18; packs
+    // (incident_pack, repo_pack, change_pack) form the compound-job tier.
     expect(names).toEqual(
       expect.arrayContaining([
         "ollama_research",
@@ -171,6 +171,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_change_brief",
         "ollama_incident_pack",
         "ollama_repo_pack",
+        "ollama_change_pack",
         "ollama_embed_search",
         "ollama_embed",
         "ollama_corpus_index",
@@ -185,7 +186,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    expect(names).toHaveLength(20);
+    expect(names).toHaveLength(21);
 
     // Flagship surface discipline: retrieval/answer flagships first,
     // then briefs, then packs, then ad-hoc ranker.
@@ -197,7 +198,8 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(names[5]).toBe("ollama_change_brief");
     expect(names[6]).toBe("ollama_incident_pack");
     expect(names[7]).toBe("ollama_repo_pack");
-    expect(names[8]).toBe("ollama_embed_search");
+    expect(names[8]).toBe("ollama_change_pack");
+    expect(names[9]).toBe("ollama_embed_search");
 
     // Chat is last-resort and MUST advertise itself that way — so Claude doesn't default to it.
     const chat = tools!.find((t) => t.name === "ollama_chat");

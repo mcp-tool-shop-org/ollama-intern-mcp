@@ -40,6 +40,7 @@ import { repoBriefSchema, handleRepoBrief } from "./tools/repoBrief.js";
 import { changeBriefSchema, handleChangeBrief } from "./tools/changeBrief.js";
 import { incidentPackSchema, handleIncidentPack } from "./tools/packs/incidentPack.js";
 import { repoPackSchema, handleRepoPack } from "./tools/packs/repoPack.js";
+import { changePackSchema, handleChangePack } from "./tools/packs/changePack.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -116,6 +117,14 @@ export function createServer(ctx: RunContext): McpServer {
     "PACK. Runs the full repo ONBOARDING job: corpus_search (if corpus given) → repo_brief → targeted ollama_extract (narrow onboarding schema: packages, entrypoints, scripts, config_files, exposed_surfaces, runtime_hints) → deterministic markdown+JSON artifact on disk. Corpus-first posture: when a corpus is given, it's the main working surface alongside source_paths. Not repo Q&A — this is `get me onboarded fast with a stable operator artifact`. Response is compact; full brief + extracted facts live in the artifact.",
     repoPackSchema.shape,
     (args) => wrap(handleRepoPack(args, ctx)),
+  );
+
+  // PACK — ollama_change_pack (change-centered review job, durable artifact)
+  server.tool(
+    "ollama_change_pack",
+    "PACK. Runs the full change REVIEW job: assemble evidence (diff + paths + corpus if given) → triage_logs ONLY when log_text is provided → change_brief → targeted ollama_extract (narrow review schema: scripts_touched, config_surfaces, runtime_hints) → deterministic markdown+JSON artifact on disk. Change-first, not repo-first — this is about the DELTA, not a tour. Release note draft is a blockquote-wrapped DRAFT (not marketing copy). No VCS integration — caller hands in diff_text / source_paths / optional log_text. Response is compact; full brief + extracted facts live in the artifact.",
+    changePackSchema.shape,
+    (args) => wrap(handleChangePack(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
