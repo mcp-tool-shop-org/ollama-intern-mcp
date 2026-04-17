@@ -38,6 +38,7 @@ import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
 import { incidentBriefSchema, handleIncidentBrief } from "./tools/incidentBrief.js";
 import { repoBriefSchema, handleRepoBrief } from "./tools/repoBrief.js";
 import { changeBriefSchema, handleChangeBrief } from "./tools/changeBrief.js";
+import { incidentPackSchema, handleIncidentPack } from "./tools/packs/incidentPack.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -98,6 +99,14 @@ export function createServer(ctx: RunContext): McpServer {
     "FLAGSHIP compound job. Produces a CHANGE IMPACT BRIEF: `{change_summary, affected_surfaces, why_it_matters, likely_breakpoints, validation_checks, release_note_draft, evidence, weak, coverage_notes, corpus_used}`. Accepts diff_text (split per file on `diff --git` markers) and/or source_paths (changed files), with an optional corpus for architecture context. Not a git chat bot — structured and reviewable. likely_breakpoints are INVESTIGATIVE reasoning about what could break; validation_checks are what to verify after the change. Never remedial (no 'apply this fix'). release_note_draft is a draft the operator reviews.",
     changeBriefSchema.shape,
     (args) => wrap(handleChangeBrief(args, ctx)),
+  );
+
+  // PACK — ollama_incident_pack (deterministic orchestration, durable artifact)
+  server.tool(
+    "ollama_incident_pack",
+    "PACK. Runs the full incident job end-to-end: triage_logs → corpus_search → incident_brief → deterministic markdown+JSON artifact on disk. Single call, single completed job, single pair of files the operator can keep and diff. Response is compact ({artifact:{markdown_path,json_path}, summary, steps}) — the full brief lives in the artifact, not the MCP payload. Fixed pipeline, fixed markdown layout, no prose drift. Use this instead of calling triage_logs + incident_brief manually when you want one deliverable.",
+    incidentPackSchema.shape,
+    (args) => wrap(handleIncidentPack(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)

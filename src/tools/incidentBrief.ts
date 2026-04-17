@@ -28,6 +28,7 @@ import {
   normalizeConfidence,
   parseJsonObject,
   readArray,
+  type AssembledEvidence,
 } from "./briefs/common.js";
 
 export const incidentBriefSchema = z.object({
@@ -166,7 +167,6 @@ export async function handleIncidentBrief(
   ctx: RunContext,
 ): Promise<Envelope<IncidentBriefResult>> {
   assertAtLeastOnePrimary(input);
-  const maxHypotheses = input.max_hypotheses ?? 5;
 
   // Default the corpus query to the log head if the caller didn't hand one in.
   const corpusQuery = input.corpus_query ?? (input.log_text ? input.log_text.slice(0, 400) : "");
@@ -177,6 +177,21 @@ export async function handleIncidentBrief(
     corpus_query: corpusQuery,
     per_file_max_chars: input.per_file_max_chars,
   }, ctx);
+  return synthesizeIncidentBrief(input, ctx, assembled);
+}
+
+/**
+ * Internal synthesis step. Takes pre-assembled evidence and runs the
+ * Deep-tier brief synthesis. Exported so the incident_pack orchestrator
+ * can share one evidence assembly across triage + brief without
+ * exposing a "preassembled_evidence" knob on the public tool.
+ */
+export async function synthesizeIncidentBrief(
+  input: IncidentBriefInput,
+  ctx: RunContext,
+  assembled: AssembledEvidence,
+): Promise<Envelope<IncidentBriefResult>> {
+  const maxHypotheses = input.max_hypotheses ?? 5;
   const { evidence, corpus_used } = assembled;
   const validIds = new Set(evidence.map((e) => e.id));
 
