@@ -26,6 +26,7 @@ import {
   parseJsonObject,
   readString,
   readArray,
+  type AssembledEvidence,
 } from "./briefs/common.js";
 
 export const repoBriefSchema = z.object({
@@ -152,19 +153,33 @@ export async function handleRepoBrief(
   input: RepoBriefInput,
   ctx: RunContext,
 ): Promise<Envelope<RepoBriefResult>> {
-  const caps = {
-    keySurfaces: input.max_key_surfaces ?? 8,
-    riskAreas: input.max_risk_areas ?? 5,
-    readNext: input.max_read_next ?? 8,
-  };
-
   const corpusQuery = input.corpus_query ?? "repo architecture and surfaces";
-  const { evidence, corpus_used } = await assembleEvidence({
+  const assembled = await assembleEvidence({
     source_paths: input.source_paths,
     corpus: input.corpus,
     corpus_query: corpusQuery,
     per_file_max_chars: input.per_file_max_chars,
   }, ctx);
+  return synthesizeRepoBrief(input, ctx, assembled);
+}
+
+/**
+ * Internal synthesis step. Takes pre-assembled evidence and runs the
+ * Deep-tier brief synthesis. Exported so the repo_pack orchestrator
+ * can share one evidence assembly across brief + extract without
+ * exposing a "preassembled_evidence" knob on the public tool surface.
+ */
+export async function synthesizeRepoBrief(
+  input: RepoBriefInput,
+  ctx: RunContext,
+  assembled: AssembledEvidence,
+): Promise<Envelope<RepoBriefResult>> {
+  const caps = {
+    keySurfaces: input.max_key_surfaces ?? 8,
+    riskAreas: input.max_risk_areas ?? 5,
+    readNext: input.max_read_next ?? 8,
+  };
+  const { evidence, corpus_used } = assembled;
   const validIds = new Set(evidence.map((e) => e.id));
 
   const parseWarnings: string[] = [];

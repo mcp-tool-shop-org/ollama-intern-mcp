@@ -39,6 +39,7 @@ import { incidentBriefSchema, handleIncidentBrief } from "./tools/incidentBrief.
 import { repoBriefSchema, handleRepoBrief } from "./tools/repoBrief.js";
 import { changeBriefSchema, handleChangeBrief } from "./tools/changeBrief.js";
 import { incidentPackSchema, handleIncidentPack } from "./tools/packs/incidentPack.js";
+import { repoPackSchema, handleRepoPack } from "./tools/packs/repoPack.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -107,6 +108,14 @@ export function createServer(ctx: RunContext): McpServer {
     "PACK. Runs the full incident job end-to-end: triage_logs → corpus_search → incident_brief → deterministic markdown+JSON artifact on disk. Single call, single completed job, single pair of files the operator can keep and diff. Response is compact ({artifact:{markdown_path,json_path}, summary, steps}) — the full brief lives in the artifact, not the MCP payload. Fixed pipeline, fixed markdown layout, no prose drift. Use this instead of calling triage_logs + incident_brief manually when you want one deliverable.",
     incidentPackSchema.shape,
     (args) => wrap(handleIncidentPack(args, ctx)),
+  );
+
+  // PACK — ollama_repo_pack (onboarding job, corpus-first, durable artifact)
+  server.tool(
+    "ollama_repo_pack",
+    "PACK. Runs the full repo ONBOARDING job: corpus_search (if corpus given) → repo_brief → targeted ollama_extract (narrow onboarding schema: packages, entrypoints, scripts, config_files, exposed_surfaces, runtime_hints) → deterministic markdown+JSON artifact on disk. Corpus-first posture: when a corpus is given, it's the main working surface alongside source_paths. Not repo Q&A — this is `get me onboarded fast with a stable operator artifact`. Response is compact; full brief + extracted facts live in the artifact.",
+    repoPackSchema.shape,
+    (args) => wrap(handleRepoPack(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
