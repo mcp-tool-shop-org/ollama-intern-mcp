@@ -16,7 +16,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
 import { loadCorpus } from "../corpus/storage.js";
-import { searchCorpus, type CorpusHit } from "../corpus/searcher.js";
+import { searchCorpus, DEFAULT_SEARCH_MODE, SEARCH_MODES, type CorpusHit, type SearchMode } from "../corpus/searcher.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -27,6 +27,12 @@ export const corpusSearchSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
     .describe("Name of the corpus to search (e.g. 'memory', 'canon'). Must have been indexed first with ollama_corpus_index."),
   query: z.string().min(1).describe("Concept or question to search for."),
+  mode: z
+    .enum(SEARCH_MODES as unknown as [SearchMode, ...SearchMode[]])
+    .optional()
+    .describe(
+      "Ranking strategy. 'hybrid' (default) fuses dense + lexical via RRF — best for general queries. 'semantic' is dense-only. 'lexical' is BM25-only (no embed call). 'fact' is hybrid with exact-substring + short-chunk boosts for specific-fact lookups. 'title_path' searches only title/heading/path metadata (no embed call, sub-ms).",
+    ),
   top_k: z.number().int().min(1).max(100).optional().describe("Return the top K chunks (default 10)."),
   preview_chars: z
     .number()
@@ -44,6 +50,7 @@ export interface CorpusSearchResult {
   corpus_name: string;
   model_version: string;
   total_chunks: number;
+  mode: SearchMode;
 }
 
 export async function handleCorpusSearch(
@@ -65,17 +72,21 @@ export async function handleCorpusSearch(
 
   const topK = input.top_k ?? 10;
   const previewChars = input.preview_chars ?? 200;
+  const mode: SearchMode = input.mode ?? DEFAULT_SEARCH_MODE;
 
   const hits = await searchCorpus({
     corpus,
     query: input.query,
     model,
+    mode,
     top_k: topK,
     preview_chars: previewChars,
     client: ctx.client,
   });
 
-  const residency = await ctx.client.residency(model);
+  // title_path and lexical never embed; skip the residency call too.
+  const modeEmbeds = mode === "semantic" || mode === "hybrid" || mode === "fact";
+  const residency = modeEmbeds ? await ctx.client.residency(model) : null;
 
   const envelope = buildEnvelope<CorpusSearchResult>({
     result: {
@@ -83,6 +94,7 @@ export async function handleCorpusSearch(
       corpus_name: corpus.name,
       model_version: corpus.model_version,
       total_chunks: corpus.chunks.length,
+      mode,
     },
     tier: "embed",
     model,
