@@ -35,7 +35,10 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-      - run: npm install --no-audit --no-fund
+      - name: Install (regenerate lockfile for runner platform)
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -48,6 +51,9 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-      - run: npm install --no-audit --no-fund
+      - name: Install (regenerate lockfile for runner platform)
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
