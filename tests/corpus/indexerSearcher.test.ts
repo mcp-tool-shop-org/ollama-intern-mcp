@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexCorpus } from "../../src/corpus/indexer.js";
 import { searchCorpus } from "../../src/corpus/searcher.js";
-import { loadCorpus, listCorpora, assertValidCorpusName } from "../../src/corpus/storage.js";
+import { loadCorpus, listCorpora, assertValidCorpusName, CORPUS_SCHEMA_VERSION, corpusPath } from "../../src/corpus/storage.js";
 import { InternError } from "../../src/errors.js";
 import type {
   OllamaClient,
@@ -186,5 +186,99 @@ describe("indexCorpus + searchCorpus", () => {
     expect(() => assertValidCorpusName("has space")).toThrow(InternError);
     expect(() => assertValidCorpusName("has/slash")).toThrow(InternError);
     expect(() => assertValidCorpusName("OK_name-123")).not.toThrow();
+  });
+
+  it("persists heading_path + chunk_type + titles on indexed chunks (schema v2)", async () => {
+    const p = join(tempDir, "doc.md");
+    await writeFile(
+      p,
+      [
+        "# The Title",
+        "intro line",
+        "",
+        "## Section Alpha",
+        "alpha body content",
+        "",
+        "```ts",
+        "const x = 1;",
+        "```",
+      ].join("\n"),
+      "utf8",
+    );
+    const client = new HashEmbedMock();
+    await indexCorpus({ name: "v2", paths: [p], model: "nomic-embed-text", client });
+    const corpus = (await loadCorpus("v2"))!;
+    expect(corpus.schema_version).toBe(CORPUS_SCHEMA_VERSION);
+    expect(corpus.titles[p]).toBe("The Title");
+    const alpha = corpus.chunks.find((c) => c.text.includes("alpha body"))!;
+    expect(alpha.heading_path).toEqual(["The Title", "Section Alpha"]);
+    expect(alpha.chunk_type).toBe("paragraph");
+    const code = corpus.chunks.find((c) => c.chunk_type === "code")!;
+    expect(code.text).toContain("const x = 1;");
+    expect(code.heading_path).toEqual(["The Title", "Section Alpha"]);
+  });
+
+  it("loading a v1 corpus throws SCHEMA_INVALID with corpus name, path, versions, and re-index command", async () => {
+    // Hand-craft a v1-shaped file at the corpus path and try to load it.
+    const p = join(tempDir, "old.md");
+    await writeFile(p, "anything", "utf8");
+    const v1Corpus = {
+      schema_version: 1,
+      name: "legacy",
+      model_version: "nomic-embed-text",
+      model_digest: null,
+      indexed_at: new Date().toISOString(),
+      chunk_chars: 800,
+      chunk_overlap: 100,
+      stats: { documents: 0, chunks: 0, total_chars: 0 },
+      chunks: [],
+    };
+    await writeFile(corpusPath("legacy"), JSON.stringify(v1Corpus), "utf8");
+    let caught: InternError | undefined;
+    try {
+      await loadCorpus("legacy");
+    } catch (err) {
+      caught = err as InternError;
+    }
+    expect(caught).toBeInstanceOf(InternError);
+    expect(caught!.code).toBe("SCHEMA_INVALID");
+    // Message carries the corpus name, both schema versions, and the file path.
+    expect(caught!.message).toContain("legacy");
+    expect(caught!.message).toContain("v1");
+    expect(caught!.message).toContain(`v${CORPUS_SCHEMA_VERSION}`);
+    expect(caught!.message).toContain(corpusPath("legacy"));
+    // Hint carries the exact re-index command.
+    expect(caught!.hint).toContain("ollama_corpus_index");
+    expect(caught!.hint).toContain(`"legacy"`);
+  });
+
+  it("indexing over a v1 corpus rebuilds it fresh instead of crashing", async () => {
+    const p = join(tempDir, "a.md");
+    await writeFile(p, "# Hello\ncontent", "utf8");
+    // Plant a v1 file at the target path.
+    const v1Corpus = {
+      schema_version: 1,
+      name: "upgrade",
+      model_version: "nomic-embed-text",
+      model_digest: null,
+      indexed_at: new Date().toISOString(),
+      chunk_chars: 800,
+      chunk_overlap: 100,
+      stats: { documents: 0, chunks: 0, total_chars: 0 },
+      chunks: [],
+    };
+    await writeFile(corpusPath("upgrade"), JSON.stringify(v1Corpus), "utf8");
+    const client = new HashEmbedMock();
+    // Re-index should not throw — it should overwrite with v2.
+    const report = await indexCorpus({
+      name: "upgrade",
+      paths: [p],
+      model: "nomic-embed-text",
+      client,
+    });
+    expect(report.newly_embedded_chunks).toBeGreaterThan(0);
+    const corpus = (await loadCorpus("upgrade"))!;
+    expect(corpus.schema_version).toBe(CORPUS_SCHEMA_VERSION);
+    expect(corpus.titles[p]).toBe("Hello");
   });
 });

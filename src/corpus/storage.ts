@@ -14,7 +14,9 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { InternError } from "../errors.js";
 
-export const CORPUS_SCHEMA_VERSION = 1;
+export const CORPUS_SCHEMA_VERSION = 2;
+
+export type ChunkType = "heading" | "paragraph" | "code" | "list" | "frontmatter";
 
 export interface CorpusChunk {
   id: string;
@@ -26,6 +28,8 @@ export interface CorpusChunk {
   char_end: number;
   text: string;
   vector: number[];
+  heading_path: string[];
+  chunk_type: ChunkType;
 }
 
 export interface CorpusFile {
@@ -41,6 +45,7 @@ export interface CorpusFile {
     chunks: number;
     total_chars: number;
   };
+  titles: Record<string, string | null>;
   chunks: CorpusChunk[];
 }
 
@@ -70,16 +75,17 @@ export async function loadCorpus(name: string): Promise<CorpusFile | null> {
   const path = corpusPath(name);
   if (!existsSync(path)) return null;
   const raw = await readFile(path, "utf8");
-  const parsed = JSON.parse(raw) as CorpusFile;
-  if (parsed.schema_version !== CORPUS_SCHEMA_VERSION) {
+  const parsed = JSON.parse(raw) as Partial<CorpusFile> & { schema_version?: number };
+  const found = parsed.schema_version;
+  if (found !== CORPUS_SCHEMA_VERSION) {
     throw new InternError(
       "SCHEMA_INVALID",
-      `Corpus "${name}" has schema_version ${parsed.schema_version}; expected ${CORPUS_SCHEMA_VERSION}`,
-      "Re-index the corpus with ollama_corpus_index to bring it forward.",
+      `Corpus "${name}" is at schema v${found ?? "unknown"}; this build expects v${CORPUS_SCHEMA_VERSION}. File: ${path}`,
+      `Re-index to upgrade in place: ollama_corpus_index({ name: "${name}", paths: [<your source paths>] }). No migration is performed — the re-index rewrites ${path} with the current schema.`,
       false,
     );
   }
-  return parsed;
+  return parsed as CorpusFile;
 }
 
 export async function saveCorpus(corpus: CorpusFile): Promise<void> {

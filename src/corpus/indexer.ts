@@ -14,7 +14,7 @@ import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
-import { chunk, DEFAULT_CHUNK, type ChunkOptions } from "./chunker.js";
+import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
 import { InternError } from "../errors.js";
 
@@ -56,7 +56,20 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   };
 
   // Load existing corpus (if any) to reuse unchanged chunks.
-  const existing = await loadCorpus(params.name);
+  // An out-of-date schema version throws SCHEMA_INVALID from loadCorpus —
+  // treat that as "no existing corpus" so this very call can rewrite the
+  // file fresh under the current schema (which is the whole point of
+  // re-indexing after a bump).
+  let existing: CorpusFile | null = null;
+  try {
+    existing = await loadCorpus(params.name);
+  } catch (err) {
+    if (err instanceof InternError && err.code === "SCHEMA_INVALID") {
+      existing = null;
+    } else {
+      throw err;
+    }
+  }
   const reusable = new Map<string, CorpusChunk[]>();
   if (existing && existing.model_version === params.model) {
     for (const c of existing.chunks) {
@@ -68,10 +81,18 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   }
 
   const allChunks: CorpusChunk[] = [];
+  const titles: Record<string, string | null> = {};
   let reusedCount = 0;
   let newlyEmbeddedCount = 0;
   let totalChars = 0;
   const seenPaths = new Set<string>();
+
+  // Preserve titles from reusable files (they were captured at previous index).
+  if (existing) {
+    for (const [p, t] of Object.entries(existing.titles ?? {})) {
+      titles[p] = t;
+    }
+  }
 
   // Pass 1: read + hash every input, reuse where possible, collect chunks to embed.
   const toEmbedTexts: string[] = [];
@@ -83,6 +104,8 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     char_start: number;
     char_end: number;
     text: string;
+    heading_path: string[];
+    chunk_type: ChunkType;
   }> = [];
 
   for (const rawPath of params.paths) {
@@ -107,8 +130,9 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
       reusedCount += reused.length;
       continue;
     }
-    // Fresh chunking for this file.
-    const chunks = chunk(fileInfo.content, opts);
+    // Fresh chunking for this file — heading-aware.
+    const { title, chunks } = chunkDocument(fileInfo.content, opts);
+    titles[absPath] = title;
     for (const ck of chunks) {
       toEmbedMeta.push({
         path: absPath,
@@ -118,6 +142,8 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
         char_start: ck.char_start,
         char_end: ck.char_end,
         text: ck.text,
+        heading_path: ck.heading_path,
+        chunk_type: ck.chunk_type,
       });
       toEmbedTexts.push(ck.text);
     }
@@ -145,6 +171,8 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
           char_end: meta.char_end,
           text: meta.text,
           vector: resp.embeddings[j],
+          heading_path: meta.heading_path,
+          chunk_type: meta.chunk_type,
         });
         newlyEmbeddedCount += 1;
       }
@@ -158,6 +186,14 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     for (const p of previousPaths) {
       if (!seenPaths.has(p)) droppedFiles.push(p);
     }
+  }
+  for (const p of droppedFiles) delete titles[p];
+
+  // Scope titles to paths actually present in this index.
+  const livingTitles: Record<string, string | null> = {};
+  for (const c of allChunks) {
+    if (c.path in titles) livingTitles[c.path] = titles[c.path];
+    else if (!(c.path in livingTitles)) livingTitles[c.path] = null;
   }
 
   const corpus: CorpusFile = {
@@ -173,6 +209,7 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
       chunks: allChunks.length,
       total_chars: totalChars,
     },
+    titles: livingTitles,
     chunks: allChunks,
   };
 

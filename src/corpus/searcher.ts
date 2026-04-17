@@ -6,6 +6,7 @@
 import type { OllamaClient } from "../ollama.js";
 import { rankByCosine } from "../embedMath.js";
 import { InternError } from "../errors.js";
+import type { ChunkType } from "./chunker.js";
 import type { CorpusChunk, CorpusFile } from "./storage.js";
 
 export interface CorpusHit {
@@ -15,6 +16,9 @@ export interface CorpusHit {
   chunk_index: number;
   char_start: number;
   char_end: number;
+  heading_path: string[];
+  chunk_type: ChunkType;
+  title: string | null;
   preview?: string;
 }
 
@@ -59,6 +63,9 @@ export async function searchCorpus(params: SearchParams): Promise<CorpusHit[]> {
     chunk_index: r.item.chunk_index,
     char_start: r.item.char_start,
     char_end: r.item.char_end,
+    heading_path: r.item.heading_path,
+    chunk_type: r.item.chunk_type,
+    title: params.corpus.titles?.[r.item.path] ?? null,
     ...(preview > 0 ? { preview: r.item.text.slice(0, preview) } : {}),
   }));
 }
