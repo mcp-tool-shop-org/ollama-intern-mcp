@@ -15,14 +15,12 @@
  */
 
 import { z } from "zod";
-import { readFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
 import type { Envelope } from "../envelope.js";
-import { InternError } from "../errors.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { parseCitations, validateCitations, type ValidatedCitation } from "../guardrails/citations.js";
 import { timestamp } from "../observability.js";
+import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import type { RunContext } from "../runContext.js";
 
 export const researchSchema = z.object({
@@ -39,33 +37,9 @@ export interface ResearchResult {
   citations: ValidatedCitation[];
 }
 
-async function loadSources(paths: string[], perFileMax: number): Promise<Array<{ path: string; body: string }>> {
-  const loaded: Array<{ path: string; body: string }> = [];
-  for (const p of paths) {
-    const abs = resolve(p);
-    try {
-      const st = await stat(abs);
-      if (!st.isFile()) {
-        throw new InternError("SOURCE_PATH_NOT_FOUND", `Not a file: ${p}`, "Pass file paths only, not directories.", false);
-      }
-      const raw = await readFile(abs, "utf8");
-      loaded.push({ path: p, body: raw.slice(0, perFileMax) });
-    } catch (err) {
-      if (err instanceof InternError) throw err;
-      throw new InternError(
-        "SOURCE_PATH_NOT_FOUND",
-        `Cannot read source path: ${p} — ${(err as Error).message}`,
-        "Check the path exists and is readable.",
-        false,
-      );
-    }
-  }
-  return loaded;
-}
-
-function buildPrompt(input: ResearchInput, sources: Array<{ path: string; body: string }>): string {
+function buildPrompt(input: ResearchInput, sources: LoadedSource[]): string {
   const maxWords = input.max_words ?? 300;
-  const blocks = sources.map((s) => `=== BEGIN ${s.path} ===\n${s.body}\n=== END ${s.path} ===`).join("\n\n");
+  const blocks = formatSourcesBlock(sources);
   return [
     `You are a grounded research assistant. Answer ONLY from the source files below.`,
     `Never invent facts. If the sources do not contain the answer, say so.`,

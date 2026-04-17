@@ -29,6 +29,7 @@ import { draftSchema, handleDraft } from "./tools/draft.js";
 import { extractSchema, handleExtract } from "./tools/extract.js";
 import { researchSchema, handleResearch } from "./tools/research.js";
 import { embedSchema, handleEmbed } from "./tools/embed.js";
+import { embedSearchSchema, handleEmbedSearch } from "./tools/embedSearch.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -51,10 +52,18 @@ export function createServer(ctx: RunContext): McpServer {
     (args) => wrap(handleResearch(args, ctx)),
   );
 
-  // FLAGSHIP — ollama_embed
+  // FLAGSHIP — ollama_embed_search (primary concept-search surface)
+  server.tool(
+    "ollama_embed_search",
+    "FLAGSHIP. Rank candidates by concept similarity to a query. Pass `query` + `candidates: [{id, text}]`; server embeds everything, computes cosine, returns ranked `[{id, score, preview?}]`. Use this for semantic recall over memory/, canon, doctrine, protocols — the filename-to-concept bridge. Does NOT return raw vectors to you.",
+    embedSearchSchema.shape,
+    (args) => wrap(handleEmbedSearch(args, ctx)),
+  );
+
+  // LOW-LEVEL — ollama_embed (raw vectors for external index builds)
   server.tool(
     "ollama_embed",
-    "FLAGSHIP. Produce vector embeddings for one text or a batch. Bridge from filename search to concept search over memory/, canon, doctrine, protocols. Returns model_version alongside vectors so drift is detectable.",
+    "LOW-LEVEL primitive. Returns raw 768-dim vectors for one text or a batch. Use `ollama_embed_search` instead for concept-search — this tool is for building external indexes (sqlite-vss, pgvector) where you need the raw geometry. Output can be large.",
     embedSchema.shape,
     (args) => wrap(handleEmbed(args, ctx)),
   );
@@ -86,7 +95,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — summarize_deep
   server.tool(
     "ollama_summarize_deep",
-    "Digest of long input (~32k tokens) with optional focus. Use for doctrine/canon/long-doc distillation when Claude only needs the gist. Carries source_preview.",
+    "Digest of long input with optional focus. Pass EITHER `text` (when you already have the content) OR `source_paths[]` (server reads + chunks locally — use this to save Claude context). Exactly one of the two. Carries source_preview for fabrication spot-checks.",
     summarizeDeepSchema.shape,
     (args) => wrap(handleSummarizeDeep(args, ctx)),
   );
