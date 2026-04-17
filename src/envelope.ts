@@ -31,6 +31,12 @@ export interface Envelope<T> {
   fallback_from?: Tier;
   /** Non-fatal warnings — e.g. "2 citations stripped (paths not in source_paths)". */
   warnings?: string[];
+  /** Total items in the batch. Only set on batch-mode calls. */
+  batch_count?: number;
+  /** Items that returned {ok: true, result}. Only set on batch-mode calls. */
+  ok_count?: number;
+  /** Items that returned {ok: false, error}. Only set on batch-mode calls. */
+  error_count?: number;
 }
 
 export interface EnvelopeBuilderInput<T> {

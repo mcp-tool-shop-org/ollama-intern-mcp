@@ -104,18 +104,18 @@ export function createServer(ctx: RunContext): McpServer {
     (args) => wrap(handleEmbed(args, ctx)),
   );
 
-  // Core — classify
+  // Core — classify (batch-capable)
   server.tool(
     "ollama_classify",
-    "Single-label classification with confidence. Use for commit-type / severity / yes-no bucketing. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7).",
+    "Single-label classification with confidence. Single: pass `text`. BATCH: pass `items:[{id,text}]` — returns ONE envelope with `result.items[]` of `{id, ok, result|error}` plus `batch_count/ok_count/error_count`. Use the batch shape to chew through bulk labeling (commit types, PR titles, log severities) in one handoff instead of N round-trips. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7).",
     classifySchema.shape,
     (args) => wrap(handleClassify(args, ctx)),
   );
 
-  // Core — triage_logs
+  // Core — triage_logs (batch-capable)
   server.tool(
     "ollama_triage_logs",
-    "Stable-shape log digest: {errors, warnings, suspected_root_cause}. Use before grep-storms on long CI/test output. Returns deduplicated error strings without stack traces.",
+    "Stable-shape log digest: {errors, warnings, suspected_root_cause}. Single: pass `log_text`. BATCH: pass `items:[{id,log_text}]` for triaging many log blobs at once (multiple CI runs, matrix legs, per-service logs) — returns one envelope with per-item entries. Use before grep-storms on long CI/test output.",
     triageLogsSchema.shape,
     (args) => wrap(handleTriageLogs(args, ctx)),
   );
@@ -144,10 +144,10 @@ export function createServer(ctx: RunContext): McpServer {
     (args) => wrap(handleDraft(args, ctx)),
   );
 
-  // Core — extract
+  // Core — extract (batch-capable)
   server.tool(
     "ollama_extract",
-    "Schema-constrained JSON extraction using Ollama's JSON mode. Returns {ok: true, data} or {ok: false, error: 'unparseable'} — never partial.",
+    "Schema-constrained JSON extraction using Ollama's JSON mode. Single: pass `text`, returns `{ok: true, data}` or `{ok: false, error: 'unparseable'}` — never partial. BATCH: pass `items:[{id,text}]` with a shared schema — returns one envelope with per-item `{id, ok, result|error}`. Use the batch shape for any 10+-similar-inputs workload (frontmatter, package.json, release metadata) so you hand over the whole job, not N calls.",
     extractSchema.shape,
     (args) => wrap(handleExtract(args, ctx)),
   );

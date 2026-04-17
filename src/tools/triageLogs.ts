@@ -1,17 +1,36 @@
 /**
  * ollama_triage_logs — stable-shape log digest: errors, warnings, suspected root cause.
  * Tier: Instant.
+ *
+ * Two input modes:
+ *   - `log_text` : single log blob, returns {errors, warnings, suspected_root_cause?}
+ *   - `items`    : batch of log blobs, each with a caller-provided id.
+ *                  Returns one batch envelope with per-item {id, ok, result|error}.
+ *
+ * Exactly one of {log_text, items} must be provided.
  */
 
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
+import { runBatch, type BatchResult } from "./batch.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 export const triageLogsSchema = z.object({
-  log_text: z.string().min(1).describe("Raw log output to triage."),
-  patterns: z.array(z.string()).optional().describe("Optional regex patterns the triage should bias toward."),
+  log_text: z.string().min(1).optional().describe("Single log output to triage. Use this OR items, not both."),
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1).describe("Caller-provided, unique within the batch."),
+        log_text: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .optional()
+    .describe("Batch of log blobs, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
+  patterns: z.array(z.string()).optional().describe("Optional regex patterns the triage should bias toward — applied to every item in a batch."),
 });
 
 export type TriageLogsInput = z.infer<typeof triageLogsSchema>;
@@ -22,9 +41,9 @@ export interface TriageLogsResult {
   suspected_root_cause?: string;
 }
 
-function buildPrompt(input: TriageLogsInput): string {
-  const patterns = input.patterns && input.patterns.length > 0
-    ? `\nPay particular attention to these patterns: ${input.patterns.join(", ")}`
+function buildPromptFor(logText: string, patterns?: string[]): string {
+  const patternsLine = patterns && patterns.length > 0
+    ? `\nPay particular attention to these patterns: ${patterns.join(", ")}`
     : "";
   return [
     `You are a log triage assistant. If the input is not a log, reply exactly: {"errors": [], "warnings": [], "suspected_root_cause": "NOT_A_LOG"}.`,
@@ -33,10 +52,10 @@ function buildPrompt(input: TriageLogsInput): string {
     `- errors: one string per distinct error (deduplicated, no stack traces)`,
     `- warnings: one string per distinct warning`,
     `- suspected_root_cause: one sentence or null`,
-    patterns,
+    patternsLine,
     ``,
     `Log:`,
-    input.log_text,
+    logText,
   ].join("\n");
 }
 
@@ -53,17 +72,48 @@ function parse(raw: string): TriageLogsResult {
   }
 }
 
+function assertExactlyOneInput(input: TriageLogsInput): void {
+  const given = (input.log_text !== undefined ? 1 : 0) + (input.items !== undefined ? 1 : 0);
+  if (given !== 1) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `ollama_triage_logs: provide exactly one of "log_text" or "items" (given ${given}).`,
+      "Pass log_text for a single call, or items:[{id,log_text}] for a batch. Not both, not neither.",
+      false,
+    );
+  }
+}
+
 export async function handleTriageLogs(
   input: TriageLogsInput,
   ctx: RunContext,
-): Promise<Envelope<TriageLogsResult>> {
+): Promise<Envelope<TriageLogsResult> | Envelope<BatchResult<TriageLogsResult>>> {
+  assertExactlyOneInput(input);
+
+  if (input.items) {
+    return runBatch<{ id: string; log_text: string }, TriageLogsResult>({
+      tool: "ollama_triage_logs",
+      tier: "instant",
+      ctx,
+      items: input.items,
+      build: (item, _tier, model) => ({
+        model,
+        prompt: buildPromptFor(item.log_text, input.patterns),
+        format: "json",
+        options: { temperature: TEMPERATURE_BY_SHAPE.triage, num_predict: 512 },
+      }),
+      parse,
+    });
+  }
+
+  const logText = input.log_text as string;
   return runTool<TriageLogsResult>({
     tool: "ollama_triage_logs",
     tier: "instant",
     ctx,
     build: (_tier, model) => ({
       model,
-      prompt: buildPrompt(input),
+      prompt: buildPromptFor(logText, input.patterns),
       format: "json",
       options: { temperature: TEMPERATURE_BY_SHAPE.triage, num_predict: 512 },
     }),
