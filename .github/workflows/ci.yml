@@ -40,8 +40,8 @@ jobs:
           rm -f package-lock.json
           npm install --no-audit --no-fund
       - run: npm run typecheck
-      - run: npm test
       - run: npm run build
+      - run: npm test
 
   audit:
     runs-on: ubuntu-latest
