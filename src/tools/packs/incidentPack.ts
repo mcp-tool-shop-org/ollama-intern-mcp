@@ -357,7 +357,7 @@ export async function handleIncidentPack(
     brief,
     steps, // snapshot up through synthesize; the artifact-write step self-references without infinite recursion
   });
-  const jsonArtifact: JsonArtifact = {
+  const jsonArtifact: IncidentPackArtifact = {
     schema_version: 1,
     pack: "incident_pack",
     generated_at: generatedAt,
@@ -422,7 +422,7 @@ export async function handleIncidentPack(
   return envelope;
 }
 
-interface JsonArtifact {
+export interface IncidentPackArtifact {
   schema_version: 1;
   pack: "incident_pack";
   generated_at: string;

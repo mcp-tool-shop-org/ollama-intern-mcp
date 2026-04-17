@@ -138,7 +138,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(result?.capabilities?.tools).toBeDefined();
   }, 30_000);
 
-  it("tools/list returns all 21 registered tools with flagship tools first", async () => {
+  it("tools/list returns all 23 registered tools with flagship tools first", async () => {
     const resp = await roundTrip([
       {
         jsonrpc: "2.0",
@@ -159,8 +159,8 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(tools).toBeDefined();
 
     const names = tools!.map((t) => t.name);
-    // All 21 expected tools present. Atom surface frozen at 18; packs
-    // (incident_pack, repo_pack, change_pack) form the compound-job tier.
+    // All 23 expected tools present. Atom surface frozen at 18, packs at 3.
+    // Artifact tier (artifact_list, artifact_read) sits alongside packs.
     expect(names).toEqual(
       expect.arrayContaining([
         "ollama_research",
@@ -172,6 +172,8 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_incident_pack",
         "ollama_repo_pack",
         "ollama_change_pack",
+        "ollama_artifact_list",
+        "ollama_artifact_read",
         "ollama_embed_search",
         "ollama_embed",
         "ollama_corpus_index",
@@ -186,10 +188,10 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    expect(names).toHaveLength(21);
+    expect(names).toHaveLength(23);
 
     // Flagship surface discipline: retrieval/answer flagships first,
-    // then briefs, then packs, then ad-hoc ranker.
+    // then briefs, then packs, then artifact tier, then ad-hoc ranker.
     expect(names[0]).toBe("ollama_research");
     expect(names[1]).toBe("ollama_corpus_search");
     expect(names[2]).toBe("ollama_corpus_answer");
@@ -199,7 +201,9 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(names[6]).toBe("ollama_incident_pack");
     expect(names[7]).toBe("ollama_repo_pack");
     expect(names[8]).toBe("ollama_change_pack");
-    expect(names[9]).toBe("ollama_embed_search");
+    expect(names[9]).toBe("ollama_artifact_list");
+    expect(names[10]).toBe("ollama_artifact_read");
+    expect(names[11]).toBe("ollama_embed_search");
 
     // Chat is last-resort and MUST advertise itself that way — so Claude doesn't default to it.
     const chat = tools!.find((t) => t.name === "ollama_chat");

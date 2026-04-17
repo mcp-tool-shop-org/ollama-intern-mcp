@@ -482,7 +482,7 @@ export async function handleChangePack(
     facts,
     steps, // pre-write snapshot; markdown omits artifact_write
   });
-  const jsonArtifact: JsonArtifact = {
+  const jsonArtifact: ChangePackArtifact = {
     schema_version: 1,
     pack: "change_pack",
     generated_at: generatedAt,
@@ -551,7 +551,7 @@ export async function handleChangePack(
   return envelope;
 }
 
-interface JsonArtifact {
+export interface ChangePackArtifact {
   schema_version: 1;
   pack: "change_pack";
   generated_at: string;

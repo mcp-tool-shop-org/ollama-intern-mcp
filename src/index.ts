@@ -41,6 +41,8 @@ import { changeBriefSchema, handleChangeBrief } from "./tools/changeBrief.js";
 import { incidentPackSchema, handleIncidentPack } from "./tools/packs/incidentPack.js";
 import { repoPackSchema, handleRepoPack } from "./tools/packs/repoPack.js";
 import { changePackSchema, handleChangePack } from "./tools/packs/changePack.js";
+import { artifactListSchema, handleArtifactList } from "./tools/artifactList.js";
+import { artifactReadSchema, handleArtifactRead } from "./tools/artifactRead.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -125,6 +127,22 @@ export function createServer(ctx: RunContext): McpServer {
     "PACK. Runs the full change REVIEW job: assemble evidence (diff + paths + corpus if given) → triage_logs ONLY when log_text is provided → change_brief → targeted ollama_extract (narrow review schema: scripts_touched, config_surfaces, runtime_hints) → deterministic markdown+JSON artifact on disk. Change-first, not repo-first — this is about the DELTA, not a tour. Release note draft is a blockquote-wrapped DRAFT (not marketing copy). No VCS integration — caller hands in diff_text / source_paths / optional log_text. Response is compact; full brief + extracted facts live in the artifact.",
     changePackSchema.shape,
     (args) => wrap(handleChangePack(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_list (metadata-only index over pack artifacts)
+  server.tool(
+    "ollama_artifact_list",
+    "ARTIFACT. Metadata-only index of pack artifacts on disk. Returns one compact record per artifact: `{pack, slug, title, created_at, weak, corpus_used, evidence_count, section_counts, md_path, json_path}`. Filter by pack / date_after / date_before / weak_only / strong_only; sort is newest first. Scans ~/.ollama-intern/artifacts/{incident,repo,change} by default; pass extra_artifact_dirs for additional read-only search surfaces. Full payloads belong to ollama_artifact_read — listing stays cheap.",
+    artifactListSchema.shape,
+    (args) => wrap(handleArtifactList(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_read (typed read by identity or path)
+  server.tool(
+    "ollama_artifact_read",
+    "ARTIFACT. Read a single pack artifact, typed by pack. Primary: `{pack, slug}` — identity-based, collisions fail loud. Secondary: `{json_path}` — absolute path, must live under a recognized artifact dir (canonical roots + extra_artifact_dirs), must end in .json, path-traversal rejected. Returns `{metadata, artifact}` where artifact is a discriminated union on `pack` (incident_pack / repo_pack / change_pack — payloads stay distinct, never flattened).",
+    artifactReadSchema.shape,
+    (args) => wrap(handleArtifactRead(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)

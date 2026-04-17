@@ -469,7 +469,7 @@ export async function handleRepoPack(
     facts,
     steps, // snapshot up through extract — markdown omits artifact_write (can't narrate its own write)
   });
-  const jsonArtifact: JsonArtifact = {
+  const jsonArtifact: RepoPackArtifact = {
     schema_version: 1,
     pack: "repo_pack",
     generated_at: generatedAt,
@@ -533,7 +533,7 @@ export async function handleRepoPack(
   return envelope;
 }
 
-interface JsonArtifact {
+export interface RepoPackArtifact {
   schema_version: 1;
   pack: "repo_pack";
   generated_at: string;
