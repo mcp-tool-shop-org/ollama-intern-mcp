@@ -36,6 +36,8 @@ import { corpusAnswerSchema, handleCorpusAnswer } from "./tools/corpusAnswer.js"
 import { corpusRefreshSchema, handleCorpusRefresh } from "./tools/corpusRefresh.js";
 import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
 import { incidentBriefSchema, handleIncidentBrief } from "./tools/incidentBrief.js";
+import { repoBriefSchema, handleRepoBrief } from "./tools/repoBrief.js";
+import { changeBriefSchema, handleChangeBrief } from "./tools/changeBrief.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -80,6 +82,22 @@ export function createServer(ctx: RunContext): McpServer {
     "FLAGSHIP compound job. Produces a STRUCTURED OPERATOR BRIEF from log_text and/or source_paths, optionally blended with a named corpus for background context. Returns `{root_cause_hypotheses, affected_surfaces, timeline_clues, next_checks, evidence, weak, coverage_notes, corpus_used}`. Every hypothesis/surface/clue carries evidence_refs into the evidence array — refs to unknown ids are stripped server-side. Distinct from ollama_triage_logs (symptoms in one blob) and ollama_research (answer a specific question). Thin evidence degrades to weak=true with coverage_notes — never a smooth fake narrative. next_checks are INVESTIGATIVE, not remediations.",
     incidentBriefSchema.shape,
     (args) => wrap(handleIncidentBrief(args, ctx)),
+  );
+
+  // FLAGSHIP — ollama_repo_brief (operator map of a repo)
+  server.tool(
+    "ollama_repo_brief",
+    "FLAGSHIP compound job. Produces an OPERATOR MAP of a repo: `{repo_thesis, key_surfaces, architecture_shape, risk_areas, read_next, evidence, weak, coverage_notes, corpus_used}`. Takes source_paths (typically README + key src entries + manifests + docs) and optionally a corpus for cross-cutting context. Not a research clone — research answers a specific question; repo_brief synthesizes orientation. Every key_surface and risk_area cites evidence. read_next is INVESTIGATIVE (files or sections to look at), never prescriptive fixes or refactors. Thin evidence → weak=true with coverage notes.",
+    repoBriefSchema.shape,
+    (args) => wrap(handleRepoBrief(args, ctx)),
+  );
+
+  // FLAGSHIP — ollama_change_brief (structured impact brief for a change)
+  server.tool(
+    "ollama_change_brief",
+    "FLAGSHIP compound job. Produces a CHANGE IMPACT BRIEF: `{change_summary, affected_surfaces, why_it_matters, likely_breakpoints, validation_checks, release_note_draft, evidence, weak, coverage_notes, corpus_used}`. Accepts diff_text (split per file on `diff --git` markers) and/or source_paths (changed files), with an optional corpus for architecture context. Not a git chat bot — structured and reviewable. likely_breakpoints are INVESTIGATIVE reasoning about what could break; validation_checks are what to verify after the change. Never remedial (no 'apply this fix'). release_note_draft is a draft the operator reviews.",
+    changeBriefSchema.shape,
+    (args) => wrap(handleChangeBrief(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
