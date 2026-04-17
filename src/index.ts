@@ -30,6 +30,9 @@ import { extractSchema, handleExtract } from "./tools/extract.js";
 import { researchSchema, handleResearch } from "./tools/research.js";
 import { embedSchema, handleEmbed } from "./tools/embed.js";
 import { embedSearchSchema, handleEmbedSearch } from "./tools/embedSearch.js";
+import { corpusIndexSchema, handleCorpusIndex } from "./tools/corpusIndex.js";
+import { corpusSearchSchema, handleCorpusSearch } from "./tools/corpusSearch.js";
+import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -52,12 +55,36 @@ export function createServer(ctx: RunContext): McpServer {
     (args) => wrap(handleResearch(args, ctx)),
   );
 
-  // FLAGSHIP — ollama_embed_search (primary concept-search surface)
+  // FLAGSHIP — ollama_corpus_search (persistent concept search over named corpora)
+  server.tool(
+    "ollama_corpus_search",
+    "FLAGSHIP. Concept search over a persistent named corpus (e.g. 'memory', 'canon', 'handbook'). Pass `corpus` + `query`; returns ranked `[{id, path, score, chunk_index, preview?}]` drawn from the indexed corpus. Use this as your default for semantic recall — the corpus is persistent across sessions so you don't re-embed every call. Build or refresh a corpus with ollama_corpus_index first; see what's available with ollama_corpus_list.",
+    corpusSearchSchema.shape,
+    (args) => wrap(handleCorpusSearch(args, ctx)),
+  );
+
+  // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
   server.tool(
     "ollama_embed_search",
-    "FLAGSHIP. Rank candidates by concept similarity to a query. Pass `query` + `candidates: [{id, text}]`; server embeds everything, computes cosine, returns ranked `[{id, score, preview?}]`. Use this for semantic recall over memory/, canon, doctrine, protocols — the filename-to-concept bridge. Does NOT return raw vectors to you.",
+    "FLAGSHIP. Rank AD-HOC candidates by concept similarity to a query. Pass `query` + `candidates: [{id, text}]`; server embeds everything, computes cosine, returns ranked `[{id, score, preview?}]`. Use this when you have in-memory candidates to compare; for persistent recall over memory/canon/doctrine use ollama_corpus_search instead. Does NOT return raw vectors to you.",
     embedSearchSchema.shape,
     (args) => wrap(handleEmbedSearch(args, ctx)),
+  );
+
+  // Corpus builder
+  server.tool(
+    "ollama_corpus_index",
+    "Build or refresh a persistent named corpus. Pass `name` + `paths: string[]`; the server chunks, embeds, and stores on disk (~/.ollama-intern/corpora/<name>.json). Idempotent — unchanged files are reused by sha256 across calls; changed files are re-embedded; removed files are dropped. Returns a report: {documents, chunks, reused_chunks, newly_embedded_chunks, dropped_files, elapsed_ms}.",
+    corpusIndexSchema.shape,
+    (args) => wrap(handleCorpusIndex(args, ctx)),
+  );
+
+  // Corpus list
+  server.tool(
+    "ollama_corpus_list",
+    "List named corpora on disk with stats. No Ollama call. Use to discover what's been indexed, check freshness (indexed_at), or verify a corpus exists before searching.",
+    corpusListSchema.shape,
+    (args) => wrap(handleCorpusList(args, ctx)),
   );
 
   // LOW-LEVEL — ollama_embed (raw vectors for external index builds)
