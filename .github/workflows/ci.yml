@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -48,6 +48,6 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
