@@ -44,6 +44,15 @@ import { changePackSchema, handleChangePack } from "./tools/packs/changePack.js"
 import { artifactListSchema, handleArtifactList } from "./tools/artifactList.js";
 import { artifactReadSchema, handleArtifactRead } from "./tools/artifactRead.js";
 import { artifactDiffSchema, handleArtifactDiff } from "./tools/artifactDiff.js";
+import { artifactExportToPathSchema, handleArtifactExportToPath } from "./tools/artifactExportToPath.js";
+import {
+  artifactIncidentNoteSnippetSchema,
+  handleArtifactIncidentNoteSnippet,
+  artifactOnboardingSectionSnippetSchema,
+  handleArtifactOnboardingSectionSnippet,
+  artifactReleaseNoteSnippetSchema,
+  handleArtifactReleaseNoteSnippet,
+} from "./tools/artifactSnippets.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -152,6 +161,38 @@ export function createServer(ctx: RunContext): McpServer {
     "ARTIFACT. Structured diff of two same-pack artifacts. Input: `{a: {pack, slug}, b: {pack, slug}}` — must share pack; cross-pack diffs refused loudly. Returns `{pack, a, b, weak, diff}` with weak flip surfaced at top level (strong→weak or weak→strong). Lists diff as {added, removed, unchanged} matched on primary key per item kind; narrative fields as {before, after}; release_note_draft also carries a compact LCS line_diff. Evidence is SUMMARIZED (counts + referenced_paths + path_delta), never exploded chunk-by-chunk. Deterministic ordering on every list.",
     artifactDiffSchema.shape,
     (args) => wrap(handleArtifactDiff(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_export_to_path (handoff move, narrow writer)
+  server.tool(
+    "ollama_artifact_export_to_path",
+    "ARTIFACT. Writes the artifact's EXISTING markdown to a caller-specified path with a provenance header prepended. No re-render, no model call. Path safety is strict: target_path must be absolute, must end in .md, must live under one of `allowed_roots` (REQUIRED — caller declares intent). Overwrite is opt-in: existing files refuse by default so re-runs never clobber hand-edits. Not a generic file writer — export is the single handoff move.",
+    artifactExportToPathSchema.shape,
+    (args) => wrap(handleArtifactExportToPath(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_incident_note_snippet (operator note fragment)
+  server.tool(
+    "ollama_artifact_incident_note_snippet",
+    "ARTIFACT. Renders a compact incident-note markdown fragment from an incident_pack artifact — top hypotheses, affected surfaces, next checks, with an evidence-aware operator tone. No model call, no re-render; pure derivation from stored JSON. Returns `{rendered, metadata}`. For the full artifact use artifact_read; for the whole markdown as a reviewable file use artifact_export_to_path.",
+    artifactIncidentNoteSnippetSchema.shape,
+    (args) => wrap(handleArtifactIncidentNoteSnippet(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_onboarding_section_snippet (handbook fragment)
+  server.tool(
+    "ollama_artifact_onboarding_section_snippet",
+    "ARTIFACT. Renders a handbook-ready `## What this repo is` section from a repo_pack artifact — thesis, key surfaces, read-next, runtime hints. Investigative tone preserved (read-next is LOOK AT, not prescriptive). No model call. Returns `{rendered, metadata}`.",
+    artifactOnboardingSectionSnippetSchema.shape,
+    (args) => wrap(handleArtifactOnboardingSectionSnippet(args, ctx)),
+  );
+
+  // ARTIFACT — ollama_artifact_release_note_snippet (change pack DRAFT fragment)
+  server.tool(
+    "ollama_artifact_release_note_snippet",
+    "ARTIFACT. Renders the release-note draft from a change_pack artifact as a blockquote-wrapped DRAFT fragment with the caveat preserved. No model call, no polishing, no marketing lift. Returns `{rendered, metadata}` — operator reviews before publishing.",
+    artifactReleaseNoteSnippetSchema.shape,
+    (args) => wrap(handleArtifactReleaseNoteSnippet(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
