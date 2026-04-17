@@ -21,6 +21,7 @@ import { runTool } from "./runner.js";
 import { parseCitations, validateCitations, type ValidatedCitation } from "../guardrails/citations.js";
 import { timestamp } from "../observability.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
+import { detectCoverage } from "../coverage.js";
 import type { RunContext } from "../runContext.js";
 
 export const researchSchema = z.object({
@@ -35,6 +36,9 @@ export type ResearchInput = z.infer<typeof researchSchema>;
 export interface ResearchResult {
   answer: string;
   citations: ValidatedCitation[];
+  covered_sources?: string[];
+  omitted_sources?: string[];
+  coverage_notes?: string[];
 }
 
 function buildPrompt(input: ResearchInput, sources: LoadedSource[]): string {
@@ -78,14 +82,25 @@ export async function handleResearch(
       prompt: buildPrompt(input, sources),
       options: { temperature: TEMPERATURE_BY_SHAPE.research, num_predict: Math.ceil((input.max_words ?? 300) * 2.5) },
     }),
-    parse: (raw) => {
+    parse: (raw): ResearchResult => {
       const { answer, sources: sourcesBlock } = splitAnswerAndSources(raw);
       const parsed = parseCitations(sourcesBlock);
       const { valid, stripped } = validateCitations(parsed, input.source_paths);
       if (stripped.length > 0) {
         warnings.push(`Stripped ${stripped.length} citation(s) not in source_paths: ${stripped.map((c) => c.path).join(", ")}`);
       }
-      return { answer, citations: valid };
+      const base: ResearchResult = { answer, citations: valid };
+      // Coverage only meaningful with multiple sources — one-source research
+      // either cites or doesn't, and the citation check already covers it.
+      if (sources.length >= 2) {
+        const cov = detectCoverage(answer, sources, {
+          explicitlyCovered: valid.map((c) => c.path),
+        });
+        base.covered_sources = cov.covered_sources;
+        base.omitted_sources = cov.omitted_sources;
+        if (cov.coverage_notes.length > 0) base.coverage_notes = cov.coverage_notes;
+      }
+      return base;
     },
   });
 

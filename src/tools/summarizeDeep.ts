@@ -15,7 +15,8 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import type { SummarizeResult } from "./summarizeFast.js";
-import { loadSources, formatSourcesBlock } from "../sources.js";
+import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
+import { detectCoverage, type CoverageReport } from "../coverage.js";
 import type { RunContext } from "../runContext.js";
 
 /**
@@ -68,10 +69,17 @@ function buildPrompt(input: SummarizeDeepInput, body: string): string {
   ].join("\n");
 }
 
+/** Result of summarize_deep — extended with coverage when source_paths was used. */
+export interface SummarizeDeepResult extends SummarizeResult {
+  covered_sources?: string[];
+  omitted_sources?: string[];
+  coverage_notes?: string[];
+}
+
 export async function handleSummarizeDeep(
   input: SummarizeDeepInput,
   ctx: RunContext,
-): Promise<Envelope<SummarizeResult>> {
+): Promise<Envelope<SummarizeDeepResult>> {
   assertExactlyOneSource(input);
   const maxWords = input.max_words ?? 250;
   const perFileMax = input.per_file_max_chars ?? 40_000;
@@ -80,9 +88,10 @@ export async function handleSummarizeDeep(
   let body: string;
   let sourcePreview: string;
   let sourceChars: number;
+  let sources: LoadedSource[] | null = null;
 
   if (input.source_paths) {
-    const sources = await loadSources(input.source_paths, perFileMax);
+    sources = await loadSources(input.source_paths, perFileMax);
     body = formatSourcesBlock(sources);
     sourcePreview = sources[0]?.body.slice(0, 200) ?? "";
     sourceChars = sources.reduce((n, s) => n + s.body.length, 0);
@@ -92,7 +101,7 @@ export async function handleSummarizeDeep(
     sourceChars = body.length;
   }
 
-  return runTool<SummarizeResult>({
+  return runTool<SummarizeDeepResult>({
     tool: "ollama_summarize_deep",
     tier: "deep",
     ctx,
@@ -101,10 +110,22 @@ export async function handleSummarizeDeep(
       prompt: buildPrompt(input, body),
       options: { temperature: TEMPERATURE_BY_SHAPE.summarize, num_predict: Math.ceil(maxWords * 2.5) },
     }),
-    parse: (raw) => ({
-      summary: raw.trim(),
-      source_preview: sourcePreview,
-      source_chars: sourceChars,
-    }),
+    parse: (raw): SummarizeDeepResult => {
+      const summary = raw.trim();
+      const base: SummarizeDeepResult = {
+        summary,
+        source_preview: sourcePreview,
+        source_chars: sourceChars,
+      };
+      // Coverage only makes sense for multi-source path-based calls.
+      // Single source or raw-text input: skip — no omission risk to surface.
+      if (sources && sources.length >= 2) {
+        const cov: CoverageReport = detectCoverage(summary, sources);
+        base.covered_sources = cov.covered_sources;
+        base.omitted_sources = cov.omitted_sources;
+        if (cov.coverage_notes.length > 0) base.coverage_notes = cov.coverage_notes;
+      }
+      return base;
+    },
   });
 }
