@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
+import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest } from "./manifest.js";
 import { InternError } from "../errors.js";
 
 const EMBED_BATCH = 64;
@@ -214,6 +215,24 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   };
 
   await saveCorpus(corpus);
+
+  // Write the manifest alongside the corpus. The corpus is "reality";
+  // the manifest is "intent" — what the caller declared should be here.
+  // Refresh later reconciles the two.
+  const manifestPaths = [...seenPaths].sort();
+  const prevManifest = await loadManifest(params.name).catch(() => null);
+  const now = new Date().toISOString();
+  const manifest: CorpusManifest = {
+    schema_version: MANIFEST_SCHEMA_VERSION,
+    name: params.name,
+    paths: manifestPaths,
+    embed_model: params.model,
+    chunk_chars: opts.chunk_chars,
+    chunk_overlap: opts.chunk_overlap,
+    created_at: prevManifest?.created_at ?? now,
+    updated_at: now,
+  };
+  await saveManifest(manifest);
 
   return {
     name: corpus.name,

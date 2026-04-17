@@ -33,6 +33,7 @@ import { embedSearchSchema, handleEmbedSearch } from "./tools/embedSearch.js";
 import { corpusIndexSchema, handleCorpusIndex } from "./tools/corpusIndex.js";
 import { corpusSearchSchema, handleCorpusSearch } from "./tools/corpusSearch.js";
 import { corpusAnswerSchema, handleCorpusAnswer } from "./tools/corpusAnswer.js";
+import { corpusRefreshSchema, handleCorpusRefresh } from "./tools/corpusRefresh.js";
 import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
@@ -83,9 +84,17 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus builder
   server.tool(
     "ollama_corpus_index",
-    "Build or refresh a persistent named corpus. Pass `name` + `paths: string[]`; the server chunks, embeds, and stores on disk (~/.ollama-intern/corpora/<name>.json). Idempotent — unchanged files are reused by sha256 across calls; changed files are re-embedded; removed files are dropped. Returns a report: {documents, chunks, reused_chunks, newly_embedded_chunks, dropped_files, elapsed_ms}.",
+    "Build a persistent named corpus. Pass `name` + `paths: string[]`; the server chunks, embeds, stores the corpus at ~/.ollama-intern/corpora/<name>.json AND writes a manifest at <name>.manifest.json that captures the declared paths + chunk params + embed model. Idempotent — unchanged files are reused by sha256; changed files are re-embedded; paths not in the input are dropped. For day-to-day upkeep once a manifest exists, prefer `ollama_corpus_refresh` — it reconciles corpus vs manifest and reports drift.",
     corpusIndexSchema.shape,
     (args) => wrap(handleCorpusIndex(args, ctx)),
+  );
+
+  // Corpus refresh — living-corpus workflow: reconcile against manifest
+  server.tool(
+    "ollama_corpus_refresh",
+    "Reconcile a named corpus against its manifest (intent vs reality). Single arg: `name`. The manifest's declared paths, chunk params, and embed model are the source of truth — refresh doesn't accept them. Returns a drift report: added / changed / unchanged / deleted / missing (per-path lists) plus reused / reembedded / dropped (chunk-level counts) plus no_op. Idempotent: a no-change refresh is fast, boring, and makes zero embed calls.",
+    corpusRefreshSchema.shape,
+    (args) => wrap(handleCorpusRefresh(args, ctx)),
   );
 
   // Corpus list
