@@ -138,7 +138,7 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(result?.capabilities?.tools).toBeDefined();
   }, 30_000);
 
-  it("tools/list returns all 10 registered tools with flagship tools first", async () => {
+  it("tools/list returns all 14 registered tools with flagship tools first", async () => {
     const resp = await roundTrip([
       {
         jsonrpc: "2.0",
@@ -159,13 +159,15 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(tools).toBeDefined();
 
     const names = tools!.map((t) => t.name);
-    // All 13 expected tools present:
+    // All 14 expected tools present:
     //   9 original surface + ollama_embed_search (seam #1 fix) +
-    //   ollama_corpus_search, ollama_corpus_index, ollama_corpus_list (Phase C).
+    //   ollama_corpus_search, ollama_corpus_index, ollama_corpus_list (Phase C) +
+    //   ollama_corpus_answer (slice 5 of Retrieval Truth Spine).
     expect(names).toEqual(
       expect.arrayContaining([
         "ollama_research",
         "ollama_corpus_search",
+        "ollama_corpus_answer",
         "ollama_embed_search",
         "ollama_embed",
         "ollama_corpus_index",
@@ -179,12 +181,13 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    expect(names).toHaveLength(13);
+    expect(names).toHaveLength(14);
 
-    // Flagship surface discipline: research + the two flagship search tools come first.
+    // Flagship surface discipline: research + the flagship retrieval/answer tools come first.
     expect(names[0]).toBe("ollama_research");
     expect(names[1]).toBe("ollama_corpus_search");
-    expect(names[2]).toBe("ollama_embed_search");
+    expect(names[2]).toBe("ollama_corpus_answer");
+    expect(names[3]).toBe("ollama_embed_search");
 
     // Chat is last-resort and MUST advertise itself that way — so Claude doesn't default to it.
     const chat = tools!.find((t) => t.name === "ollama_chat");

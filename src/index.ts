@@ -32,6 +32,7 @@ import { embedSchema, handleEmbed } from "./tools/embed.js";
 import { embedSearchSchema, handleEmbedSearch } from "./tools/embedSearch.js";
 import { corpusIndexSchema, handleCorpusIndex } from "./tools/corpusIndex.js";
 import { corpusSearchSchema, handleCorpusSearch } from "./tools/corpusSearch.js";
+import { corpusAnswerSchema, handleCorpusAnswer } from "./tools/corpusAnswer.js";
 import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
 
@@ -61,6 +62,14 @@ export function createServer(ctx: RunContext): McpServer {
     "FLAGSHIP. Concept search over a persistent named corpus (e.g. 'memory', 'canon', 'handbook'). Pass `corpus` + `query`; returns ranked `[{id, path, score, chunk_index, preview?}]` drawn from the indexed corpus. Use this as your default for semantic recall — the corpus is persistent across sessions so you don't re-embed every call. Build or refresh a corpus with ollama_corpus_index first; see what's available with ollama_corpus_list.",
     corpusSearchSchema.shape,
     (args) => wrap(handleCorpusSearch(args, ctx)),
+  );
+
+  // FLAGSHIP — ollama_corpus_answer (grounded synthesis over a named corpus)
+  server.tool(
+    "ollama_corpus_answer",
+    "FLAGSHIP. Answer a question from a NAMED CORPUS with chunk-grounded citations. Retrieves via corpus_search, synthesizes with the Deep tier from the retrieved chunks ONLY, and returns `{answer, citations:[{path, chunk_index, heading_path, title}], covered_sources, omitted_sources, coverage_notes, retrieval:{retrieved, top_score, weak}}`. Distinct from ollama_research: research takes source paths you explicitly hand in; corpus_answer pulls from an already-indexed corpus. Weak retrieval degrades honestly — 0 hits short-circuits without invoking the model; thin retrieval flags `weak: true`.",
+    corpusAnswerSchema.shape,
+    (args) => wrap(handleCorpusAnswer(args, ctx)),
   );
 
   // FLAGSHIP — ollama_embed_search (ephemeral concept search on ad-hoc candidates)
