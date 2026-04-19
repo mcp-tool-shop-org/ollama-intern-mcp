@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-19
+
+Hermes-ready release. The blocker that stopped `incident_pack` working end-to-end with Hermes Agent on `hermes3:8b` is fixed, the default model ladder moves to the validated integration path, and Qwen 3 gets first-class runtime support for callers who want it.
+
+### Breaking
+
+- **Default model ladder is now `hermes3:8b`.** The `dev-rtx5080` profile previously shipped `qwen2.5:7b-instruct-q4_K_M` / `qwen2.5-coder:7b-instruct-q4_K_M` / `qwen2.5:14b-instruct-q4_K_M` across Instant/Workhorse/Deep. All three tiers now use `hermes3:8b` — the model Nous Research's Hermes Agent emits clean `tool_calls` for over Ollama's `/v1` chat endpoint, validated end-to-end 2026-04-19. `INTERN_TIER_*` env overrides still work for callers pinning specific models.
+- **Retired profile `dev-rtx5080-llama` removed.** Llama 3.1 8B is obsolete; the parity-rail experiment ran its course. `INTERN_PROFILE=dev-rtx5080-llama` now falls back to `dev-rtx5080` (default) instead of erroring.
+- **New profile `dev-rtx5080-qwen3` added.** Qwen 3 ladder (`qwen3:8b` / `qwen3:8b` / `qwen3:14b`) for callers who prefer same-family Qwen tooling or want the `THINK_BY_SHAPE` plumbing described below.
+- **`m5-max` profile moved to Qwen 3.** `qwen3:14b` / `qwen3:14b` / `qwen3:32b` sized for 128GB unified memory. Qwen 2.5 defaults are retired on modern Ollama installs.
+- **Corpus manifest schema v1 → v2.** New `embed_model_resolved` field on every `<name>.manifest.json`. v1 manifests auto-migrate on load — `embed_model_resolved` defaults to `null` until the next embed call supplies a value. No action required for existing corpora.
+
+### Added
+
+- **`source_paths: []` is now accepted on log-driven / diff-driven calls.** `incident_pack`, `incident_brief`, `change_pack`, `change_brief` no longer reject an empty `source_paths` array when `log_text` / `diff_text` is present. This was the last wire-blocker in the Hermes integration — `hermes3:8b` emits `source_paths: []` as the sensible default on log-only incident writeups, and the old `min: 1` schema rejected those calls at validation before the tool body ran. Runtime still requires at least one of `log_text` / `diff_text` / `source_paths`, so the "no evidence at all" guard is unchanged.
+- **Qwen 3 runtime plumbing** (`GenerateRequest.think` + `GenerateResponse.thinking` fields in `src/ollama.ts`, `TEMPERATURE_BY_SHAPE` / `TOP_P_BY_MODE` / `THINK_BY_SHAPE` in `src/tiers.ts`). Every `runTool` / `runBatch` caller now declares `think` explicitly per shape: `false` on classify / extract / triage / draft / summarize (load-bearing — Qwen 3 returns an empty `response` if thinking consumes the num_predict budget on short-output tasks); `true` on research / briefs / corpus_answer. The prompt-level `/no_think` soft-switch is ignored by Ollama; only the API field works. Non-thinking models (including the default `hermes3:8b`) silently ignore the field, so declaring it costs nothing.
+- **Qwen 3 temperature floors.** Classify / extract / triage bump from 0.1 to 0.2 because Qwen 3 degrades on greedy decoding per the official model card; research / draft bump to 0.6 to match the card's non-thinking recommendation. `hermes3:8b` tolerates the new floors without loss.
+- **Silent `:latest` drift detection.** When Ollama silently updates `nomic-embed-text:latest` (or any resolved embed tag) between corpus index and refresh, `ollama_corpus_refresh` now surfaces `embed_model_resolved_drift: { prior, current }` in the report. Report-only in v2.0.0 — no forced re-embed; callers who want uniform vector space re-run `ollama_corpus_index`.
+- **Hermes integration docs.** New README section `## Use with Hermes` with a validated config snippet, [`hermes.config.example.yaml`](hermes.config.example.yaml) in the repo root, and a full handbook page at [`handbook/with-hermes`](site/src/content/docs/handbook/with-hermes.md) covering transport caveats, the imperative-vs-list prompt-shape rule, and known blockers.
+
+### Changed
+
+- **Default `OLLAMA_MAX_LOADED_MODELS` guidance drops from 4 to 2** in the README pull instructions. The default ladder is now one model (`hermes3:8b`), so the old headroom is overkill.
+- **README / landing page / handbook envelope-and-tiers doc** all updated to reflect the new ladder and profile names. Inline code samples show `"model": "hermes3:8b"` with `"hardware_profile": "dev-rtx5080"`.
+- **Envelope type signature** updated: `hardware_profile: "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max"` (was `dev-rtx5080-llama`).
+
+### Fixed
+
+- **`strictStringArray({ min: 1 })` default no longer bites log-driven incident / change calls.** Root cause: the helper hard-coded `min: 1` as the default and the four affected tools passed that explicitly. Now each tool passes `min: 0` when the array is secondary evidence. Regression test coverage added across all four tools.
+
+### Tests
+
+- +4 regression tests for `source_paths: []` acceptance (`incidentPack`, `incidentBrief`, `changePack`, `repoAndChangeBrief`).
+- +5 assertions on `TEMPERATURE_BY_SHAPE` / `TOP_P_BY_MODE` / `THINK_BY_SHAPE` in `tiers.test.ts`.
+- +5 tests for the drift-detection path: resolved-tag capture on index, v1 → v2 manifest migration, drift field surfaces on tag change, drift field absent on no-op and stable runs.
+- Profile tests rewritten for the new ladder (hermes3:8b default, dev-rtx5080-qwen3 alternate, retired-profile fallback).
+
+Total: **464 tests passing**, up from 449 in v1.0.2.
+
+### Migration notes
+
+Callers who were pinning `INTERN_TIER_*=qwen2.5:*-instruct-q4_K_M` will hit `OLLAMA_MODEL_MISSING` on v2.0.0 unless they either (a) pull the qwen2.5 tags locally, (b) switch to `hermes3:8b` (no config change needed — it's the default), or (c) switch to `qwen3:*` with `INTERN_PROFILE=dev-rtx5080-qwen3`.
+
+Callers who were using `INTERN_PROFILE=dev-rtx5080-llama` now get the default `dev-rtx5080` profile instead of an error. Pin a specific Llama model via `INTERN_TIER_DEEP=llama3.x:…` if you still need the parity rail.
+
+Translated READMEs (`README.{ja,zh,es,fr,hi,it,pt-BR}.md`) carry the v1.0.2 shape until the next polyglot-mcp run. The English README is canonical.
+
 ## [1.0.2] - 2026-04-17
 
 Phase A of the Output Quality Report — contract hardening and doc-draft output-quality gates.
