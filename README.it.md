@@ -13,11 +13,11 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-> **Lo stagista locale per Claude Code.** 28 strumenti, report dettagliati basati su evidenze, artefatti duraturi.
+> **Lo "stagista" locale per Claude Code.** 28 strumenti strutturati, report dettagliati basati su evidenze, artefatti duraturi.
 
-Un server MCP che fornisce a Claude Code un **stagista locale** con regole, livelli, una scrivania e un archivio. Claude sceglie lo _strumento_; lo strumento sceglie il _livello_ (Instant / Workhorse / Deep / Embed); il livello scrive un file che puoi aprire la prossima settimana.
+Un server MCP che fornisce a Claude Code uno **"stagista" locale**, con regole, livelli, una scrivania e un archivio. Claude sceglie lo _strumento_; lo strumento sceglie il _livello_ (Instant / Workhorse / Deep / Embed); il livello scrive un file che puoi aprire la prossima settimana.
 
-Nessun cloud. Nessuna telemetria. Niente di "autonomo". Ogni operazione mostra il suo lavoro.
+Nessun cloud. Nessuna telemetria. Niente di "autonomo". Ogni operazione mostra il suo processo.
 
 ---
 
@@ -35,7 +35,7 @@ Nessun cloud. Nessuna telemetria. Niente di "autonomo". Ogni operazione mostra i
 }
 ```
 
-Restituisce un "envelope" che punta a un file su disco:
+Restituisce un "inviluppo" che punta a un file sul disco:
 
 ```jsonc
 {
@@ -49,7 +49,7 @@ Restituisce un "envelope" che punta a un file su disco:
     "next_checks": ["residency.evicted across last 24h", "OLLAMA_MAX_LOADED_MODELS vs loaded size"]
   },
   "tier_used": "deep",
-  "model": "qwen2.5:14b-instruct-q4_K_M",
+  "model": "hermes3:8b",
   "hardware_profile": "dev-rtx5080",
   "tokens_in": 4180, "tokens_out": 612,
   "elapsed_ms": 8410,
@@ -57,9 +57,9 @@ Restituisce un "envelope" che punta a un file su disco:
 }
 ```
 
-Quel file Markdown è l'output della scrivania dello stagista: titoli, blocco di evidenze con ID citati, istruzioni investigative `next_checks`, banner `weak: true` se le evidenze sono scarse. È deterministico: il renderer è codice, non un prompt. Aprilo domani, confrontalo la settimana prossima, esportalo in un manuale con `ollama_artifact_export_to_path`.
+Quel file Markdown è l'output della scrivania dello "stagista" — titoli, blocco di evidenze con ID citati, istruzioni investigative `next_checks`, banner `weak: true` se le evidenze sono scarse. È deterministico: il renderer è codice, non un prompt. Aprilo domani, confrontalo la settimana prossima, esportalo in un manuale con `ollama_artifact_export_to_path`.
 
-Ogni concorrente in questa categoria inizia con "risparmia token". Noi iniziamo con _"ecco il file che lo stagista ha scritto"_.
+Ogni concorrente in questa categoria inizia con "risparmia token". Noi iniziamo con _"ecco il file scritto dallo stagista"_.
 
 ---
 
@@ -67,10 +67,10 @@ Ogni concorrente in questa categoria inizia con "risparmia token". Noi iniziamo 
 
 | Livello | Conteggio | Cosa si trova qui |
 |---|---|---|
-| **Atoms** | 15 | Primitivi strutturati. `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. Gli atomi in grado di gestire batch (`classify`, `extract`, `triage_logs`) accettano `items: [{id, text}]`. |
+| **Atoms** | 15 | Primitivi strutturati. `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. Gli atomi in grado di gestire operazioni batch (`classify`, `extract`, `triage_logs`) accettano `items: [{id, text}]`. |
 | **Briefs** | 3 | Report strutturati basati su evidenze. `incident_brief`, `repo_brief`, `change_brief`. Ogni affermazione cita un ID di evidenza; le informazioni sconosciute vengono eliminate lato server. Le evidenze deboli mostrano `weak: true` invece di una narrazione falsa. |
-| **Packs** | 3 | Lavori composti con pipeline fisse che scrivono Markdown + JSON duraturi in `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renderer deterministici: nessuna chiamata al modello sulla forma dell'artefatto. |
-| **Artifacts** | 7 | Interfaccia uniforme sugli output dei pacchetti. `artifact_list` / `read` / `diff` / `export_to_path`, più tre snippet deterministici: `incident_note`, `onboarding_section`, `release_note`. |
+| **Packs** | 3 | Operazioni composte con pipeline fisse che scrivono file Markdown + JSON duraturi in `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renderer deterministici: nessuna chiamata al modello sulla forma dell'artefatto. |
+| **Artifacts** | 7 | Interfaccia di continuità sugli output dei pacchetti. `artifact_list` / `read` / `diff` / `export_to_path`, più tre snippet deterministici: `incident_note`, `onboarding_section`, `release_note`. |
 
 Totale: **18 primitivi + 3 pacchetti + 7 strumenti per artefatti = 28**.
 
@@ -89,7 +89,7 @@ Il riferimento completo agli strumenti si trova nel [manuale](https://mcp-tool-s
 npm install -g ollama-intern-mcp
 ```
 
-Richiede [Ollama](https://ollama.com) in esecuzione localmente e i modelli dei livelli scaricati.
+Richiede [Ollama](https://ollama.com) in esecuzione localmente e i modelli di livello scaricati.
 
 ### Claude Code
 
@@ -110,36 +110,76 @@ Richiede [Ollama](https://ollama.com) in esecuzione localmente e i modelli dei l
 
 ### Claude Desktop
 
-Lo stesso blocco, scritto in `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+Lo stesso file, scritto in `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+
+### Utilizzare con Hermes
+
+Questo MCP è stato validato end-to-end con [Hermes Agent](https://github.com/NousResearch/Hermes) contro `hermes3:8b` su Ollama (2026-04-19). Hermes è un agente esterno che *chiama* la superficie di primitivi congelata di questo MCP: si occupa della pianificazione, noi eseguiamo il lavoro.
+
+Configurazione di riferimento ([hermes.config.example.yaml](hermes.config.example.yaml) in questo repository):
+
+```yaml
+model:
+  provider: custom
+  base_url: http://localhost:11434/v1
+  default: hermes3:8b
+  context_length: 65536    # Hermes requires 64K floor under model.*
+
+providers:
+  local-ollama:
+    name: local-ollama
+    base_url: http://localhost:11434/v1
+    api_mode: openai_chat
+    api_key: ollama
+    model: hermes3:8b
+
+mcp_servers:
+  ollama-intern:
+    command: npx
+    args: ["-y", "ollama-intern-mcp"]
+    env:
+      OLLAMA_HOST: http://localhost:11434
+      INTERN_PROFILE: dev-rtx5080
+      # hermes3:8b is the default ladder in v2.0.0, so tier overrides are
+      # only needed if you're pinning a different local model.
+```
+
+**La forma del prompt è importante.** I prompt di invocazione degli strumenti imperativi ("Chiama X con argomenti...") sono il test di integrazione: forniscono a un modello locale di 8B una struttura sufficiente per emettere `tool_calls` puliti. I prompt multi-task in forma di elenco ("esegui A, poi B, poi C") sono benchmark di capacità per modelli più grandi; non interpretare un fallimento in forma di elenco su un modello di 8B come "il collegamento è interrotto". Consulta [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) per la guida completa all'integrazione e le note sui trasporti noti (streaming Ollama `/v1` + shim non-streaming di openai-SDK).
 
 ### Download dei modelli
 
 **Profilo di sviluppo predefinito (RTX 5080 16GB e simili):**
 
 ```bash
-ollama pull qwen2.5:7b-instruct-q4_K_M
-ollama pull qwen2.5-coder:7b-instruct-q4_K_M
-ollama pull qwen2.5:14b-instruct-q4_K_M
+ollama pull hermes3:8b
 ollama pull nomic-embed-text
-export OLLAMA_MAX_LOADED_MODELS=4
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
+```
+
+**Percorso alternativo Qwen 3 (stessa configurazione hardware, per gli strumenti Qwen):**
+
+```bash
+ollama pull qwen3:8b
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+export INTERN_PROFILE=dev-rtx5080-qwen3
 ```
 
 **Profilo M5 Max (128GB unificati):**
 
 ```bash
-ollama pull qwen2.5:14b-instruct-q4_K_M
-ollama pull qwen2.5-coder:32b-instruct-q4_K_M
-ollama pull llama3.3:70b-instruct-q4_K_M
+ollama pull qwen3:14b
+ollama pull qwen3:32b
 ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-Le variabili d'ambiente per livello (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) sovrascrivono ancora le scelte del profilo per utilizzi singoli.
+Le variabili d'ambiente specifiche per livello (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) sovrascrivono comunque le impostazioni del profilo per utilizzi specifici.
 
 ---
 
-## "Envelope" uniforme
+## Involucro uniforme
 
 Ogni strumento restituisce la stessa struttura:
 
@@ -148,7 +188,7 @@ Ogni strumento restituisce la stessa struttura:
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -161,9 +201,9 @@ Ogni strumento restituisce la stessa struttura:
 }
 ```
 
-La "residenza" proviene da Ollama's `/api/ps`. Quando `evicted: true` o `size_vram < size`, il modello viene spostato su disco e l'inferenza diminuisce di 5-10 volte. Mostra questo all'utente in modo che sappia di riavviare Ollama o ridurre il numero di modelli caricati.
+La "residenza" proviene da `/api/ps` di Ollama. Quando `evicted: true` o `size_vram < size`, il modello viene spostato su disco e le prestazioni diminuiscono del 5-10 volte. Questa informazione viene mostrata all'utente, in modo che sappia di dover riavviare Ollama o ridurre il numero di modelli caricati.
 
-Ogni operazione viene registrata come una singola riga in formato NDJSON in `~/.ollama-intern/log.ndjson`. Filtra per `hardware_profile` per escludere i dati di sviluppo dai benchmark pubblicabili.
+Ogni chiamata viene registrata come una riga in formato NDJSON in `~/.ollama-intern/log.ndjson`. È possibile filtrare per `hardware_profile` per escludere i dati di sviluppo dai benchmark pubblicabili.
 
 ---
 
@@ -171,35 +211,35 @@ Ogni operazione viene registrata come una singola riga in formato NDJSON in `~/.
 
 | Profilo | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| **`dev-rtx5080`** (predefinito) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
-| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
-| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
+| **`dev-rtx5080`** (predefinito) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
+| `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**Confronto tra modelli della stessa famiglia sulla configurazione di sviluppo predefinita:** eventuali risultati scadenti sono problemi di progettazione o di implementazione, non di incompatibilità tra modelli di famiglie diverse. `dev-rtx5080-llama` è il punto di riferimento: eseguire le stesse valutazioni standard con Llama 8B prima di utilizzare Llama su M5 Max.
+Il profilo **"Default dev"** combina tutti e tre i livelli di elaborazione in `hermes3:8b`, che rappresenta il percorso di integrazione con Hermes Agent validato. L'utilizzo dello stesso modello in tutti i livelli semplifica la gestione, riduce i costi di "residenza" e facilita la comprensione del comportamento. Gli utenti che preferiscono Qwen 3 (con la sua architettura "THINK_BY_SHAPE") possono utilizzare il profilo `dev-rtx5080-qwen3`. Il profilo `m5-max` è ottimizzato per Qwen 3 e utilizza la memoria unificata.
 
 ---
 
-## Norme probatorie
+## Leggi sulle prove
 
 Queste regole vengono applicate sul server, non nel prompt:
 
 - **Sono richieste le citazioni.** Ogni affermazione breve cita un identificativo di prova.
-- **Gli elementi sconosciuti vengono rimossi lato server.** I modelli che citano identificativi non presenti nel pacchetto di prove vedono tali identificativi rimossi, con un avviso, prima che il risultato venga restituito.
-- **"Debole" significa "debole".** Le prove deboli sono contrassegnate con `weak: true` e includono note sulla copertura. Non vengono mai "corrette" per creare una narrazione falsa.
-- **Funzione investigativa, non prescrittiva.** Sono disponibili solo `next_checks` / `read_next` / `likely_breakpoints`. I prompt non devono contenere istruzioni come "applica questa correzione".
-- **Renderer deterministici.** La formattazione Markdown degli artefatti è codice, non un prompt. `draft` è riservato al testo in cui la formulazione del modello è importante.
+- **Le informazioni sconosciute vengono eliminate lato server.** I modelli che citano identificativi non presenti nel pacchetto di prove hanno tali identificativi rimossi, con un avviso visualizzato prima della restituzione del risultato.
+- **Le informazioni deboli sono considerate tali.** Le prove deboli sono contrassegnate con `weak: true` e includono note sulla copertura. Non vengono mai modificate per creare una narrazione falsa.
+- **Approccio investigativo, non prescrittivo.** Sono presenti solo `next_checks`, `read_next` e `likely_breakpoints`. I prompt non devono contenere istruzioni come "applica questa correzione".
+- **Renderer deterministici.** La formattazione del markdown degli artefatti è codice, non un prompt. `draft` rimane riservato al testo in cui la formulazione del modello è importante.
 - **Solo differenze all'interno dello stesso pacchetto.** Le differenze tra pacchetti (`artifact_diff`) vengono rifiutate; i payload rimangono distinti.
 
 ---
 
 ## Artefatti e continuità
 
-I pacchetti scrivono in `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`. Il livello degli artefatti fornisce un'interfaccia di continuità senza trasformare questo strumento in un gestore di file:
+I pacchetti scrivono in `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`. Il livello degli artefatti offre un'interfaccia di continuità senza trasformare questo in uno strumento di gestione dei file:
 
 - `artifact_list` — indice contenente solo metadati, filtrabile per pacchetto, data, glob del nome.
 - `artifact_read` — lettura tipizzata tramite `{pacchetto, nome}` o `{percorso_json}`.
-- `artifact_diff` — confronto strutturato all'interno dello stesso pacchetto; evidenziazione delle modifiche "deboli".
-- `artifact_export_to_path` — scrive un artefatto esistente (con intestazione di provenienza) in una directory consentita specificata dal chiamante (`allowed_roots`). Rifiuta i file esistenti a meno che `overwrite: true` sia impostato.
+- `artifact_diff` — confronto strutturato all'interno dello stesso pacchetto; evidenziazione delle modifiche deboli.
+- `artifact_export_to_path` — scrive un artefatto esistente (con intestazione di provenienza) in una posizione specificata dal chiamante (`allowed_roots`). Rifiuta i file esistenti a meno che `overwrite: true` sia impostato.
 - `artifact_incident_note_snippet` — frammento di nota dell'operatore.
 - `artifact_onboarding_section_snippet` — frammento della guida introduttiva.
 - `artifact_release_note_snippet` — frammento di nota di rilascio (Bozza).
@@ -210,15 +250,15 @@ Nessuna chiamata a modelli in questo livello. Tutto viene generato a partire da 
 
 ## Modello di minaccia e telemetria
 
-**Dati accessibili:** percorsi di file forniti esplicitamente dal chiamante (`ollama_research`, strumenti per corpus), testo inline e artefatti richiesti dal chiamante per essere scritti in `~/.ollama-intern/artifacts/` o in una directory consentita specificata dal chiamante (`allowed_roots`).
+**Dati accessibili:** percorsi di file forniti esplicitamente dal chiamante (`ollama_research`, strumenti per corpus), testo inline e artefatti richiesti dal chiamante per essere scritti in `~/.ollama-intern/artifacts/` o in una posizione specificata dal chiamante (`allowed_roots`).
 
-**Dati NON accessibili:** qualsiasi cosa al di fuori di `source_paths` / `allowed_roots`. `..` viene rifiutato prima della normalizzazione. `artifact_export_to_path` rifiuta i file esistenti a meno che `overwrite: true` sia impostato. Le bozze indirizzate a percorsi protetti (`memory/`, `.claude/`, `docs/canon/`, ecc.) richiedono esplicitamente `confirm_write: true`, applicato lato server.
+**Dati non modificati:** qualsiasi elemento al di fuori dei percorsi `source_paths` / `allowed_roots`. L'uso di `..` viene bloccato prima della normalizzazione. La funzione `artifact_export_to_path` rifiuta i file esistenti a meno che `overwrite: true` sia specificato. Le versioni di prova che puntano a percorsi protetti (`memory/`, `.claude/`, `docs/canon/`, ecc.) richiedono esplicitamente `confirm_write: true`, con applicazione lato server.
 
-**Traffico in uscita:** **disabilitato per impostazione predefinita.** L'unico traffico in uscita è verso l'endpoint HTTP locale di Ollama. Nessuna chiamata al cloud, nessun ping di aggiornamento, nessuna segnalazione di crash.
+**Traffico in uscita:** **disattivato per impostazione predefinita.** L'unico traffico in uscita è diretto all'endpoint HTTP locale di Ollama. Non ci sono chiamate al cloud, né richieste di aggiornamento, né segnalazioni di crash.
 
-**Telemetria:** **nessuna.** Ogni chiamata viene registrata come una riga NDJSON in `~/.ollama-intern/log.ndjson` sulla tua macchina. Nessun dato lascia il sistema.
+**Telemetria:** **assente.** Ogni chiamata viene registrata come una riga in formato NDJSON nel file `~/.ollama-intern/log.ndjson` sul vostro computer. Nessun dato viene trasmesso al di fuori del dispositivo.
 
-**Errori:** formato strutturato `{ codice, messaggio, suggerimento, riprovare }`. Le tracce dello stack non vengono mai esposte nei risultati degli strumenti.
+**Errori:** struttura definita `{ code, message, hint, retryable }`. Le tracce dello stack non vengono mai esposte nei risultati degli strumenti.
 
 Politica completa: [SECURITY.md](SECURITY.md).
 
@@ -226,30 +266,30 @@ Politica completa: [SECURITY.md](SECURITY.md).
 
 ## Standard
 
-Conforme agli standard di [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck). Superamento dei test A–D; vedere [SHIP_GATE.md](SHIP_GATE.md) e [SCORECARD.md](SCORECARD.md).
+Conforme agli standard di [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck). Superati i controlli A–D; consultare [SHIP_GATE.md](SHIP_GATE.md) e [SCORECARD.md](SCORECARD.md).
 
-- **A. Sicurezza** — SECURITY.md, modello di minaccia, nessuna telemetria, sicurezza dei percorsi, `confirm_write` per percorsi protetti.
-- **B. Errori** — formato strutturato in tutti i risultati degli strumenti; nessuna traccia dello stack grezza.
+- **A. Sicurezza** — SECURITY.md, modello di minacce, assenza di telemetria, sicurezza dei percorsi, `confirm_write` per percorsi protetti.
+- **B. Errori** — struttura definita in tutti i risultati degli strumenti; assenza di tracce dello stack grezze.
 - **C. Documentazione** — README aggiornato, CHANGELOG, LICENZA; schemi degli strumenti auto-documentati.
-- **D. Igiene** — `npm run verify` (395 test), CI con scansione delle dipendenze, Dependabot, lockfile, `engines.node`.
+- **D. Affidabilità** — `npm run verify` (395 test), CI con scansione delle dipendenze, Dependabot, lockfile, `engines.node`.
 
 ---
 
-## Roadmap (miglioramenti, non ampliamento delle funzionalità)
+## Roadmap (miglioramenti, non ampliamenti)
 
-- **Fase 1 — Strato di delega** ✓ completata: interfaccia atomica, struttura uniforme, routing a livelli, meccanismi di protezione.
-- **Fase 2 — Strato di accuratezza** ✓ completata: suddivisione dello schema versione 2, BM25 + RRF, corpora dinamici, sintesi basate su evidenze, pacchetto di valutazione del recupero.
-- **Fase 3 — Strato di pacchetti e artefatti** ✓ completata: pacchetti con pipeline fissa e artefatti duraturi + livello di continuità.
-- **Fase 4 — Strato di adozione** — osservazioni sull'utilizzo reale con la RTX 5080, ottimizzazione delle aree problematiche.
-- **Fase 5 — Benchmark M5 Max** — dati pubblicabili una volta disponibile l'hardware (circa 24 aprile 2026).
+- **Fase 1 — Struttura di delega** ✓ completata: interfaccia atomica, involucro uniforme, routing a livelli, protezioni.
+- **Fase 2 — Struttura di affidabilità** ✓ completata: suddivisione dello schema v2, BM25 + RRF, corpora dinamici, riepiloghi supportati da prove, pacchetto di valutazione del recupero.
+- **Fase 3 — Struttura di pacchetti e artefatti** ✓ completata: pacchetti con pipeline fissa e artefatti duraturi + livello di continuità.
+- **Fase 4 — Struttura di adozione** — osservazione dell'utilizzo reale su RTX 5080, miglioramento delle aree problematiche.
+- **Fase 5 — Benchmark M5 Max** — pubblicazione dei risultati una volta disponibile l'hardware (circa 2026-04-24).
 
-Fasi di miglioramento per ogni livello. L'interfaccia atomica/pacchetto/artefatto rimane stabile.
+Fasi per livello di miglioramento. L'interfaccia atomica/pacchetto/artefatto rimane stabile.
 
 ---
 
 ## Licenza
 
-MIT — vedere [LICENSE](LICENSE).
+MIT — consultare [LICENSE](LICENSE).
 
 ---
 

@@ -49,7 +49,7 @@
     "next_checks": ["residency.evicted across last 24h", "OLLAMA_MAX_LOADED_MODELS vs loaded size"]
   },
   "tier_used": "deep",
-  "model": "qwen2.5:14b-instruct-q4_K_M",
+  "model": "hermes3:8b",
   "hardware_profile": "dev-rtx5080",
   "tokens_in": 4180, "tokens_out": 612,
   "elapsed_ms": 8410,
@@ -112,25 +112,65 @@ npm install -g ollama-intern-mcp
 
 एक ही ब्लॉक, `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) या `%APPDATA%\Claude\claude_desktop_config.json` (Windows) में लिखा गया है।
 
+### हर्मेस के साथ उपयोग करें
+
+इस एमसीपी (MCP) का परीक्षण 'हर्मेस एजेंट' ([https://github.com/NousResearch/Hermes](https://github.com/NousResearch/Hermes)) के साथ `hermes3:8b` पर ओलामा (Ollama) पर किया गया था (19 अप्रैल, 2026)। हर्मेस एक बाहरी एजेंट है जो इस एमसीपी की 'फ्रीज्ड प्रिमिटिव सरफेस' को *कॉल करता है* — यह योजना बनाता है, और हम काम करते हैं।
+
+संदर्भ कॉन्फ़िगरेशन ([hermes.config.example.yaml](hermes.config.example.yaml) इस रिपॉजिटरी में):
+
+```yaml
+model:
+  provider: custom
+  base_url: http://localhost:11434/v1
+  default: hermes3:8b
+  context_length: 65536    # Hermes requires 64K floor under model.*
+
+providers:
+  local-ollama:
+    name: local-ollama
+    base_url: http://localhost:11434/v1
+    api_mode: openai_chat
+    api_key: ollama
+    model: hermes3:8b
+
+mcp_servers:
+  ollama-intern:
+    command: npx
+    args: ["-y", "ollama-intern-mcp"]
+    env:
+      OLLAMA_HOST: http://localhost:11434
+      INTERN_PROFILE: dev-rtx5080
+      # hermes3:8b is the default ladder in v2.0.0, so tier overrides are
+      # only needed if you're pinning a different local model.
+```
+
+**प्रॉम्प्ट का स्वरूप महत्वपूर्ण है।** अनिवार्य टूल-इनवोकेशन प्रॉम्प्ट ("X को इस तर्क के साथ कॉल करें...") एकीकरण परीक्षण हैं — वे 8B के स्थानीय मॉडल को 'टूल_कॉल' उत्पन्न करने के लिए पर्याप्त ढांचा प्रदान करते हैं। सूची-रूप में दिए गए मल्टी-टास्क प्रॉम्प्ट ("A करें, फिर B करें, फिर C करें") बड़े मॉडलों के लिए क्षमता बेंचमार्क हैं; 8B पर सूची-रूप में दिए गए प्रॉम्प्ट में विफलता को "कनेक्शन टूटा हुआ है" के रूप में न समझें। पूर्ण एकीकरण विवरण और ज्ञात परिवहन संबंधी सीमाओं के लिए [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) देखें (ओलामा `/v1` स्ट्रीमिंग + openai-SDK गैर-स्ट्रीमिंग शिम)।
+
 ### मॉडल डाउनलोड
 
 **डिफ़ॉल्ट देव प्रोफ़ाइल (RTX 5080 16GB और इसी तरह):**
 
 ```bash
-ollama pull qwen2.5:7b-instruct-q4_K_M
-ollama pull qwen2.5-coder:7b-instruct-q4_K_M
-ollama pull qwen2.5:14b-instruct-q4_K_M
+ollama pull hermes3:8b
 ollama pull nomic-embed-text
-export OLLAMA_MAX_LOADED_MODELS=4
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
+```
+
+**क्वेन 3 का वैकल्पिक विकल्प (समान हार्डवेयर, क्वेन टूलिंग के लिए):**
+
+```bash
+ollama pull qwen3:8b
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+export INTERN_PROFILE=dev-rtx5080-qwen3
 ```
 
 **M5 मैक्स प्रोफ़ाइल (128GB एकीकृत):**
 
 ```bash
-ollama pull qwen2.5:14b-instruct-q4_K_M
-ollama pull qwen2.5-coder:32b-instruct-q4_K_M
-ollama pull llama3.3:70b-instruct-q4_K_M
+ollama pull qwen3:14b
+ollama pull qwen3:32b
 ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
@@ -148,7 +188,7 @@ export INTERN_PROFILE=m5-max
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -171,11 +211,11 @@ export INTERN_PROFILE=m5-max
 
 | प्रोफ़ाइल | तत्काल | कार्यशील | गहन | एम्बेड |
 |---|---|---|---|---|
-| **`dev-rtx5080`** (डिफ़ॉल्ट) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
-| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
-| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
+| **`dev-rtx5080`** (डिफ़ॉल्ट) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
+| `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**एक ही परिवार के मॉडलों का उपयोग:** डिफ़ॉल्ट विकास परिवेश में, खराब आउटपुट उपकरण या डिज़ाइन की समस्याओं के कारण होते हैं, न कि विभिन्न मॉडलों के बीच असंगति के कारण। `dev-rtx5080-llama` एक मानक है - M5 Max पर Llama का उपयोग करने से पहले, Llama 8B के माध्यम से समान मूल्यांकन चलाएं।
+**डिफ़ॉल्ट विकास (डेवलपमेंट) वातावरण** तीनों कार्य स्तरों को `hermes3:8b` पर समेटता है — यह मान्य हर्मेस एजेंट एकीकरण पथ है। समान मॉडल का उपयोग शीर्ष से नीचे तक करने का मतलब है कि केवल एक चीज डाउनलोड करनी है, एक ही निवास लागत है, और समझने के लिए केवल एक व्यवहार है। जो उपयोगकर्ता क्वेन 3 को पसंद करते हैं (इसके `THINK_BY_SHAPE` के साथ), वे `dev-rtx5080-qwen3` का उपयोग कर सकते हैं। `m5-max` क्वेन 3 का वह संस्करण है जो एकीकृत मेमोरी के लिए अनुकूलित है।
 
 ---
 

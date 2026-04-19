@@ -13,15 +13,15 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**Claude Code 的本地实习生。** 28 个工具，以证据为基础的简报，持久的成果。
+**Claude Code 的本地实习生。** 28 种实用工具，以证据为基础的简报，以及经久耐用的成果。
 
-一个 MCP 服务器，为 Claude Code 提供一个**本地实习生**，它具有规则、层级、办公桌和文件柜。Claude 选择 _工具_；工具选择 _层级_（即时/工作型/深度/嵌入）；层级会生成一个文件，您可以在下周打开它。
+一个名为“MCP”的服务器，为“Claude Code”提供了一个“本地实习生”角色，该角色拥有规则、等级、办公桌和文件柜。 “Claude”选择“工具”；“工具”选择“等级”（分为“即时”、“工作马”、“深度”和“嵌入”）；“等级”会生成一个文件，您可以在下周打开查看。
 
-无云。无遥测。没有任何“自主”功能。每个调用都会显示其工作过程。
+没有云服务。没有远程数据传输。没有任何“自动”功能。每一次操作都能清楚地看到其工作原理。
 
 ---
 
-## 示例：一个调用，一个成果
+## 示例：一个请求，一个成果
 
 ```jsonc
 // Claude → ollama-intern-mcp
@@ -35,7 +35,7 @@
 }
 ```
 
-返回一个指向磁盘上文件的“信封”：
+返回一个指向磁盘上文件的“信封”对象。
 
 ```jsonc
 {
@@ -49,7 +49,7 @@
     "next_checks": ["residency.evicted across last 24h", "OLLAMA_MAX_LOADED_MODELS vs loaded size"]
   },
   "tier_used": "deep",
-  "model": "qwen2.5:14b-instruct-q4_K_M",
+  "model": "hermes3:8b",
   "hardware_profile": "dev-rtx5080",
   "tokens_in": 4180, "tokens_out": 612,
   "elapsed_ms": 8410,
@@ -57,29 +57,29 @@
 }
 ```
 
-该 Markdown 文件是实习生的办公桌输出，包含标题、带有引用的证据块、用于后续检查的 `next_checks`，以及如果证据不足则显示 `weak: true` 的提示。它具有确定性：渲染器是代码，而不是提示。明天打开它，下周进行差异比较，然后使用 `ollama_artifact_export_to_path` 将其导出到手册中。
+该 Markdown 文件是实习人员工作台的输出结果，包括标题、带有引用的证据块，以及如果证据不足时显示的“弱：true”提示。它的生成过程是确定的：渲染器是代码，而不是提示。明天打开它，下周进行差异比较，然后使用 `ollama_artifact_export_to_path` 命令将其导出到手册中。
 
-在这个类别中的每个竞争对手都以“节省令牌”为卖点。我们以 _这里是实习生编写的文件_ 为卖点。
+在这个类别中，所有竞争对手都以“节省令牌”为宣传重点。而我们则强调的是：“这是实习生撰写的文档。”
 
 ---
 
-## 内容：四个层级，28 个工具
+## 这里包含四层，共28件工具
 
-| 层级 | 数量 | 包含的内容 |
+| 等级；层级。 | 计数。 | 这里住着什么？ |
 |---|---|---|
-| **Atoms** | 15 | 具有工作功能的原始模块。`classify`（分类）、`extract`（提取）、`triage_logs`（日志分级）、`summarize_fast` / `deep`（快速/深度摘要）、`draft`（草稿）、`research`（研究）、`corpus_search`（语料库搜索）/ `answer`（回答）/ `index`（索引）/ `refresh`（刷新）/ `list`（列表）、`embed_search`（嵌入式搜索）、`embed`（嵌入）、`chat`（聊天）。支持批量处理的原子模块（`classify`、`extract`、`triage_logs`）接受 `items: [{id, text}]`。 |
-| **Briefs** | 3 | 基于证据的结构化简报。`incident_brief`（事件简报）、`repo_brief`（仓库简报）、`change_brief`（变更简报）。每个声明都引用一个证据 ID；未知的条目在服务器端被删除。如果证据不足，会显示 `weak: true`，而不是虚假的叙述。 |
-| **Packs** | 3 | 固定流水线，用于生成持久的 Markdown + JSON 文件，保存在 `~/.ollama-intern/artifacts/` 目录下。`incident_pack`（事件包）、`repo_pack`（仓库包）、`change_pack`（变更包）。具有确定性的渲染器，不会对成果形状进行模型调用。 |
-| **Artifacts** | 7 | 提供对包输出的统一界面。`artifact_list`（成果列表）/ `read`（读取）/ `diff`（差异比较）/ `export_to_path`（导出到路径），以及三个确定性的片段：`incident_note`（事件说明）、`onboarding_section`（入职部分）、`release_note`（发布说明）。 |
+| **Atoms** | 15 | 以下是一些预定义的任务类型：`classify`（分类）、`extract`（提取）、`triage_logs`（日志分析）、`summarize_fast` / `deep`（快速/深度摘要）、`draft`（起草）、`research`（研究）、`corpus_search` / `answer`（语料库搜索/回答）、`index`（索引）、`refresh`（刷新）、`list`（列表）、`embed_search`（嵌入式搜索）、`embed`（嵌入）、`chat`（聊天）。 能够处理批处理任务的模块（`classify`、`extract`、`triage_logs`）接受以下格式的输入：`items: [{id, text}]`。 |
+| **Briefs** | 3 | 基于证据的、结构化的操作简报。包括“事件简报”、“报告简报”和“变更简报”等类型。每个论点都引用了证据ID；未知信息在服务器端进行处理并被移除。对于证据不足的情况，会标记为“证据不足：true”，而不是捏造虚假信息。 |
+| **Packs** | 3 | 固定流水线任务，用于将持久化的 Markdown 和 JSON 数据写入到 `~/.ollama-intern/artifacts/` 目录。这些任务包括 `incident_pack`、`repo_pack` 和 `change_pack`。这些渲染过程是确定性的，不会对生成的artifact进行任何模型调用。 |
+| **Artifacts** | 7 | 针对打包输出结果，提供连续性信息。包含以下内容：`artifact_list`（工件列表）、`read`（读取）、`diff`（差异）、`export_to_path`（导出到路径），以及三个确定性的片段：`incident_note`（事件记录）、`onboarding_section`（入职指南）和 `release_note`（发布说明）。 |
 
-总计：**18 个原始模块 + 3 个包 + 7 个成果工具 = 28 个**。
+总计：**18 个基础物品 + 3 个礼包 + 7 件工具 = 28 件**。
 
-冻结的模块：
-- 原始模块冻结在 18 个（原始模块 + 简报）。没有新的原始模块工具。
-- 包冻结在 3 个。没有新的包类型。
-- 成果层级冻结在 7 个。
+冻结内容：
+- 原子：已冻结在18个（包括原子和简易版）。 不会增加新的原子工具。
+- 组装包：已冻结在3个。 不会增加新的组装包类型。
+- 遗物等级：已冻结在7级。
 
-完整的工具参考位于 [手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/) 中。
+完整的工具参考资料请查阅[手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/)。
 
 ---
 
@@ -89,9 +89,9 @@
 npm install -g ollama-intern-mcp
 ```
 
-需要安装 [Ollama](https://ollama.com)，并且已下载相应的模型。
+需要安装并运行本地的 [Ollama](https://ollama.com) 软件，并且需要下载相应的模型。
 
-### Claude Code
+### 克劳德代码
 
 ```json
 {
@@ -108,47 +108,87 @@ npm install -g ollama-intern-mcp
 }
 ```
 
-### Claude Desktop
+### Claude 桌面版
 
-相同的配置块，写入到 `~/Library/Application Support/Claude/claude_desktop_config.json`（macOS）或 `%APPDATA%\Claude\claude_desktop_config.json`（Windows）。
+内容相同，将被写入到 `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS 系统) 或 `%APPDATA%\Claude\claude_desktop_config.json` (Windows 系统) 文件中。
 
-### 模型下载
+### 与爱马仕产品搭配使用
 
-**默认开发环境 (RTX 5080 16GB 及类似配置):**
+该模型控制程序（MCP）已使用 [Hermes Agent](https://github.com/NousResearch/Hermes) 在 Ollama 上的 `hermes3:8b` 模型上进行了端到端的验证（验证日期：2026年4月19日）。Hermes 是一个外部代理，它会*调用*该 MCP 的固定底层接口——它负责规划，我们负责执行。
+
+参考配置（本仓库中的 [hermes.config.example.yaml] 文件）：
+
+```yaml
+model:
+  provider: custom
+  base_url: http://localhost:11434/v1
+  default: hermes3:8b
+  context_length: 65536    # Hermes requires 64K floor under model.*
+
+providers:
+  local-ollama:
+    name: local-ollama
+    base_url: http://localhost:11434/v1
+    api_mode: openai_chat
+    api_key: ollama
+    model: hermes3:8b
+
+mcp_servers:
+  ollama-intern:
+    command: npx
+    args: ["-y", "ollama-intern-mcp"]
+    env:
+      OLLAMA_HOST: http://localhost:11434
+      INTERN_PROFILE: dev-rtx5080
+      # hermes3:8b is the default ladder in v2.0.0, so tier overrides are
+      # only needed if you're pinning a different local model.
+```
+
+**提示语的格式很重要。** 强制性的工具调用提示语（例如“调用 X，参数为…”）是集成测试，它们为 8B 的本地模型提供了足够的结构，使其能够生成清晰的 `tool_calls`。 列表形式的多任务提示语（例如“先做 A，然后 B，最后 C”）是用于评估更大模型能力的基准测试；不要将 8B 模型在列表形式提示语下的失败归因于“底层连接出现问题”。 请参阅 [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)，以获取完整的集成测试流程以及已知的传输相关注意事项（Ollama 的 `/v1` 流式传输以及 openai-SDK 的非流式传输适配器）。
+
+### 模特拉伸
+
+**默认开发配置 (RTX 5080 16GB 及类似配置):**
 
 ```bash
-ollama pull qwen2.5:7b-instruct-q4_K_M
-ollama pull qwen2.5-coder:7b-instruct-q4_K_M
-ollama pull qwen2.5:14b-instruct-q4_K_M
+ollama pull hermes3:8b
 ollama pull nomic-embed-text
-export OLLAMA_MAX_LOADED_MODELS=4
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
 ```
 
-**M5 Max 环境 (128GB 统一内存):**
+**Qwen 3 专用配置 (相同硬件，用于 Qwen 工具):**
 
 ```bash
-ollama pull qwen2.5:14b-instruct-q4_K_M
-ollama pull qwen2.5-coder:32b-instruct-q4_K_M
-ollama pull llama3.3:70b-instruct-q4_K_M
+ollama pull qwen3:8b
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+export INTERN_PROFILE=dev-rtx5080-qwen3
+```
+
+**M5 Max 配置 (128GB 统一内存):**
+
+```bash
+ollama pull qwen3:14b
+ollama pull qwen3:32b
 ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-每个层级的环境变量（`INTERN_TIER_INSTANT`、`INTERN_TIER_WORKHORSE`、`INTERN_TIER_DEEP`、`INTERN_EMBED_MODEL`）仍然可以覆盖配置文件，用于一次性使用。
+每个层级的环境变量 (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) 仍然会覆盖配置文件的选择，用于一次性任务。
 
 ---
 
-## 统一的“信封”
+## 统一的接口
 
-每个工具都返回相同的结构：
+每个工具返回相同的结构：
 
 ```ts
 {
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -161,64 +201,64 @@ export INTERN_PROFILE=m5-max
 }
 ```
 
-`residency`（驻留状态）来自 Ollama 的 `/api/ps`。当 `evicted: true` 或 `size_vram < size` 时，模型会被分页到磁盘，推理速度下降 5-10 倍。向用户显示此信息，以便他们知道需要重启 Ollama 或减少已加载的模型数量。
+`residency` (模型驻留状态) 来自 Ollama 的 `/api/ps` 接口。当 `evicted: true` (模型已被移除) 或 `size_vram < size` (显存不足) 时，模型会被写入磁盘，推理速度会下降 5-10 倍。系统会向用户显示此信息，以便用户重启 Ollama 或减少加载的模型数量。
 
-每个调用都会记录为一行 NDJSON 数据，保存在 `~/.ollama-intern/log.ndjson` 中。通过 `hardware_profile` 进行过滤，以将开发环境的数据排除在可发布的基准测试之外。
+每个调用都会被记录为一行 NDJSON 数据，保存在 `~/.ollama-intern/log.ndjson` 文件中。可以通过 `hardware_profile` 进行过滤，以将开发环境的数据排除在可发布的基准测试之外。
 
 ---
 
-## 硬件配置文件
+## 硬件配置
 
-| 配置文件 | 即时 | 工作型 | 深度 | 嵌入 |
+| 配置 | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| **`dev-rtx5080`**（默认） | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
-| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
-| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
+| **`dev-rtx5080`** (默认) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
+| `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**同一系列模型在默认开发环境下的表现** 如果输出结果不理想，通常是工具或设计问题，而不是不同系列模型之间的不兼容。`dev-rtx5080-llama` 是一个基准，在将 Llama 模型部署到 M5 Max 之前，应该先在 Llama 8B 上运行相同的评估。
-
----
-
-## 证据法
-
-这些规则在服务器端执行，而不是在提示词中：
-
-- **必须提供引用。** 每一个简短的陈述都必须引用一个证据 ID。
-- **未知内容在服务器端被移除。** 如果模型引用了不在证据包中的 ID，这些 ID 会在返回结果之前被移除，并会显示警告。
-- **“弱”的证据就是“弱”的。** 弱证据会用 `weak: true` 标记，并附带说明。不会将其伪装成完整的叙述。
-- **用于调查，而非提供指令。** 仅限于 `next_checks` / `read_next` / `likely_breakpoints`。 提示词禁止使用“应用此修复”。
-- **确定性的渲染器。** 标记的文本格式是代码，而不是提示词。`draft` 仍然保留用于需要模型进行措辞调整的文本。
-- **仅限同一包的差异。** 跨包的 `artifact_diff` 会被明确拒绝；每个包的数据保持独立。
+**默认开发配置** 将所有三个工作层都映射到 `hermes3:8b`，这是经过验证的 Hermes Agent 集成路径。使用相同的模型可以简化操作，减少学习成本，并降低资源消耗。如果用户更喜欢 Qwen 3 (它具有 `THINK_BY_SHAPE` 功能)，可以选择 `dev-rtx5080-qwen3` 配置。`m5-max` 配置是为 Qwen 3 优化的，适用于统一内存环境。
 
 ---
 
-## 工件与连续性
+## 证据规则
 
-每个包会将数据写入到 `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`。 工件层提供了一个连续性界面，但不会将其变成一个文件管理工具：
+这些规则在服务器端强制执行，而不是在提示词中：
 
-- `artifact_list` — 仅包含元数据的索引，可以按包、日期、slug 进行过滤。
-- `artifact_read` — 通过 `{pack, slug}` 或 `{json_path}` 进行类型读取。
-- `artifact_diff` — 对同一包的结构化比较；会显示弱化情况。
-- `artifact_export_to_path` — 将现有工件（包含来源信息头）写入到调用者声明的 `allowed_roots`。 除非 `overwrite: true`，否则会拒绝写入已存在的文件。
-- `artifact_incident_note_snippet` — 操作员备注片段。
-- `artifact_onboarding_section_snippet` — 引导手册片段。
-- `artifact_release_note_snippet` — DRAFT 版本说明片段。
-
-此层中没有模型调用。 所有内容都从存储的内容中渲染。
+- **必须提供引用。** 每个简短的陈述都必须引用一个证据 ID。
+- **未知内容在服务器端被移除。** 如果模型引用了不在证据包中的 ID，则这些 ID 会在返回结果之前被移除，并会显示警告。
+- **弱证据标记为弱。** 弱证据会标记为 `weak: true`，并附带说明，不会被伪装成虚假叙述。
+- **用于调查，而非指导。** 仅提供 `next_checks` (下一步检查) / `read_next` (下一步阅读) / `likely_breakpoints` (可能的中断点)。提示词禁止使用 "应用此修复"。
+- **确定性的渲染器。** 标记文本的形状是代码，而不是提示词。`draft` (草稿) 仍然保留用于需要模型措辞的文本。
+- **仅支持同一包的差异。** 跨包的 `artifact_diff` (差异) 会被明确拒绝；每个包的数据保持独立。
 
 ---
 
-## 安全模型与遥测
+## 数据和连续性
 
-**访问的数据：** 调用者明确传递的文件路径（`ollama_research`、语料库工具），内联文本，以及调用者请求写入到 `~/.ollama-intern/artifacts/` 或调用者声明的 `allowed_roots` 的工件。
+每个包会将数据写入 `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`。数据层提供连续性，但不会将其变成一个文件管理工具：
 
-**未访问的数据：** 任何位于 `source_paths` / `allowed_roots` 之外的数据。 `..` 会在归一化之前被拒绝。 除非 `overwrite: true`，否则 `artifact_export_to_path` 会拒绝写入已存在的文件。 针对受保护路径（`memory/`、`.claude/`、`docs/canon/` 等）的草稿需要明确声明 `confirm_write: true`，并在服务器端强制执行。
+- `artifact_list` (数据列表) — 仅包含元数据的索引，可以按包、日期、slug 前缀进行过滤。
+- `artifact_read` (数据读取) — 按 `{pack, slug}` (包和 slug) 或 `{json_path}` (JSON 路径) 进行类型读取。
+- `artifact_diff` (数据差异) — 结构化的同一包比较；弱点会被突出显示。
+- `artifact_export_to_path` (数据导出到路径) — 将现有数据（包含来源信息）导出到调用者声明的 `allowed_roots` 目录。如果目标文件已存在，则会拒绝导出，除非设置了 `overwrite: true`。
+- `artifact_incident_note_snippet` (事件备注片段) — 操作员备注片段。
+- `artifact_onboarding_section_snippet` (入职部分片段) — 手册片段。
+- `artifact_release_note_snippet` (发布备注片段) — DRAFT (草稿) 发布备注片段。
 
-**网络出站：** **默认情况下禁用。** 唯一的外部流量是发送到本地 Ollama HTTP 端点。 不会进行任何云端调用、更新提示或崩溃报告。
+此层级中没有模型调用。所有内容都从存储的内容中渲染。
 
-**遥测：** **无。** 每次调用都会被记录为一行 NDJSON 数据，写入到你的机器上的 `~/.ollama-intern/log.ndjson`。 没有任何数据会离开本地。
+---
 
-**错误：** 结构化格式为 `{ code, message, hint, retryable }`。 堆栈跟踪永远不会通过工具结果暴露。
+## 威胁模型和遥测
+
+**涉及的数据：** 调用者显式传递的文件路径 (`ollama_research`, corpus tools)，内联文本，以及调用者请求写入到 `~/.ollama-intern/artifacts/` 或调用者声明的 `allowed_roots` 目录中的数据。
+
+**未被修改的数据：** 任何位于 `source_paths` 或 `allowed_roots` 之外的数据都不会被修改。 `..` 在标准化之前会被拒绝。 `artifact_export_to_path` 除非 `overwrite: true`，否则会拒绝已存在的文件。 针对受保护路径（如 `memory/`, `.claude/`, `docs/canon/` 等）的草稿需要明确设置 `confirm_write: true`，服务器端强制执行。
+
+**网络出站：** **默认情况下禁用。** 唯一的出站流量是发送到本地 Ollama HTTP 接口。 不会进行任何云端调用，也不会发送更新请求或崩溃报告。
+
+**遥测：** **无。** 每次调用都会被记录为一行 NDJSON 数据，存储在您的机器上的 `~/.ollama-intern/log.ndjson` 文件中。 没有任何数据会离开设备。
+
+**错误：** 采用结构化的格式 `{ code, message, hint, retryable }`。 堆栈跟踪信息永远不会通过工具结果暴露。
 
 完整策略：[SECURITY.md](SECURITY.md)。
 
@@ -226,30 +266,30 @@ export INTERN_PROFILE=m5-max
 
 ## 标准
 
-遵循 [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) 标准。 通过 A–D 级别的硬性检查；请参阅 [SHIP_GATE.md](SHIP_GATE.md) 和 [SCORECARD.md](SCORECARD.md)。
+符合 [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) 的标准。 通过 A–D 级别的测试；请参阅 [SHIP_GATE.md](SHIP_GATE.md) 和 [SCORECARD.md](SCORECARD.md)。
 
-- **A. 安全性** — SECURITY.md，安全模型，无遥测，路径安全，针对受保护路径使用 `confirm_write`
-- **B. 错误** — 所有工具结果的结构化格式；不暴露原始堆栈信息
-- **C. 文档** — README 保持最新，CHANGELOG，LICENSE；工具模式具有自文档功能
-- **D. 清洁性** — `npm run verify` (395 个测试)，CI 包含依赖项扫描，Dependabot，lockfile，`engines.node`
+- **A. 安全性：** SECURITY.md，威胁模型，无遥测，路径安全，针对受保护路径使用 `confirm_write`。
+- **B. 错误：** 所有工具结果都采用结构化的格式；不暴露原始堆栈信息。
+- **C. 文档：** README 文档当前版本，CHANGELOG，LICENSE；工具模式具有自文档功能。
+- **D. 质量：** `npm run verify` (395 个测试)，CI 包含依赖项扫描，Dependabot，lockfile，`engines.node`。
 
 ---
 
-## 路线图（重点是增强安全性，而非范围扩大）
+## 路线图（加强安全，而非扩大范围）
 
-- **第一阶段 — 授权核心** 已完成：原子层、统一接口、分层路由、安全措施。
-- **第二阶段 — 真实性核心** 已完成：模式 v2 分块、BM25 + RRF、动态语料库、基于证据的简报、检索评估工具包。
-- **第三阶段 — 软件包和工件核心** 已完成：具有持久工件和连续性层的固定流水线软件包。
-- **第四阶段 — 采用核心** 正在进行：在 RTX 5080 上进行实际使用观察，并优化出现的问题。
-- **第五阶段 — M5 Max 性能基准测试** 计划发布：硬件到位后，发布可公开的性能数据（预计 2026 年 4 月 24 日）。
+- **第一阶段 — 授权核心：** ✓ 已发布：原子表面，统一接口，分层路由，安全措施。
+- **第二阶段 — 真实性核心：** ✓ 已发布：模式 v2 分块，BM25 + RRF，动态语料库，基于证据的简报，检索评估包。
+- **第三阶段 — 打包和工件核心：** ✓ 已发布：具有持久工件和连续性的固定流水线打包。
+- **第四阶段 — 采用核心：** — 在 RTX 5080 上进行实际使用观察，并完善表面上的问题。
+- **第五阶段 — M5 Max 性能基准测试：** — 在硬件到位后发布可公开的性能数据（约 2026 年 4 月 24 日）。
 
-各阶段以安全增强层为基础进行。原子层、软件包和工件接口保持不变。
+按安全加固层进行划分。 原子/打包/工件表面保持不变。
 
 ---
 
 ## 许可证
 
-MIT 协议 — 参见 [LICENSE](LICENSE)。
+MIT — 参见 [LICENSE](LICENSE)。
 
 ---
 
