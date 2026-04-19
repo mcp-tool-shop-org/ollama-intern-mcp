@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-This MCP was validated end-to-end with [Hermes Agent](https://github.com/NousResearch/Hermes) against `hermes3:8b` on Ollama on 2026-04-19. Hermes is an external agent that *calls into* this MCP's 28-tool frozen primitive surface — it does the planning, the intern does the work.
+This MCP was validated end-to-end with [Hermes Agent](https://github.com/NousResearch/hermes-agent) against `hermes3:8b` on Ollama on 2026-04-19. Hermes is an external agent that *calls into* this MCP's 28-tool frozen primitive surface — it does the planning, the intern does the work.
 
 Pairing works at v2.0.0 because the default model ladder moved from the retired `qwen2.5:*` family to `hermes3:8b`, and `source_paths` schema no longer requires `min: 1` on log-driven `incident_pack` / `change_pack` calls.
 
@@ -14,8 +14,14 @@ Pairing works at v2.0.0 because the default model ladder moved from the retired 
 ```bash
 ollama pull hermes3:8b
 ollama pull nomic-embed-text
-npm install -g @nousresearch/hermes-agent  # or the distribution you use
+
+# Hermes Agent — Linux / macOS / WSL2 / Termux
+curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+source ~/.bashrc   # or ~/.zshrc
+hermes --version
 ```
+
+Native Windows is not supported by Hermes — use WSL2. The validated config below assumes Hermes is reachable on its install path; the npx-spawned `ollama-intern-mcp` runs from wherever Hermes can shell out.
 
 ## Config
 

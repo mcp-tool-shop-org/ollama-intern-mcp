@@ -17,7 +17,7 @@
 
 An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
-**Also drives [Hermes Agent](https://github.com/NousResearch/Hermes) on `hermes3:8b`** — validated end-to-end 2026-04-19. The default ladder is `hermes3:8b`; `qwen3:*` is the alternate rail. See [Use with Hermes](#use-with-hermes) below.
+**Also drives [Hermes Agent](https://github.com/NousResearch/hermes-agent) on `hermes3:8b`** — validated end-to-end 2026-04-19. The default ladder is `hermes3:8b`; `qwen3:*` is the alternate rail. See [Use with Hermes](#use-with-hermes) below.
 
 No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
@@ -116,7 +116,7 @@ Same block, written to `~/Library/Application Support/Claude/claude_desktop_conf
 
 ### Use with Hermes
 
-This MCP was validated end-to-end with [Hermes Agent](https://github.com/NousResearch/Hermes) against `hermes3:8b` on Ollama (2026-04-19). Hermes is an external agent that *calls into* this MCP's frozen primitive surface — it does the planning, we do the work.
+This MCP was validated end-to-end with [Hermes Agent](https://github.com/NousResearch/hermes-agent) against `hermes3:8b` on Ollama (2026-04-19). Hermes is an external agent that *calls into* this MCP's frozen primitive surface — it does the planning, we do the work.
 
 Reference config ([hermes.config.example.yaml](hermes.config.example.yaml) in this repo):
 
