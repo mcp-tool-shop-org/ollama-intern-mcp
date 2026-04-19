@@ -12,7 +12,7 @@ sidebar:
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -42,11 +42,11 @@ Tiers are picked by the tool, not by Claude. Pick the job; the tier follows.
 
 | Profile | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| `dev-rtx5080` (default) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
-| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
-| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
+| `dev-rtx5080` (default) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
+| `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-The default dev profile keeps the same Qwen family top-to-bottom so bad outputs are tool/design problems, not cross-family mismatches. `dev-rtx5080-llama` is the parity rail — run the same gold evals through Llama 8B before committing to Llama on bigger hardware.
+The default dev profile collapses all three work tiers onto `hermes3:8b` — the validated Hermes Agent integration path. One model to pull, one residency cost, one set of behavior. `dev-rtx5080-qwen3` is the alternate rail for callers who want Qwen 3's thinking mode via the server's `THINK_BY_SHAPE` plumbing. `m5-max` scales the Qwen 3 ladder for unified memory.
 
 ## Residency — reading `/api/ps`
 
@@ -63,7 +63,7 @@ When you see any of these during a slow call, trim `OLLAMA_MAX_LOADED_MODELS` or
 Every call is logged as one line of NDJSON to `~/.ollama-intern/log.ndjson`:
 
 ```json
-{"kind":"call","ts":"2026-04-16T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"qwen2.5:7b-instruct-q4_K_M","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
+{"kind":"call","ts":"2026-04-19T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"hermes3:8b","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
 ```
 
 No prompts are logged. No inline text is logged. Just the envelope. Nothing leaves the box.
@@ -76,7 +76,7 @@ Env vars beat profile picks for one-off swaps:
 
 | Env var | Example |
 |---|---|
-| `INTERN_TIER_INSTANT` | `qwen2.5:7b-instruct-q4_K_M` |
-| `INTERN_TIER_WORKHORSE` | `qwen2.5-coder:7b-instruct-q4_K_M` |
-| `INTERN_TIER_DEEP` | `qwen2.5:14b-instruct-q4_K_M` |
+| `INTERN_TIER_INSTANT` | `hermes3:8b` |
+| `INTERN_TIER_WORKHORSE` | `hermes3:8b` |
+| `INTERN_TIER_DEEP` | `hermes3:8b` |
 | `INTERN_EMBED_MODEL` | `nomic-embed-text` |

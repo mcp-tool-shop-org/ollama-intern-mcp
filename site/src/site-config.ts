@@ -12,11 +12,11 @@ export const config: SiteConfig = {
     'MIT Licensed — built by <a href="https://mcp-tool-shop.github.io/" style="color:var(--color-muted);text-decoration:underline">MCP Tool Shop</a>',
 
   hero: {
-    badge: 'Local · evidence-first · MIT',
+    badge: 'Local · evidence-first · Hermes-ready · MIT',
     headline: 'The local intern',
     headlineAccent: 'for Claude Code.',
     description:
-      '28 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. No cloud. No telemetry. Every call shows its work.',
+      '28 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. v2.0.0 ships a validated Hermes Agent integration path on hermes3:8b. No cloud. No telemetry. Every call shows its work.',
     primaryCta: { href: '#example', label: 'See a pack run' },
     secondaryCta: { href: 'handbook/', label: 'Read the Handbook' },
     previews: [
@@ -49,7 +49,7 @@ export const config: SiteConfig = {
         label: 'Envelope',
         code: `{
   "tier_used": "deep",
-  "model": "qwen2.5:14b-instruct-q4_K_M",
+  "model": "hermes3:8b",
   "hardware_profile": "dev-rtx5080",
   "tokens_in": 4180, "tokens_out": 612,
   "elapsed_ms": 8410,
@@ -174,12 +174,24 @@ weak: false · evidence_count: 6
 }`,
         },
         {
-          title: 'Model pulls (dev-rtx5080)',
-          code: `ollama pull qwen2.5:7b-instruct-q4_K_M
-ollama pull qwen2.5-coder:7b-instruct-q4_K_M
-ollama pull qwen2.5:14b-instruct-q4_K_M
+          title: 'Hermes Agent (v2.0.0+ validated path)',
+          code: `# Nous Research Hermes Agent + hermes3:8b on Ollama
+# Validated end-to-end 2026-04-19 — full config in
+# hermes.config.example.yaml in the repo root.
+mcp_servers:
+  ollama-intern:
+    command: npx
+    args: ["-y", "ollama-intern-mcp"]
+    env:
+      OLLAMA_HOST: http://localhost:11434
+      INTERN_PROFILE: dev-rtx5080
+# See: handbook/with-hermes/ for the full walkthrough.`,
+        },
+        {
+          title: 'Model pulls (dev-rtx5080 — default hermes3:8b ladder)',
+          code: `ollama pull hermes3:8b
 ollama pull nomic-embed-text
-export OLLAMA_MAX_LOADED_MODELS=4
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1`,
         },
       ],

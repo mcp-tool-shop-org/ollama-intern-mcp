@@ -1,0 +1,50 @@
+# Hermes Agent config for ollama-intern-mcp — validated 2026-04-19
+#
+# Copy to your Hermes install directory (typically alongside Hermes's own
+# config.yaml) and adjust paths. Full walkthrough:
+#   https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/
+#
+# Why this shape specifically:
+#   - `model.*` (nested) is required — Hermes's ready-check rejects the
+#     flat `model: <provider>/<name>` form.
+#   - `context_length: 65536` under `model:` enforces Hermes's 64K floor;
+#     the per-provider `context_length` values are advisory, not the floor.
+#   - `providers.local-ollama.api_mode: openai_chat` routes chat.completions
+#     through Ollama's OpenAI-compatible `/v1` endpoint.
+#   - `mcp_servers.ollama-intern` launches this MCP via npx; tier env
+#     overrides let you pin specific models without editing the profile.
+
+model:
+  provider: custom
+  base_url: http://localhost:11434/v1
+  default: hermes3:8b
+  context_length: 65536
+
+providers:
+  local-ollama:
+    name: local-ollama
+    base_url: http://localhost:11434/v1
+    api_mode: openai_chat
+    api_key: ollama
+    model: hermes3:8b
+    models:
+      hermes3:8b: { name: hermes3:8b, context_length: 131072 }
+      qwen3:14b:  { name: qwen3:14b,  context_length: 32768 }
+      qwen3:8b:   { name: qwen3:8b,   context_length: 32768 }
+
+mcp_servers:
+  ollama-intern:
+    command: npx
+    args:
+      - "-y"
+      - ollama-intern-mcp
+    env:
+      OLLAMA_HOST: http://localhost:11434
+      INTERN_PROFILE: dev-rtx5080
+      # Tier env overrides are optional in v2.0.0+ (default ladder is
+      # hermes3:8b across Instant/Workhorse/Deep). Uncomment to pin a
+      # different model, e.g.:
+      # INTERN_TIER_INSTANT: hermes3:8b
+      # INTERN_TIER_WORKHORSE: hermes3:8b
+      # INTERN_TIER_DEEP: hermes3:8b
+      # INTERN_EMBED_MODEL: nomic-embed-text

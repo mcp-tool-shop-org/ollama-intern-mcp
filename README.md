@@ -49,7 +49,7 @@ Returns an envelope pointing at a file on disk:
     "next_checks": ["residency.evicted across last 24h", "OLLAMA_MAX_LOADED_MODELS vs loaded size"]
   },
   "tier_used": "deep",
-  "model": "qwen2.5:14b-instruct-q4_K_M",
+  "model": "hermes3:8b",
   "hardware_profile": "dev-rtx5080",
   "tokens_in": 4180, "tokens_out": 612,
   "elapsed_ms": 8410,
@@ -112,25 +112,65 @@ Requires [Ollama](https://ollama.com) running locally and the tier models pulled
 
 Same block, written to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
 
+### Use with Hermes
+
+This MCP was validated end-to-end with [Hermes Agent](https://github.com/NousResearch/Hermes) against `hermes3:8b` on Ollama (2026-04-19). Hermes is an external agent that *calls into* this MCP's frozen primitive surface — it does the planning, we do the work.
+
+Reference config ([hermes.config.example.yaml](hermes.config.example.yaml) in this repo):
+
+```yaml
+model:
+  provider: custom
+  base_url: http://localhost:11434/v1
+  default: hermes3:8b
+  context_length: 65536    # Hermes requires 64K floor under model.*
+
+providers:
+  local-ollama:
+    name: local-ollama
+    base_url: http://localhost:11434/v1
+    api_mode: openai_chat
+    api_key: ollama
+    model: hermes3:8b
+
+mcp_servers:
+  ollama-intern:
+    command: npx
+    args: ["-y", "ollama-intern-mcp"]
+    env:
+      OLLAMA_HOST: http://localhost:11434
+      INTERN_PROFILE: dev-rtx5080
+      # hermes3:8b is the default ladder in v2.0.0, so tier overrides are
+      # only needed if you're pinning a different local model.
+```
+
+**Prompt shape matters.** Imperative tool-invocation prompts ("Call X with args …") are the integration test — they give an 8B local model enough scaffolding to emit clean `tool_calls`. List-form multi-task prompts ("do A, then B, then C") are capability benchmarks for larger models; don't interpret a list-form failure on 8B as "the wiring is broken." See [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) for the full integration walkthrough + known transport caveats (Ollama `/v1` streaming + openai-SDK non-streaming shim).
+
 ### Model pulls
 
 **Default dev profile (RTX 5080 16GB and similar):**
 
 ```bash
-ollama pull qwen2.5:7b-instruct-q4_K_M
-ollama pull qwen2.5-coder:7b-instruct-q4_K_M
-ollama pull qwen2.5:14b-instruct-q4_K_M
+ollama pull hermes3:8b
 ollama pull nomic-embed-text
-export OLLAMA_MAX_LOADED_MODELS=4
+export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
+```
+
+**Qwen 3 alternate rail (same hardware, for Qwen tooling):**
+
+```bash
+ollama pull qwen3:8b
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+export INTERN_PROFILE=dev-rtx5080-qwen3
 ```
 
 **M5 Max profile (128GB unified):**
 
 ```bash
-ollama pull qwen2.5:14b-instruct-q4_K_M
-ollama pull qwen2.5-coder:32b-instruct-q4_K_M
-ollama pull llama3.3:70b-instruct-q4_K_M
+ollama pull qwen3:14b
+ollama pull qwen3:32b
 ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
@@ -148,7 +188,7 @@ Every tool returns the same shape:
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -171,11 +211,11 @@ Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter
 
 | Profile | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| **`dev-rtx5080`** (default) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
-| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
-| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
+| **`dev-rtx5080`** (default) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
+| `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**Same-family ladder on default dev** so bad outputs are tool/design problems, not cross-family mismatches. `dev-rtx5080-llama` is the parity rail — run the same gold evals through Llama 8B before committing to Llama on the M5 Max.
+**Default dev** collapses all three work tiers onto `hermes3:8b` — the validated Hermes Agent integration path. Same model top to bottom means there is one thing to pull, one residency cost, one set of behavior to understand. Users who prefer Qwen 3 (with its `THINK_BY_SHAPE` plumbing) opt into `dev-rtx5080-qwen3`. `m5-max` is the Qwen 3 ladder sized for unified memory.
 
 ---
 

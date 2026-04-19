@@ -40,3 +40,4 @@ Every local-LLM MCP server leads with token-savings. Ours leads with _what the i
 - [Artifacts & continuity](./artifacts/) — how packs write to disk and how to use what they wrote
 - [Laws & guardrails](./laws/) — evidence-first, no remediation drift, deterministic renderers
 - [Security & threat model](./security/) — what's touched, what's not, what's in the log
+- [Use with Hermes](./with-hermes/) — drive this MCP from Nous Research's Hermes Agent on hermes3:8b (validated 2026-04-19)
