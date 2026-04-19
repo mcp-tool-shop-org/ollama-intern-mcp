@@ -54,21 +54,26 @@ function ctxFor(profileName: keyof typeof PROFILES, client: OllamaClient): RunCo
 }
 
 describe("prewarm policy matrix", () => {
-  it("dev-rtx5080 prewarms ONLY Instant (Workhorse + Deep untouched)", async () => {
+  it("dev-rtx5080 prewarms ONLY Instant (exactly one generate call)", async () => {
+    // dev-rtx5080 now uses hermes3:8b across Instant/Workhorse/Deep (v2.0.0),
+    // so "Workhorse/Deep models not in the call list" is ill-defined —
+    // they share a model name with Instant. The invariant that matters is
+    // the CALL COUNT: prewarm runs once per tier in Profile.prewarm, so
+    // exactly one generate call means only Instant was touched.
     const client = new OrderedMock();
     const ctx = ctxFor("dev-rtx5080", client);
     await runPrewarm(ctx, PROFILES["dev-rtx5080"].prewarm);
     expect(client.generateModels).toEqual([PROFILES["dev-rtx5080"].tiers.instant]);
-    // Workhorse and Deep models must NOT appear in the generate call list.
-    expect(client.generateModels).not.toContain(PROFILES["dev-rtx5080"].tiers.workhorse);
-    expect(client.generateModels).not.toContain(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(client.generateModels).toHaveLength(1);
   });
 
-  it("dev-rtx5080-llama prewarms Instant with the Qwen 7B model (shared with dev-rtx5080)", async () => {
+  it("dev-rtx5080-qwen3 prewarms Instant with its own Qwen 3 Instant model", async () => {
+    // Renamed from dev-rtx5080-llama at v2.0.0. Instant is qwen3:8b (distinct
+    // from default dev-rtx5080's hermes3:8b), so this profile prewarms its own model.
     const client = new OrderedMock();
-    const ctx = ctxFor("dev-rtx5080-llama", client);
-    await runPrewarm(ctx, PROFILES["dev-rtx5080-llama"].prewarm);
-    expect(client.generateModels).toEqual([PROFILES["dev-rtx5080-llama"].tiers.instant]);
+    const ctx = ctxFor("dev-rtx5080-qwen3", client);
+    await runPrewarm(ctx, PROFILES["dev-rtx5080-qwen3"].prewarm);
+    expect(client.generateModels).toEqual([PROFILES["dev-rtx5080-qwen3"].tiers.instant]);
   });
 
   it("m5-max prewarm list is empty — generate is never called", async () => {

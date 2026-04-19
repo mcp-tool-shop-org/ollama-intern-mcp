@@ -9,38 +9,51 @@ describe("profiles", () => {
     expect(p.tiers).toEqual(PROFILES["dev-rtx5080"].tiers);
   });
 
-  it("dev-rtx5080 is a coherent Qwen ladder (same family top to bottom)", () => {
+  it("dev-rtx5080 default ladder uses hermes3:8b across Instant/Workhorse/Deep", () => {
+    // Validated Hermes Agent integration path, 2026-04-19. Single model
+    // across non-embed tiers keeps the Hermes wiring predictable; callers
+    // that want a Qwen 3 rail opt into dev-rtx5080-qwen3.
     const p = PROFILES["dev-rtx5080"];
-    expect(p.tiers.instant).toMatch(/^qwen/);
-    expect(p.tiers.workhorse).toMatch(/^qwen/);
-    expect(p.tiers.deep).toMatch(/^qwen/);
+    expect(p.tiers.instant).toBe("hermes3:8b");
+    expect(p.tiers.workhorse).toBe("hermes3:8b");
+    expect(p.tiers.deep).toBe("hermes3:8b");
     expect(p.tiers.embed).toBe("nomic-embed-text");
   });
 
-  it("dev-rtx5080-llama diverges only on Deep (parity rail)", () => {
-    const dev = PROFILES["dev-rtx5080"];
-    const llama = PROFILES["dev-rtx5080-llama"];
-    expect(llama.tiers.instant).toBe(dev.tiers.instant);
-    expect(llama.tiers.workhorse).toBe(dev.tiers.workhorse);
-    expect(llama.tiers.embed).toBe(dev.tiers.embed);
-    expect(llama.tiers.deep).toMatch(/^llama/);
+  it("dev-rtx5080-qwen3 is a coherent Qwen 3 ladder (same family top to bottom)", () => {
+    const p = PROFILES["dev-rtx5080-qwen3"];
+    expect(p.tiers.instant).toMatch(/^qwen3/);
+    expect(p.tiers.workhorse).toMatch(/^qwen3/);
+    expect(p.tiers.deep).toMatch(/^qwen3/);
+    expect(p.tiers.embed).toBe("nomic-embed-text");
   });
 
-  it("m5-max ladder matches the Phase 0 handoff target models", () => {
+  it("m5-max ladder sized for 128GB unified memory (Qwen 3)", () => {
     const p = PROFILES["m5-max"];
-    expect(p.tiers.instant).toContain("14b");
-    expect(p.tiers.workhorse).toContain("32b");
-    expect(p.tiers.deep).toContain("70b");
+    expect(p.tiers.instant).toMatch(/^qwen3/);
+    expect(p.tiers.workhorse).toMatch(/^qwen3/);
+    expect(p.tiers.deep).toMatch(/^qwen3/);
+    // Deep > Instant parameter count.
+    expect(p.tiers.deep).toContain("32b");
+  });
+
+  it("no profile ships a qwen2.5 model (retired at v2.0.0)", () => {
+    for (const p of Object.values(PROFILES)) {
+      expect(p.tiers.instant).not.toMatch(/^qwen2\.5/);
+      expect(p.tiers.workhorse).not.toMatch(/^qwen2\.5/);
+      expect(p.tiers.deep).not.toMatch(/^qwen2\.5/);
+    }
   });
 
   it("selects profile by INTERN_PROFILE env var", () => {
     expect(loadProfile({ INTERN_PROFILE: "m5-max" }).name).toBe("m5-max");
-    expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080-llama" }).name).toBe("dev-rtx5080-llama");
+    expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080-qwen3" }).name).toBe("dev-rtx5080-qwen3");
   });
 
-  it("falls back to default for unknown profile names", () => {
-    const p = loadProfile({ INTERN_PROFILE: "not-a-real-profile" });
-    expect(p.name).toBe(DEFAULT_PROFILE);
+  it("falls back to default for unknown profile names (incl. retired dev-rtx5080-llama)", () => {
+    expect(loadProfile({ INTERN_PROFILE: "not-a-real-profile" }).name).toBe(DEFAULT_PROFILE);
+    // Retired in v2.0.0 — old env settings must not silently match a removed profile.
+    expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080-llama" }).name).toBe(DEFAULT_PROFILE);
   });
 
   it("per-tier env vars override the profile's picks", () => {
@@ -61,7 +74,7 @@ describe("profiles", () => {
 
   it("dev profiles lock Instant to 15s (cold-load margin); m5-max stays at 5s", () => {
     expect(PROFILES["dev-rtx5080"].timeouts.instant).toBe(15_000);
-    expect(PROFILES["dev-rtx5080-llama"].timeouts.instant).toBe(15_000);
+    expect(PROFILES["dev-rtx5080-qwen3"].timeouts.instant).toBe(15_000);
     expect(PROFILES["m5-max"].timeouts.instant).toBe(5_000);
   });
 
@@ -83,7 +96,7 @@ describe("profiles", () => {
 
   it("dev profiles prewarm Instant only; m5-max prewarms nothing", () => {
     expect(PROFILES["dev-rtx5080"].prewarm).toEqual(["instant"]);
-    expect(PROFILES["dev-rtx5080-llama"].prewarm).toEqual(["instant"]);
+    expect(PROFILES["dev-rtx5080-qwen3"].prewarm).toEqual(["instant"]);
     expect(PROFILES["m5-max"].prewarm).toEqual([]);
   });
 
