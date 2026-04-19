@@ -87,6 +87,6 @@ export async function handleArtifactDiff(
     startedAt,
     residency: null,
   });
-  await ctx.logger.log(callEvent("ollama_artifact_diff", envelope));
+  await ctx.logger.log(callEvent("ollama_artifact_diff", envelope, input));
   return envelope;
 }

@@ -54,21 +54,15 @@ function ctxFor(profileName: keyof typeof PROFILES, client: OllamaClient): RunCo
 }
 
 describe("prewarm policy matrix", () => {
-  it("dev-rtx5080 prewarms ONLY Instant (Workhorse + Deep untouched)", async () => {
+  it("dev-rtx5080 prewarms ONLY Instant (Deep untouched)", async () => {
     const client = new OrderedMock();
     const ctx = ctxFor("dev-rtx5080", client);
     await runPrewarm(ctx, PROFILES["dev-rtx5080"].prewarm);
+    // Exactly one generate call, for the Instant model.
     expect(client.generateModels).toEqual([PROFILES["dev-rtx5080"].tiers.instant]);
-    // Workhorse and Deep models must NOT appear in the generate call list.
-    expect(client.generateModels).not.toContain(PROFILES["dev-rtx5080"].tiers.workhorse);
+    // Deep must not appear. (Workhorse shares the Instant model on Qwen 3 RTX 5080 by design,
+    // so a value-equality check there would false-negative — we only assert Deep absence.)
     expect(client.generateModels).not.toContain(PROFILES["dev-rtx5080"].tiers.deep);
-  });
-
-  it("dev-rtx5080-llama prewarms Instant with the Qwen 7B model (shared with dev-rtx5080)", async () => {
-    const client = new OrderedMock();
-    const ctx = ctxFor("dev-rtx5080-llama", client);
-    await runPrewarm(ctx, PROFILES["dev-rtx5080-llama"].prewarm);
-    expect(client.generateModels).toEqual([PROFILES["dev-rtx5080-llama"].tiers.instant]);
   });
 
   it("m5-max prewarm list is empty — generate is never called", async () => {

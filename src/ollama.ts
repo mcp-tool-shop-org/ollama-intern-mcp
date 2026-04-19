@@ -24,6 +24,19 @@ export interface GenerateRequest {
     num_predict?: number;
     top_p?: number;
   };
+  /**
+   * Thinking-mode toggle (Ollama 2026 API, added for Qwen 3 / DeepSeek R1 / etc.).
+   * `false` suppresses CoT and keeps the `response` field tight; `true` lets
+   * the model reason before answering (CoT goes into the `thinking` response
+   * field, not `response`). Non-thinking models ignore this field.
+   *
+   * Load-bearing on Qwen 3: leaving thinking on for short-output tasks
+   * (classify/extract/triage/narration/summarize) causes `response` to come
+   * back empty when num_predict gets consumed by thinking tokens — verified
+   * 2026-04-18 with a live qwen3:8b smoke test. The prompt-level `/no_think`
+   * soft-switch is IGNORED by Ollama — only this field works.
+   */
+  think?: boolean;
   /** Keep model resident for this long. "-1" = forever. */
   keep_alive?: string | number;
 }
@@ -31,6 +44,11 @@ export interface GenerateRequest {
 export interface GenerateResponse {
   model: string;
   response: string;
+  /**
+   * CoT content, populated when the request had think=true and the model
+   * supports thinking. Separate from `response` — never concatenate.
+   */
+  thinking?: string;
   done: boolean;
   prompt_eval_count?: number;
   eval_count?: number;

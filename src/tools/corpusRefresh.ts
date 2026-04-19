@@ -67,6 +67,6 @@ export async function handleCorpusRefresh(
     residency,
   });
 
-  await ctx.logger.log(callEvent("ollama_corpus_refresh", envelope));
+  await ctx.logger.log(callEvent("ollama_corpus_refresh", envelope, input));
   return envelope;
 }

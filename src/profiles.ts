@@ -1,17 +1,25 @@
 /**
  * Hardware profiles — pick the right tier ladder for the machine running Ollama.
  *
- * The same code runs against very different hardware. This module encodes
- * the "which model belongs on which tier for which box" decision explicitly
- * so it's a product choice, not an env-var scavenger hunt.
+ * The same code runs across hardware. This module encodes which model belongs
+ * on which tier for which box as an explicit product decision, not an env-var
+ * scavenger hunt. Model generations are named precisely so a stale repo can be
+ * caught at code-review time rather than silently running an obsolete ladder.
  *
- * - dev-rtx5080 (default): Qwen ladder. Coherent day-to-day dogfooding.
- *   Same family top-to-bottom means a bad output is a tool/design problem,
- *   not a cross-family mismatch.
- * - dev-rtx5080-llama: parity rail. Same instant/workhorse as default, but
- *   Llama 8B on Deep. Use this to measure whether Llama-family drift buys
- *   anything real before committing to it on the M5 Max.
- * - m5-max: prod target. Real tier ladder once the box arrives.
+ * Current defaults (April 2026): Qwen 3 for Qwen-family tiers; Llama 4 Scout
+ * for the M5 Max prod deep slot (supersedes Llama 3.3 70B — Scout is 109B-
+ * total / 17B-active MoE with a different chat template, `<|header_start|>`
+ * and `<|eot|>`; the Llama 3.x formatter would silently misalign).
+ *
+ * - dev-rtx5080 (default): Qwen 3 ladder. 16GB VRAM caps the workhorse at
+ *   qwen3:8b for now — Qwen3-Coder-30B-A3B doesn't fit comfortably even as
+ *   an MoE. Revisit when quantized MoE tooling catches up.
+ * - m5-max: prod target. Full Qwen 3 + Llama 4 ladder.
+ *
+ * The old dev-rtx5080-llama profile was retired on 2026-04-18 — Llama 3.1
+ * 8B is obsolete and Llama 4 Scout doesn't fit on 16GB VRAM. If a Llama
+ * parity lane is needed later, it'll target a Llama 4 variant sized for
+ * consumer cards.
  *
  * Per-tier env vars (INTERN_TIER_INSTANT, etc.) still override a profile's
  * model picks, so one-off experiments don't require a new profile.
@@ -19,7 +27,7 @@
 
 import type { Tier, TierConfig } from "./tiers.js";
 
-export type ProfileName = "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max";
+export type ProfileName = "dev-rtx5080" | "m5-max";
 
 export interface Profile {
   name: ProfileName;
@@ -63,24 +71,11 @@ export const PROFILES: Record<ProfileName, Profile> = {
   "dev-rtx5080": {
     name: "dev-rtx5080",
     description:
-      "RTX 5080 16GB VRAM — Qwen ladder. Default dev profile for dogfooding the delegation spine.",
+      "RTX 5080 16GB VRAM — Qwen 3 ladder. Workhorse stays on qwen3:8b until a quantized Qwen3-Coder variant fits the VRAM budget comfortably.",
     tiers: {
-      instant: "qwen2.5:7b-instruct-q4_K_M",
-      workhorse: "qwen2.5-coder:7b-instruct-q4_K_M",
-      deep: "qwen2.5:14b-instruct-q4_K_M",
-      embed: "nomic-embed-text",
-    },
-    timeouts: DEV_RTX5080_TIMEOUTS,
-    prewarm: ["instant"],
-  },
-  "dev-rtx5080-llama": {
-    name: "dev-rtx5080-llama",
-    description:
-      "RTX 5080 with Llama 8B on Deep — parity comparison lane for future Llama-family Deep migration.",
-    tiers: {
-      instant: "qwen2.5:7b-instruct-q4_K_M",
-      workhorse: "qwen2.5-coder:7b-instruct-q4_K_M",
-      deep: "llama3.1:8b-instruct-q4_K_M",
+      instant: "qwen3:8b",
+      workhorse: "qwen3:8b",
+      deep: "qwen3:14b",
       embed: "nomic-embed-text",
     },
     timeouts: DEV_RTX5080_TIMEOUTS,
@@ -88,11 +83,12 @@ export const PROFILES: Record<ProfileName, Profile> = {
   },
   "m5-max": {
     name: "m5-max",
-    description: "M5 Max 128GB unified — full tier ladder. Prod target.",
+    description:
+      "M5 Max 128GB unified — prod target. Qwen 3 workhorse + Llama 4 Scout deep. Llama 4 uses a different chat template than 3.x; the formatter layer must branch on model family.",
     tiers: {
-      instant: "qwen2.5:14b-instruct-q4_K_M",
-      workhorse: "qwen2.5-coder:32b-instruct-q4_K_M",
-      deep: "llama3.3:70b-instruct-q4_K_M",
+      instant: "qwen3:14b",
+      workhorse: "qwen3:32b",
+      deep: "llama4:scout",
       embed: "nomic-embed-text",
     },
     timeouts: M5_MAX_TIMEOUTS,
@@ -103,7 +99,7 @@ export const PROFILES: Record<ProfileName, Profile> = {
 export const DEFAULT_PROFILE: ProfileName = "dev-rtx5080";
 
 function isProfileName(x: string | undefined): x is ProfileName {
-  return x === "dev-rtx5080" || x === "dev-rtx5080-llama" || x === "m5-max";
+  return x === "dev-rtx5080" || x === "m5-max";
 }
 
 /**

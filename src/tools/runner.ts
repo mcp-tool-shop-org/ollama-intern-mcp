@@ -26,6 +26,18 @@ export interface RunToolInput<T> {
   parse: (raw: string) => T;
   /** Optional extra warnings from guardrails (e.g. stripped citations). */
   warnings?: string[];
+  /**
+   * The caller's original input object — used ONLY to compute an input
+   * shape for the NDJSON log (presence/counts/buckets, never content).
+   * Phase 2.5 chain reconstruction depends on this being populated.
+   */
+  logInput?: unknown;
+  /**
+   * Override `think` on the generate request. If unset, inherits whatever
+   * the build() callback set. Recommended: build() sets it explicitly per
+   * tool shape via THINK_BY_SHAPE so Qwen 3 thinking behavior is predictable.
+   */
+  think?: boolean;
 }
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
@@ -40,7 +52,8 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     timeoutOverrideMs: ctx.timeouts,
     run: async (tier, signal) => {
       const model = resolveTier(tier, ctx.tiers);
-      const req = input.build(tier, model);
+      const built = input.build(tier, model);
+      const req: GenerateRequest = input.think === undefined ? built : { ...built, think: input.think };
       const resp = await ctx.client.generate(req, signal);
       return { resp, model };
     },
@@ -64,6 +77,6 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     ...(input.warnings ? { warnings: input.warnings } : {}),
   });
 
-  await ctx.logger.log(callEvent(input.tool, envelope));
+  await ctx.logger.log(callEvent(input.tool, envelope, input.logInput));
   return envelope;
 }

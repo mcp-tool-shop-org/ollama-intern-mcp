@@ -12,3 +12,6 @@ site/.astro/
 site/dist/
 site/node_modules/
 .polyglot-cache.json
+# Runtime-generated receipts + artifacts. Each install produces its own
+# operational history; the shape is the interface, not the content.
+artifacts/

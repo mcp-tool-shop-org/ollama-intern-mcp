@@ -529,7 +529,7 @@ export async function handleRepoPack(
     startedAt: packStartedAt,
     residency,
   });
-  await ctx.logger.log(callEvent("ollama_repo_pack", envelope));
+  await ctx.logger.log(callEvent("ollama_repo_pack", envelope, input));
   return envelope;
 }
 

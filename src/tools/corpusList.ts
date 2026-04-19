@@ -45,6 +45,6 @@ export async function handleCorpusList(
     residency: null,
   });
 
-  await ctx.logger.log(callEvent("ollama_corpus_list", envelope));
+  await ctx.logger.log(callEvent("ollama_corpus_list", envelope, _input));
   return envelope;
 }

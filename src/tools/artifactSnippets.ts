@@ -77,7 +77,7 @@ export async function handleArtifactIncidentNoteSnippet(
     startedAt,
     residency: null,
   });
-  await ctx.logger.log(callEvent("ollama_artifact_incident_note_snippet", envelope));
+  await ctx.logger.log(callEvent("ollama_artifact_incident_note_snippet", envelope, input));
   return envelope;
 }
 
@@ -113,7 +113,7 @@ export async function handleArtifactOnboardingSectionSnippet(
     startedAt,
     residency: null,
   });
-  await ctx.logger.log(callEvent("ollama_artifact_onboarding_section_snippet", envelope));
+  await ctx.logger.log(callEvent("ollama_artifact_onboarding_section_snippet", envelope, input));
   return envelope;
 }
 
@@ -149,6 +149,6 @@ export async function handleArtifactReleaseNoteSnippet(
     startedAt,
     residency: null,
   });
-  await ctx.logger.log(callEvent("ollama_artifact_release_note_snippet", envelope));
+  await ctx.logger.log(callEvent("ollama_artifact_release_note_snippet", envelope, input));
   return envelope;
 }

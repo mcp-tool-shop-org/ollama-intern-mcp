@@ -76,6 +76,6 @@ export async function handleCorpusIndex(
     residency,
   });
 
-  await ctx.logger.log(callEvent("ollama_corpus_index", envelope));
+  await ctx.logger.log(callEvent("ollama_corpus_index", envelope, input));
   return envelope;
 }

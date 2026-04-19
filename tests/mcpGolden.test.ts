@@ -159,8 +159,10 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
     expect(tools).toBeDefined();
 
     const names = tools!.map((t) => t.name);
-    // All 23 expected tools present. Atom surface frozen at 18, packs at 3.
-    // Artifact tier (artifact_list, artifact_read) sits alongside packs.
+    // 28 core tools (atoms, flagships, packs, artifact tier) plus 5 skill-layer
+    // tools (list/match/run + propose/promote) plus 5 memory-layer tools
+    // (refresh + search + read + explain + neighbors) plus 2 routing tools
+    // (audit — Phase 3D-C; calibrate — Phase 3D-D). Total = 40.
     expect(names).toEqual(
       expect.arrayContaining([
         "ollama_research",
@@ -191,9 +193,21 @@ describe("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_draft",
         "ollama_extract",
         "ollama_chat",
+        "ollama_skill_list",
+        "ollama_skill_match",
+        "ollama_skill_run",
+        "ollama_skill_propose",
+        "ollama_skill_promote",
+        "ollama_memory_refresh",
+        "ollama_memory_search",
+        "ollama_memory_read",
+        "ollama_memory_explain",
+        "ollama_memory_neighbors",
+        "ollama_routing_audit",
+        "ollama_routing_calibrate",
       ]),
     );
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(40);
 
     // Flagship surface discipline: retrieval/answer flagships first,
     // then briefs, then packs, then artifact tier, then ad-hoc ranker.

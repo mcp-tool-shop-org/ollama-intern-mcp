@@ -132,6 +132,6 @@ export async function handleArtifactList(
       ? { warnings: [`Found ${scan.duplicates.length} slug collision(s) across artifact dirs — see result.duplicates.`] }
       : {}),
   });
-  await ctx.logger.log(callEvent("ollama_artifact_list", envelope));
+  await ctx.logger.log(callEvent("ollama_artifact_list", envelope, input));
   return envelope;
 }

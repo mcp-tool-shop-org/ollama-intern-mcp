@@ -104,6 +104,8 @@ export async function handleSummarizeDeep(
     tool: "ollama_summarize_deep",
     tier: "deep",
     ctx,
+    logInput: input,
+    think: false,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, body),

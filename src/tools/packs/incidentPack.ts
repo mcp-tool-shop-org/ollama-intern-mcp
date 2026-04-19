@@ -419,7 +419,7 @@ export async function handleIncidentPack(
     startedAt: packStartedAt,
     residency,
   });
-  await ctx.logger.log(callEvent("ollama_incident_pack", envelope));
+  await ctx.logger.log(callEvent("ollama_incident_pack", envelope, input));
   return envelope;
 }
 

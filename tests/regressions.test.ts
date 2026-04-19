@@ -110,9 +110,6 @@ describe("regression: Profile-aware Instant timeouts (commit fed244c)", () => {
   it("dev-rtx5080 Instant timeout is 15s (margin for cold load on 16GB VRAM)", () => {
     expect(PROFILES["dev-rtx5080"].timeouts.instant).toBe(15_000);
   });
-  it("dev-rtx5080-llama inherits the dev timeouts", () => {
-    expect(PROFILES["dev-rtx5080-llama"].timeouts.instant).toBe(15_000);
-  });
   it("m5-max Instant stays at 5s (unified memory has no cold-load penalty)", () => {
     expect(PROFILES["m5-max"].timeouts.instant).toBe(5_000);
   });
