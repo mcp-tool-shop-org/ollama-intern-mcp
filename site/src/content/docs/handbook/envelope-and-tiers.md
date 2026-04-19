@@ -12,7 +12,7 @@ sidebar:
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -42,14 +42,11 @@ Tiers are picked by the tool, not by Claude. Pick the job; the tier follows.
 
 | Profile | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| `dev-rtx5080` (default) | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
-| `m5-max` | qwen3 14B | qwen3 32B | **llama4:scout** | nomic-embed-text |
+| `dev-rtx5080` (default) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
+| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
+| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
 
-The default dev profile keeps the same Qwen family top-to-bottom so bad outputs are tool/design problems, not cross-family mismatches. Workhorse stays on qwen3:8b until a quantized Qwen3-Coder MoE variant fits 16GB VRAM comfortably. The M5 Max deep slot promotes to Llama 4 Scout (109B-total / 17B-active MoE); the formatter layer branches on model family because Llama 4 uses a different chat template (`<|header_start|>` / `<|eot|>`) than Llama 3.x.
-
-The former `dev-rtx5080-llama` profile was retired on 2026-04-18 — Llama 3.1 8B is obsolete and Llama 4 Scout doesn't fit 16GB VRAM.
-
-Qwen 3 requires `think: false` on short-output shapes (classify / extract / triage / summarize-fast) — enforced automatically by `THINK_BY_SHAPE` in `src/tiers.ts`. Without it, thinking tokens consume `num_predict` and the response comes back empty.
+The default dev profile keeps the same Qwen family top-to-bottom so bad outputs are tool/design problems, not cross-family mismatches. `dev-rtx5080-llama` is the parity rail — run the same gold evals through Llama 8B before committing to Llama on bigger hardware.
 
 ## Residency — reading `/api/ps`
 
@@ -66,7 +63,7 @@ When you see any of these during a slow call, trim `OLLAMA_MAX_LOADED_MODELS` or
 Every call is logged as one line of NDJSON to `~/.ollama-intern/log.ndjson`:
 
 ```json
-{"kind":"call","ts":"2026-04-18T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"qwen3:8b","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
+{"kind":"call","ts":"2026-04-16T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"qwen2.5:7b-instruct-q4_K_M","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
 ```
 
 No prompts are logged. No inline text is logged. Just the envelope. Nothing leaves the box.
@@ -79,7 +76,7 @@ Env vars beat profile picks for one-off swaps:
 
 | Env var | Example |
 |---|---|
-| `INTERN_TIER_INSTANT` | `qwen3:8b` |
-| `INTERN_TIER_WORKHORSE` | `qwen3:8b` |
-| `INTERN_TIER_DEEP` | `qwen3:14b` |
+| `INTERN_TIER_INSTANT` | `qwen2.5:7b-instruct-q4_K_M` |
+| `INTERN_TIER_WORKHORSE` | `qwen2.5-coder:7b-instruct-q4_K_M` |
+| `INTERN_TIER_DEEP` | `qwen2.5:14b-instruct-q4_K_M` |
 | `INTERN_EMBED_MODEL` | `nomic-embed-text` |

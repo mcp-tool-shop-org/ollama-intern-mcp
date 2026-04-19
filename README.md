@@ -13,11 +13,11 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-> **The local intern for Claude Code.** 40 tools across a frozen primitive core and four additive layers — skills, memory, shadow routing, operator-gated calibration. Evidence-first, durable, every call shows its work.
+> **The local intern for Claude Code.** 28 job-shaped tools, evidence-first briefs, durable artifacts.
 
-An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, a filing cabinet, a memory, and a shadow supervisor. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week. Above that spine: reusable skills, embedding-backed memory across past runs, and a shadow router that records what _should_ have happened so operators can tune routing with proposals that are inspectable, replayable, and reversible.
+An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
-No cloud. No telemetry. No "autonomous" anything. Shadow routing is shadow-only — no calibration can take control.
+No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ---
 
@@ -49,7 +49,7 @@ Returns an envelope pointing at a file on disk:
     "next_checks": ["residency.evicted across last 24h", "OLLAMA_MAX_LOADED_MODELS vs loaded size"]
   },
   "tier_used": "deep",
-  "model": "qwen3:14b",
+  "model": "qwen2.5:14b-instruct-q4_K_M",
   "hardware_profile": "dev-rtx5080",
   "tokens_in": 4180, "tokens_out": 612,
   "elapsed_ms": 8410,
@@ -63,11 +63,7 @@ Every competitor in this category leads with "save tokens." We lead with _here i
 
 ---
 
-## What's in here — frozen core + four additive layers, 40 tools
-
-The primitive core stays frozen. New functionality lives in layers above it.
-
-### Core (28, frozen)
+## What's in here — four tiers, 28 tools
 
 | Tier | Count | What lives here |
 |---|---|---|
@@ -76,23 +72,14 @@ The primitive core stays frozen. New functionality lives in layers above it.
 | **Packs** | 3 | Fixed-pipeline compound jobs that write durable markdown + JSON to `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Deterministic renderers — no model calls on the artifact shape. |
 | **Artifacts** | 7 | Continuity surface over pack outputs. `artifact_list` / `read` / `diff` / `export_to_path`, plus three deterministic snippets: `incident_note`, `onboarding_section`, `release_note`. |
 
+Total: **18 primitives + 3 packs + 7 artifact tools = 28**.
+
 Freeze lines:
-- Atoms + briefs frozen at 18. No new atom primitives.
+- Atoms frozen at 18 (atoms + briefs). No new atom tools.
 - Packs frozen at 3. No new pack types.
 - Artifact tier frozen at 7.
 
-### Layers above the core (12)
-
-| Layer | Count | What it does |
-|---|---|---|
-| **Skills** | 5 | Durable workflows that compose atoms into a named pipeline with triggers and a receipt. `ollama_skill_list`, `ollama_skill_match`, `ollama_skill_run`, `ollama_skill_propose`, `ollama_skill_promote`. Global skills ship in `~/.ollama-intern/skills/`; project skills in `<cwd>/skills/` override global by name. |
-| **Memory** | 5 | Embedding-backed retrieval across past receipts, artifacts, skills, and proposals. `ollama_memory_refresh`, `ollama_memory_search`, `ollama_memory_read`, `ollama_memory_explain`, `ollama_memory_neighbors`. Nomic-style prefixes, typed hits with score bands, deterministic explanations with opt-in Instant-tier narration. |
-| **Shadow routing** | 0 surface | Transparent instrumentation. Every call to a shadowable tool (10 atoms + 5 flagships + 3 packs) writes a `RoutingReceipt` to `<cwd>/artifacts/routing-receipts/` capturing the pre-execution decision, the actual invocation, outcome linkage, and the calibration version in effect. Actual behavior is unchanged — shadow is shadow-only. |
-| **Routing** | 2 | Read-only audit + operator-gated calibration over shadow receipts. `ollama_routing_audit` surfaces findings (promotion_gap / override_hotspot / abstain_cluster / missed_abstain / unused_candidate / overconfident_route). `ollama_routing_calibrate` runs a propose / list / replay / approve / reject / rollback lifecycle — every approval requires a reason; every transition is appended to history; nothing auto-applies. |
-
-Total: **28 core + 5 skills + 5 memory + 2 routing = 40 tools.**
-
-The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
+The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
 
 ---
 
@@ -127,29 +114,28 @@ Same block, written to `~/Library/Application Support/Claude/claude_desktop_conf
 
 ### Model pulls
 
-**Default dev profile (RTX 5080 16GB and similar) — Qwen 3 ladder:**
+**Default dev profile (RTX 5080 16GB and similar):**
 
 ```bash
-ollama pull qwen3:8b
-ollama pull qwen3:14b
+ollama pull qwen2.5:7b-instruct-q4_K_M
+ollama pull qwen2.5-coder:7b-instruct-q4_K_M
+ollama pull qwen2.5:14b-instruct-q4_K_M
 ollama pull nomic-embed-text
 export OLLAMA_MAX_LOADED_MODELS=4
 export OLLAMA_KEEP_ALIVE=-1
 ```
 
-**M5 Max profile (128GB unified) — Qwen 3 + Llama 4 Scout:**
+**M5 Max profile (128GB unified):**
 
 ```bash
-ollama pull qwen3:14b
-ollama pull qwen3:32b
-ollama pull llama4:scout
+ollama pull qwen2.5:14b-instruct-q4_K_M
+ollama pull qwen2.5-coder:32b-instruct-q4_K_M
+ollama pull llama3.3:70b-instruct-q4_K_M
 ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-Qwen 3 requires `think: false` on short-output shapes (classify / extract / triage / summarize-fast) — the server enforces this automatically via `THINK_BY_SHAPE`. Without it, thinking tokens consume `num_predict` and the response comes back empty. Llama 4 Scout uses a different chat template than Llama 3.x (`<|header_start|>` / `<|eot|>`); the formatter layer branches on model family.
-
-Per-tier env vars (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) still override profile picks for one-offs. The former `dev-rtx5080-llama` profile was retired on 2026-04-18 — Llama 3.1 8B is obsolete and Llama 4 Scout (109B-total / 17B-active MoE) doesn't fit on 16GB VRAM.
+Per-tier env vars (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) still override profile picks for one-offs.
 
 ---
 
@@ -162,7 +148,7 @@ Every tool returns the same shape:
   result: <tool-specific>,
   tier_used: "instant" | "workhorse" | "deep" | "embed",
   model: string,
-  hardware_profile: string,     // "dev-rtx5080" | "m5-max"
+  hardware_profile: string,     // "dev-rtx5080" | "dev-rtx5080-llama" | "m5-max"
   tokens_in: number,
   tokens_out: number,
   elapsed_ms: number,
@@ -185,10 +171,11 @@ Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter
 
 | Profile | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| **`dev-rtx5080`** (default) | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
-| `m5-max` | qwen3 14B | qwen3 32B | **llama4:scout** | nomic-embed-text |
+| **`dev-rtx5080`** (default) | qwen2.5 7B | qwen2.5-coder 7B | qwen2.5 14B | nomic-embed-text |
+| `dev-rtx5080-llama` | qwen2.5 7B | qwen2.5-coder 7B | **llama3.1 8B** | nomic-embed-text |
+| `m5-max` | qwen2.5 14B | qwen2.5-coder 32B | llama3.3 70B | nomic-embed-text |
 
-**Same-family ladder on dev** so bad outputs are tool/design problems, not cross-family mismatches. Workhorse stays on qwen3:8b until a quantized Qwen3-Coder MoE variant fits the 16GB VRAM budget comfortably. The M5 Max deep slot promotes to Llama 4 Scout — the formatter layer branches on model family so Llama 4's `<|header_start|>` / `<|eot|>` template doesn't silently misalign.
+**Same-family ladder on default dev** so bad outputs are tool/design problems, not cross-family mismatches. `dev-rtx5080-llama` is the parity rail — run the same gold evals through Llama 8B before committing to Llama on the M5 Max.
 
 ---
 
@@ -221,51 +208,6 @@ No model calls in this tier. All render from stored content.
 
 ---
 
-## Skills — durable workflows above the atoms
-
-Skills capture repeatable ways of working: a named pipeline over atoms + briefs + packs, with declared triggers, parameters, and a receipt written after every run. The skill layer is five tools — `ollama_skill_list`, `ollama_skill_match`, `ollama_skill_run`, `ollama_skill_propose`, `ollama_skill_promote`.
-
-- **Global skills** live in `~/.ollama-intern/skills/*.json`. **Project skills** in `<cwd>/skills/*.json` override global by name.
-- **Skill receipts** land in `<cwd>/artifacts/skill-receipts/*.json` — one JSON envelope per run, suitable for replay, diff, and memory indexing.
-- **Proposals** surface in two flavors: lifecycle proposals (promote a draft to active, retire a skill with poor receipts) and new-skill proposals reconstructed from ad-hoc chains in the NDJSON call log.
-
-Skills never grow the primitive surface — they compose what's already there.
-
----
-
-## Memory — retrieval across past work
-
-Memory indexes receipts, pack artifacts, skills, and candidate proposals into a single queryable substrate. Five tools: `ollama_memory_refresh`, `ollama_memory_search`, `ollama_memory_read`, `ollama_memory_explain`, `ollama_memory_neighbors`.
-
-- **Embeddings** follow the nomic prefix contract: records get `search_document:`, queries get `search_query:`. Never reversed, never dropped.
-- **Retrieval** returns typed hits with score bands and optional metadata pre-filters. `memory_search` is embedding-backed; `memory_neighbors` is pure math over the embedding space (no model call).
-- **Explanations** are deterministic field-level match reports. `narrate=true` flips on an opt-in Instant-tier natural-language summary — defaults stay deterministic.
-- **Excerpts** are opt-in (`include_excerpt=true`) and come from structured source extracts, not free-form model output.
-
-Memory index lives at `~/.ollama-intern/memory/index.json` with an embeddings sidecar at `memory/embeddings.json`. Override both with `INTERN_MEMORY_DIR`.
-
----
-
-## Shadow routing & calibration
-
-Every call to a shadowable tool (10 atoms + 5 flagships + 3 packs = 18 tools) writes a **routing receipt** to `<cwd>/artifacts/routing-receipts/` capturing the pre-execution decision the router would have made, the actual invocation, the outcome link, and the calibration overlay version in effect. Actual behavior is unchanged — shadow is shadow-only.
-
-Over those receipts, two operator tools run the learning loop:
-
-- **`ollama_routing_audit`** — read-only findings across six categories: `promotion_gap`, `override_hotspot`, `abstain_cluster`, `missed_abstain`, `unused_candidate`, `overconfident_route`. Each finding carries a `recommended_next_action` — sometimes "calibrate," sometimes "author a skill trigger," sometimes "leave alone."
-- **`ollama_routing_calibrate`** — action-typed lifecycle: `propose` / `list` / `replay` / `approve` / `reject` / `rollback`. Proposals are inspectable before approval. Replay shows the effect a proposal would have on a historical receipt window. Approvals require a `reason` string. Every transition appends to history; nothing auto-applies.
-
-Design laws baked into tests:
-
-- Shadow routing is **shadow-only**. No calibration can "take control."
-- Calibration is **operator-gated**. No auto-apply, ever.
-- Every routing decision under an overlay **stamps the overlay version** onto its receipt — the audit can always answer "which calibration produced this decision?"
-- When a finding points at a gap calibration can't close (e.g., `missed_abstain` on a primitive that isn't in the candidate space), replay says so honestly and the audit recommends skill authoring instead.
-
-Receipts, calibration store, and audit outputs all live on disk as plain JSON. `INTERN_CALIBRATIONS_DIR` overrides the calibration store location.
-
----
-
 ## Threat model & telemetry
 
 **Data touched:** file paths the caller explicitly hands in (`ollama_research`, corpus tools), inline text, and artifacts the caller asks to be written under `~/.ollama-intern/artifacts/` or a caller-declared `allowed_roots`.
@@ -289,33 +231,19 @@ Built to the [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) bar. Ha
 - **A. Security** — SECURITY.md, threat model, no telemetry, path-safety, `confirm_write` on protected paths
 - **B. Errors** — structured shape across all tool results; no raw stacks
 - **C. Docs** — README current, CHANGELOG, LICENSE; tool schemas self-document
-- **D. Hygiene** — `npm run verify` (596 tests), CI with dep scanning, Dependabot, lockfile, `engines.node`
+- **D. Hygiene** — `npm run verify` (395 tests), CI with dep scanning, Dependabot, lockfile, `engines.node`
 
 ---
 
-## Roadmap
+## Roadmap (hardening, not scope creep)
 
-Shipped (the frozen spine):
+- **Phase 1 — Delegation Spine** ✓ shipped: atom surface, uniform envelope, tiered routing, guardrails
+- **Phase 2 — Truth Spine** ✓ shipped: schema v2 chunking, BM25 + RRF, living corpora, evidence-backed briefs, retrieval eval pack
+- **Phase 3 — Pack & Artifact Spine** ✓ shipped: fixed-pipeline packs with durable artifacts + continuity tier
+- **Phase 4 — Adoption Spine** — real-use observation on the RTX 5080, hardening the rough edges that surface
+- **Phase 5 — M5 Max benchmarks** — publishable numbers once the hardware lands (~2026-04-24)
 
-- **Phase 1 — Delegation Spine** ✓ atom surface, uniform envelope, tiered routing, guardrails
-- **Phase 2 — Truth Spine** ✓ schema v2 chunking, BM25 + RRF, living corpora, evidence-backed briefs, retrieval eval pack
-- **Phase 3 — Pack & Artifact Spine** ✓ fixed-pipeline packs with durable artifacts + continuity tier
-
-Shipped 2026-04-18 (the four additive layers — 28 → 40 tools):
-
-- **Skill Layer (Phase 1 / 2 / 2.5)** ✓ named pipelines over atoms, receipts, lifecycle proposals, new-skill reconstruction from call-log chains
-- **Memory (Phase 3A / 3B / 3C)** ✓ normalized index, embedding retrieval with nomic prefixes, deterministic explanations with opt-in narration, embedding-space neighbors
-- **Shadow Routing (Phase 3D-A / 3D-B)** ✓ router core + pre-execution receipts across 18 shadowable tools, outcome linkage, no control transfer
-- **Audit + Calibration (Phase 3D-C / 3D-D)** ✓ six finding categories, propose / replay / approve / rollback lifecycle, versioned overlays stamped onto every receipt
-
-Next:
-
-- **Skill-authoring proposer** — close the loop between `missed_abstain` audit findings and draft skill files the operator can review
-- **Active routing** — narrow, deliberate control transfer once shadow data has earned trust (separate product decision, not unfinished cleanup)
-- **M5 Max benchmarks** — publishable numbers once the hardware lands (~2026-04-24)
-- **Eval harness** — held-out gold set with precision@k over time, replacing the current one-off live proofs
-
-The core primitive surface stays frozen. New functionality is always a new layer above it.
+Phase by hardening layer. The atom/pack/artifact surface stays frozen.
 
 ---
 

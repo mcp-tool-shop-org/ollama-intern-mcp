@@ -1,13 +1,11 @@
 ---
 title: Tool Reference
-description: All 40 tools — frozen primitive core plus four additive layers.
+description: All 28 tools grouped by tier.
 sidebar:
   order: 2
 ---
 
-Tools are grouped into the **frozen primitive core** (28 tools across four tiers — atoms, briefs, packs, artifacts) and the **four additive layers above it** (skills, memory, shadow routing, routing audit + calibration). The primitive count freezes — no new atoms, no new pack types, no new artifact tools. New capability is always a new layer.
-
-## Frozen primitive core (28)
+Tools are grouped into four tiers. The count freezes here — no new atoms, no new pack types, no new artifact tools.
 
 ## Atoms (15)
 
@@ -68,56 +66,6 @@ Continuity surface over what packs wrote. No model calls in this tier.
 | `ollama_artifact_incident_note_snippet` | Deterministic operator-note fragment. |
 | `ollama_artifact_onboarding_section_snippet` | Deterministic handbook fragment. |
 | `ollama_artifact_release_note_snippet` | Deterministic DRAFT release-note fragment. |
-
-## Skill layer (5)
-
-Durable, named workflows that compose atoms + briefs + packs into a pipeline with declared triggers and a receipt written after every run. Global skills live in `~/.ollama-intern/skills/*.json`; project skills in `<cwd>/skills/*.json` override global by name.
-
-| Tool | Purpose |
-|---|---|
-| `ollama_skill_list` | Enumerate skills (global + project, with project overrides applied). |
-| `ollama_skill_match` | Score candidate skills against a free-text task. Returns ranked matches with trigger provenance. |
-| `ollama_skill_run` | Execute a skill pipeline end-to-end. Writes a receipt to `<cwd>/artifacts/skill-receipts/<slug>.json`. |
-| `ollama_skill_propose` | Surface lifecycle proposals (promote / retire) and new-skill proposals reconstructed from ad-hoc chains in the NDJSON call log. |
-| `ollama_skill_promote` | Move a skill between statuses with an operator-supplied reason. Appends to skill lifecycle history. |
-
-Skills compose the primitives — they never grow the primitive surface.
-
-## Memory layer (5)
-
-Embedding-backed retrieval across receipts, pack artifacts, skills, and candidate proposals. Records get the `search_document:` nomic prefix; queries get `search_query:` — never reversed, never dropped.
-
-| Tool | Purpose |
-|---|---|
-| `ollama_memory_refresh` | Normalize receipts / artifacts / skills / proposals into `~/.ollama-intern/memory/index.json` + embeddings sidecar. Idempotent. |
-| `ollama_memory_search` | Embedding-backed retrieval with optional metadata pre-filter. Returns typed hits with score bands. |
-| `ollama_memory_read` | Typed + provenance-backed view of one record. `include_excerpt=true` adds a structured source extract. |
-| `ollama_memory_explain` | Deterministic field-level match explanation for a (query, record) pair. `narrate=true` opts into an Instant-tier natural-language summary. |
-| `ollama_memory_neighbors` | Records near a given record in embedding space. Pure math — no model call. |
-
-Defaults are deterministic. Model calls are opt-in behind `narrate=true` / `include_excerpt=true`.
-
-## Shadow routing (no tool surface)
-
-Every call to a shadowable tool (10 atoms + 5 flagships + 3 packs = **18 shadowable tools**) writes a `RoutingReceipt` to `<cwd>/artifacts/routing-receipts/<id>.json` capturing:
-
-- the pre-execution decision the router would have made
-- the actual invocation that ran
-- outcome linkage (did it succeed, abstain, error)
-- the calibration overlay `version` in effect at decision time
-
-Actual tool behavior is unchanged. Shadow is shadow-only — **no calibration can take control**. Skill-layer, memory-layer, artifact-management, corpus-management, and embed-primitive tools are on the bypass list.
-
-## Routing audit + calibration (2)
-
-Operator surfaces over the shadow receipts.
-
-| Tool | Purpose |
-|---|---|
-| `ollama_routing_audit` | Read-only findings across six categories: `promotion_gap`, `override_hotspot`, `abstain_cluster`, `missed_abstain`, `unused_candidate`, `overconfident_route`. Each finding carries a `recommended_next_action` — sometimes "calibrate," sometimes "author a skill trigger," sometimes "leave alone." |
-| `ollama_routing_calibrate` | Action-typed lifecycle: `propose` / `list` / `replay` / `approve` / `reject` / `rollback`. Replay shows the effect a proposal would have had on a historical receipt window. Approvals require a `reason` string. Every transition appends to history; nothing auto-applies. |
-
-Calibration is **operator-gated**. Every routing decision under an active overlay stamps that overlay's `version` onto its receipt — audits can always answer "which calibration produced this decision?" When a finding points at a gap calibration can't close (e.g., `missed_abstain` on a primitive that isn't in the candidate space), replay says so honestly and the audit recommends skill authoring instead.
 
 ## Envelope
 
