@@ -205,6 +205,20 @@ describe("handleIncidentPack — fixed pipeline", () => {
     expect(client.generateCalls).toHaveLength(0);
   });
 
+  it("accepts empty source_paths when log_text is provided", async () => {
+    // Regression — Hermes/hermes3:8b emits `source_paths: []` on log-driven
+    // incident_pack calls. Before v2.0.0 the schema required min:1 which
+    // broke the integration end-to-end. Empty array passes now; runtime
+    // still requires at least one of log_text or source_paths.
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT);
+    const env = await handleIncidentPack(
+      { log_text: LONG_LOG, source_paths: [], title: "Hermes empty paths", artifact_dir: tempArtifactDir },
+      makeCtx(client),
+    );
+    expect(client.generateCalls.map((c) => c.tool)).toEqual(["triage", "brief"]);
+    expect(env.result.artifact.markdown_path).toMatch(/\.md$/);
+  });
+
   it("weak brief propagates to summary.weak", async () => {
     const weakBrief = JSON.stringify({
       root_cause_hypotheses: [],

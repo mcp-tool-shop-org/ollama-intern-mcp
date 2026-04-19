@@ -380,6 +380,23 @@ describe("handleChangeBrief — shape + grounding", () => {
     expect(prompt).toMatch(/release_note_draft is a DRAFT/);
   });
 
+  it("accepts empty source_paths when diff_text is provided", async () => {
+    // Regression — local-LLM callers (hermes3:8b) emit `source_paths: []`
+    // on diff-driven change_brief calls. Empty array passes schema; the
+    // runtime neither-present check still catches the no-evidence case.
+    const diff = `diff --git a/x b/x\n@@\n+x\n`;
+    const modelOut = JSON.stringify({
+      change_summary: "added x",
+      affected_surfaces: [{ surface: "module", evidence_refs: ["e1"] }],
+      why_it_matters: "first export",
+      likely_breakpoints: [], validation_checks: [], release_note_draft: "New export x.",
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleChangeBrief({ diff_text: diff, source_paths: [] }, makeCtx(client));
+    expect(env.result.change_summary).toContain("added x");
+    expect(env.result.weak).toBe(false);
+  });
+
   it("source_paths alone works when no diff is available", async () => {
     const p = join(tempDir, "changed.ts");
     await writeFile(p, "export const x = 1;", "utf8");

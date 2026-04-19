@@ -96,6 +96,7 @@ export async function handleClassify(
       tool: "ollama_classify",
       tier: "instant",
       ctx,
+      think: false,
       items: input.items,
       build: (item, _tier, model) => ({
         model,
@@ -123,6 +124,7 @@ export async function handleClassify(
     tool: "ollama_classify",
     tier: "instant",
     ctx,
+    think: false,
     build: (_tier, model) => ({
       model,
       prompt: buildPromptFor(text, input),

@@ -35,9 +35,8 @@ export const incidentBriefSchema = z.object({
   log_text: z.string().min(1).optional().describe("Raw log blob to reason over. Combine with source_paths and/or corpus for a richer brief."),
   source_paths: z
     .array(z.string().min(1))
-    .min(1)
     .optional()
-    .describe("File paths read server-side (Claude does not preload). Use for config files, related source files, incident notes."),
+    .describe("File paths read server-side (Claude does not preload). Use for config files, related source files, incident notes. Optional — log-driven calls work without it; runtime requires at least one of log_text or source_paths."),
   corpus: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
@@ -234,6 +233,7 @@ export async function synthesizeIncidentBrief(
     tool: "ollama_incident_brief",
     tier: "deep",
     ctx,
+    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(evidence, maxHypotheses),

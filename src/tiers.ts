@@ -42,15 +42,66 @@ export const TIER_FALLBACK: Record<Tier, Tier | null> = {
 };
 
 /**
- * Default temperatures by work shape. Small models reward tight scaffolding;
- * these map to the patterns in the handoff prompt-shape notes.
+ * Default temperatures by work shape.
+ *
+ * Calibrated for Qwen 3 (supported alongside default hermes3:8b). Qwen 3
+ * has a documented regression vs Qwen 2.5: greedy decoding (temp 0)
+ * degrades quality — the official model cards publish minimum-safe defaults,
+ * which is why classify/extract/triage now floor at 0.2 instead of 0.1 and
+ * never hit zero. hermes3:8b tolerates the higher floors without loss.
+ *
+ * Thinking vs non-thinking mode is controlled by THINK_BY_SHAPE below plus
+ * the per-call `think` field on GenerateRequest. Non-thinking models
+ * (hermes3:8b) ignore `think`, so the same table works on both ladders.
+ *
+ * Upstream reference: Qwen3 HF card recommends Temperature=0.7 / TopP=0.8
+ * (non-thinking) and Temperature=0.6 / TopP=0.95 (thinking). The
+ * structured-JSON shapes here stay cooler than the card defaults — small
+ * models producing strict schema need less entropy — but never greedy.
  */
 export const TEMPERATURE_BY_SHAPE = {
-  classify: 0.1,
-  extract: 0.1,
-  triage: 0.1,
+  classify: 0.2,
+  extract: 0.2,
+  triage: 0.2,
   summarize: 0.3,
-  research: 0.3,
-  draft: 0.4,
+  research: 0.6,
+  draft: 0.6,
   chat: 0.7,
+} as const;
+
+/**
+ * Sampler defaults keyed to Qwen3 official guidance. Apply alongside
+ * TEMPERATURE_BY_SHAPE when the tool constructs its options block.
+ * hermes3:8b applies these without issue.
+ */
+export const TOP_P_BY_MODE = {
+  non_thinking: 0.8,
+  thinking: 0.95,
+} as const;
+
+/**
+ * Thinking-mode by work shape.
+ *
+ * Load-bearing for Qwen 3 on Ollama. When `think=true` and the model is a
+ * reasoning model, CoT content is emitted into the response's `thinking`
+ * field AND consumes num_predict budget. For short-output tasks (classify,
+ * extract, triage, short summaries) that budget is tight — a thinking
+ * model can burn the entire num_predict on CoT and return an empty
+ * `response`. The prompt-level `/no_think` soft-switch does NOT work on
+ * Ollama — only the API field `think` does.
+ *
+ * Research / briefs / drafts get think=true: they benefit from CoT, and
+ * their num_predict is sized for reasoning + response together.
+ *
+ * Non-thinking models (hermes3:8b) silently ignore the field, so declaring
+ * it still costs nothing on the default ladder.
+ */
+export const THINK_BY_SHAPE = {
+  classify: false,
+  extract: false,
+  triage: false,
+  summarize: false,
+  research: true,
+  draft: false,
+  chat: false,
 } as const;

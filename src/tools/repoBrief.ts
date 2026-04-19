@@ -188,6 +188,7 @@ export async function synthesizeRepoBrief(
     tool: "ollama_repo_brief",
     tier: "deep",
     ctx,
+    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(evidence, caps),

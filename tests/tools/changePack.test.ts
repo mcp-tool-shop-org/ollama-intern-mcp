@@ -198,6 +198,19 @@ describe("handleChangePack — input contract", () => {
     expect(client.generateCalls.map((c) => c.tool)).toEqual(["brief", "extract"]);
     expect(env.result.summary.triage_ran).toBe(false);
   });
+
+  it("accepts empty source_paths when diff_text is provided", async () => {
+    // Regression — local-LLM callers (hermes3:8b) emit `source_paths: []` on
+    // diff-driven change calls. Empty array passes schema; runtime still
+    // enforces "at least one of diff_text or source_paths".
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT, EXTRACT_OUT);
+    const env = await handleChangePack(
+      { diff_text: SIMPLE_DIFF, source_paths: [], artifact_dir: tempArtifactDir },
+      makeCtx(client),
+    );
+    expect(client.generateCalls.map((c) => c.tool)).toEqual(["brief", "extract"]);
+    expect(env.result.summary.triage_ran).toBe(false);
+  });
 });
 
 // ── Pipeline + step trace ───────────────────────────────────

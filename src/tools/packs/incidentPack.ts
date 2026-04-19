@@ -45,7 +45,7 @@ import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
 
 export const incidentPackSchema = z.object({
   log_text: z.string().min(1).optional().describe("Raw log blob. Combine with source_paths and/or corpus for richer coverage."),
-  source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).optional().describe("File paths read server-side (related source, config, incident notes)."),
+  source_paths: strictStringArray({ min: 0, fieldName: "source_paths" }).optional().describe("File paths read server-side (related source, config, incident notes). Optional — log-driven calls work without it; runtime requires at least one of log_text or source_paths."),
   corpus: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")

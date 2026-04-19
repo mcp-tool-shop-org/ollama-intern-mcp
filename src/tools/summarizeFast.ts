@@ -45,6 +45,7 @@ export async function handleSummarizeFast(
     tool: "ollama_summarize_fast",
     tier: "instant",
     ctx,
+    think: false,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

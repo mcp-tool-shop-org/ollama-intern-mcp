@@ -78,6 +78,7 @@ export async function handleDraft(
       tool: "ollama_draft",
       tier: "workhorse",
       ctx,
+      think: false,
       build: (_tier, model) => ({
         model,
         prompt: buildPrompt(input),

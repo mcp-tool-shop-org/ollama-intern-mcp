@@ -68,6 +68,8 @@ export interface RunBatchInput<I extends BatchItem, R> {
   preValidate?: (item: I) => void;
   /** Whether to attempt tier fallback on timeout per item. */
   allowFallback?: boolean;
+  /** Override thinking mode on every per-item generate call. See RunToolInput.think. */
+  think?: boolean;
 }
 
 /**
@@ -118,7 +120,8 @@ export async function runBatch<I extends BatchItem, R>(
         timeoutOverrideMs: ctx.timeouts,
         run: async (tier, signal) => {
           const model = resolveTier(tier, ctx.tiers);
-          const req = input.build(item, tier, model);
+          const built = input.build(item, tier, model);
+          const req = input.think === undefined ? built : { ...built, think: input.think };
           const resp = await ctx.client.generate(req, signal);
           return { resp, model };
         },

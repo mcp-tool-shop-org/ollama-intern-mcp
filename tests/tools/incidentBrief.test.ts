@@ -149,6 +149,26 @@ describe("handleIncidentBrief — input contract", () => {
     expect(env.result.evidence.length).toBeGreaterThan(0);
   });
 
+  it("accepts empty source_paths when log_text is provided", async () => {
+    // Regression — Hermes/hermes3:8b emits `source_paths: []` on log-driven
+    // incident calls. The schema previously required min:1, which broke the
+    // integration end-to-end. Empty array is now accepted; runtime still
+    // enforces "at least one of log_text or source_paths" (the "rejects"
+    // test above covers the neither-present case).
+    const modelOut = JSON.stringify({
+      root_cause_hypotheses: [{ hypothesis: "OOM kill", confidence: "high", evidence_refs: ["e1"] }],
+      affected_surfaces: [{ surface: "worker pool", evidence_refs: ["e1"] }],
+      timeline_clues: [],
+      next_checks: [{ check: "inspect memory usage", why: "check if OOM killer fired" }],
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleIncidentBrief(
+      { log_text: "ERROR: oom-killed\nWARN: memory 99%\nINFO: restart", source_paths: [] },
+      makeCtx(client),
+    );
+    expect(env.result.root_cause_hypotheses).toHaveLength(1);
+  });
+
   it("accepts source_paths only", async () => {
     const p = join(tempDir, "config.yaml");
     await writeFile(p, "memory_limit: 512MB\nworkers: 4\n", "utf8");

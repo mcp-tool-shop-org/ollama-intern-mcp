@@ -26,6 +26,13 @@ export interface RunToolInput<T> {
   parse: (raw: string) => T;
   /** Optional extra warnings from guardrails (e.g. stripped citations). */
   warnings?: string[];
+  /**
+   * Override `think` on the generate request. If unset, inherits whatever
+   * build() set. Recommended: tools set it explicitly per shape via
+   * THINK_BY_SHAPE so Qwen 3 thinking behavior is predictable. Non-thinking
+   * models (hermes3:8b) ignore the field.
+   */
+  think?: boolean;
 }
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
@@ -40,7 +47,8 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     timeoutOverrideMs: ctx.timeouts,
     run: async (tier, signal) => {
       const model = resolveTier(tier, ctx.tiers);
-      const req = input.build(tier, model);
+      const built = input.build(tier, model);
+      const req: GenerateRequest = input.think === undefined ? built : { ...built, think: input.think };
       const resp = await ctx.client.generate(req, signal);
       return { resp, model };
     },

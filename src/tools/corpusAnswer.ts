@@ -282,6 +282,7 @@ export async function handleCorpusAnswer(
     tool: "ollama_corpus_answer",
     tier: "deep",
     ctx,
+    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input.question, hits, maxWords),

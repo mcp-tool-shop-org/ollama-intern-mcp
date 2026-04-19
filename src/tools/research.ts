@@ -78,6 +78,7 @@ export async function handleResearch(
     tool: "ollama_research",
     tier: "deep",
     ctx,
+    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, sources),

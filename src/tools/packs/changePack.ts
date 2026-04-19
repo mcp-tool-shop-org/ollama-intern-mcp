@@ -47,7 +47,7 @@ import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
 
 export const changePackSchema = z.object({
   diff_text: z.string().min(1).optional().describe("Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers. At least one of diff_text or source_paths is required."),
-  source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).optional().describe("Changed files to read server-side (Claude does not preload). Alongside or instead of diff_text."),
+  source_paths: strictStringArray({ min: 0, fieldName: "source_paths" }).optional().describe("Changed files to read server-side (Claude does not preload). Alongside or instead of diff_text. Optional — diff-driven calls work without it; runtime requires at least one of diff_text or source_paths."),
   log_text: z.string().min(1).optional().describe("Optional CI log that triggered this review. When present, triage_logs runs and its signal is surfaced in the Change section."),
   corpus: z
     .string()

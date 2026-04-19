@@ -38,9 +38,8 @@ export const changeBriefSchema = z.object({
   diff_text: z.string().min(1).optional().describe("Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers into numbered evidence items."),
   source_paths: z
     .array(z.string().min(1))
-    .min(1)
     .optional()
-    .describe("Changed files to read server-side. Use alongside diff_text when the full file context matters, or alone when no diff is available."),
+    .describe("Changed files to read server-side. Use alongside diff_text when the full file context matters, or alone when no diff is available. Optional — diff-driven calls work without it; runtime requires at least one of diff_text or source_paths."),
   corpus: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
@@ -216,6 +215,7 @@ export async function synthesizeChangeBrief(
     tool: "ollama_change_brief",
     tier: "deep",
     ctx,
+    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(evidence, caps),
