@@ -224,7 +224,7 @@ export async function synthesizeIncidentBrief(
       residency,
       warnings: ["incident_brief: zero evidence items; model not invoked"],
     });
-    await ctx.logger.log(callEvent("ollama_incident_brief", envelope, input));
+    await ctx.logger.log(callEvent("ollama_incident_brief", envelope));
     return envelope;
   }
 
@@ -234,8 +234,6 @@ export async function synthesizeIncidentBrief(
     tool: "ollama_incident_brief",
     tier: "deep",
     ctx,
-    logInput: input,
-    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(evidence, maxHypotheses),

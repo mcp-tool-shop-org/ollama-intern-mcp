@@ -104,6 +104,6 @@ export async function handleEmbedSearch(
     residency,
   });
 
-  await ctx.logger.log(callEvent("ollama_embed_search", envelope, input));
+  await ctx.logger.log(callEvent("ollama_embed_search", envelope));
   return envelope;
 }

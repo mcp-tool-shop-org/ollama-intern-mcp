@@ -216,8 +216,6 @@ export async function synthesizeChangeBrief(
     tool: "ollama_change_brief",
     tier: "deep",
     ctx,
-    logInput: input,
-    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(evidence, caps),

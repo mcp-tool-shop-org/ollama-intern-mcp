@@ -56,6 +56,6 @@ export async function handleEmbed(
     residency,
   });
 
-  await ctx.logger.log(callEvent("ollama_embed", envelope, input));
+  await ctx.logger.log(callEvent("ollama_embed", envelope));
   return envelope;
 }

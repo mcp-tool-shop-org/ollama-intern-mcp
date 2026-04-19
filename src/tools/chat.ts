@@ -65,6 +65,6 @@ export async function handleChat(
     residency,
   });
 
-  await ctx.logger.log(callEvent("ollama_chat", envelope, input));
+  await ctx.logger.log(callEvent("ollama_chat", envelope));
   return envelope;
 }

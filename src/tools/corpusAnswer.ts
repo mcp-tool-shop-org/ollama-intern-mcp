@@ -269,7 +269,7 @@ export async function handleCorpusAnswer(
       residency,
       warnings: ["corpus_answer: zero retrieval hits; model not invoked"],
     });
-    await ctx.logger.log(callEvent("ollama_corpus_answer", envelope, input));
+    await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
     return envelope;
   }
 
@@ -282,8 +282,6 @@ export async function handleCorpusAnswer(
     tool: "ollama_corpus_answer",
     tier: "deep",
     ctx,
-    logInput: input,
-    think: true,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input.question, hits, maxWords),

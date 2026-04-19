@@ -98,8 +98,6 @@ export async function handleExtract(
       tool: "ollama_extract",
       tier: "workhorse",
       ctx,
-      logInput: input,
-      think: false,
       items: input.items,
       build: (item, _tier, model) => ({
         model,
@@ -123,8 +121,6 @@ export async function handleExtract(
     tool: "ollama_extract",
     tier: "workhorse",
     ctx,
-    logInput: input,
-    think: false,
     build: (_tier, model) => ({
       model,
       prompt: buildPromptFor(text, input.schema, input.hint),

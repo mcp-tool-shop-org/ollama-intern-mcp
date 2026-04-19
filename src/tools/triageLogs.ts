@@ -96,8 +96,6 @@ export async function handleTriageLogs(
       tool: "ollama_triage_logs",
       tier: "instant",
       ctx,
-      logInput: input,
-      think: false,
       items: input.items,
       build: (item, _tier, model) => ({
         model,
@@ -114,8 +112,6 @@ export async function handleTriageLogs(
     tool: "ollama_triage_logs",
     tier: "instant",
     ctx,
-    logInput: input,
-    think: false,
     build: (_tier, model) => ({
       model,
       prompt: buildPromptFor(logText, input.patterns),

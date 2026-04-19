@@ -17,18 +17,25 @@ describe("profiles", () => {
     expect(p.tiers.embed).toBe("nomic-embed-text");
   });
 
-  it("m5-max ladder uses Qwen 3 workhorse + Llama 4 Scout deep (post-2026-04-18 upgrade)", () => {
+  it("dev-rtx5080-llama diverges only on Deep (parity rail)", () => {
+    const dev = PROFILES["dev-rtx5080"];
+    const llama = PROFILES["dev-rtx5080-llama"];
+    expect(llama.tiers.instant).toBe(dev.tiers.instant);
+    expect(llama.tiers.workhorse).toBe(dev.tiers.workhorse);
+    expect(llama.tiers.embed).toBe(dev.tiers.embed);
+    expect(llama.tiers.deep).toMatch(/^llama/);
+  });
+
+  it("m5-max ladder matches the Phase 0 handoff target models", () => {
     const p = PROFILES["m5-max"];
-    // Llama 4 Scout uses a different chat template than 3.x; if this drifts back to llama3.x,
-    // formatter misalignment would silently corrupt outputs — worth an explicit assertion.
-    expect(p.tiers.instant).toMatch(/^qwen3/);
-    expect(p.tiers.workhorse).toMatch(/^qwen3/);
-    expect(p.tiers.deep).toMatch(/^llama4/);
+    expect(p.tiers.instant).toContain("14b");
+    expect(p.tiers.workhorse).toContain("32b");
+    expect(p.tiers.deep).toContain("70b");
   });
 
   it("selects profile by INTERN_PROFILE env var", () => {
     expect(loadProfile({ INTERN_PROFILE: "m5-max" }).name).toBe("m5-max");
-    expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080" }).name).toBe("dev-rtx5080");
+    expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080-llama" }).name).toBe("dev-rtx5080-llama");
   });
 
   it("falls back to default for unknown profile names", () => {
@@ -54,6 +61,7 @@ describe("profiles", () => {
 
   it("dev profiles lock Instant to 15s (cold-load margin); m5-max stays at 5s", () => {
     expect(PROFILES["dev-rtx5080"].timeouts.instant).toBe(15_000);
+    expect(PROFILES["dev-rtx5080-llama"].timeouts.instant).toBe(15_000);
     expect(PROFILES["m5-max"].timeouts.instant).toBe(5_000);
   });
 
@@ -75,6 +83,7 @@ describe("profiles", () => {
 
   it("dev profiles prewarm Instant only; m5-max prewarms nothing", () => {
     expect(PROFILES["dev-rtx5080"].prewarm).toEqual(["instant"]);
+    expect(PROFILES["dev-rtx5080-llama"].prewarm).toEqual(["instant"]);
     expect(PROFILES["m5-max"].prewarm).toEqual([]);
   });
 

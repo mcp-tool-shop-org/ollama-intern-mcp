@@ -548,7 +548,7 @@ export async function handleChangePack(
     startedAt: packStartedAt,
     residency,
   });
-  await ctx.logger.log(callEvent("ollama_change_pack", envelope, input));
+  await ctx.logger.log(callEvent("ollama_change_pack", envelope));
   return envelope;
 }
 

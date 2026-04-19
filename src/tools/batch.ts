@@ -68,13 +68,6 @@ export interface RunBatchInput<I extends BatchItem, R> {
   preValidate?: (item: I) => void;
   /** Whether to attempt tier fallback on timeout per item. */
   allowFallback?: boolean;
-  /**
-   * Caller's original input object — used ONLY to compute an input shape
-   * for the NDJSON log. Phase 2.5 chain reconstruction relies on this.
-   */
-  logInput?: unknown;
-  /** Override thinking mode on every per-item generate call. See RunToolInput.think. */
-  think?: boolean;
 }
 
 /**
@@ -125,8 +118,7 @@ export async function runBatch<I extends BatchItem, R>(
         timeoutOverrideMs: ctx.timeouts,
         run: async (tier, signal) => {
           const model = resolveTier(tier, ctx.tiers);
-          const built = input.build(item, tier, model);
-          const req = input.think === undefined ? built : { ...built, think: input.think };
+          const req = input.build(item, tier, model);
           const resp = await ctx.client.generate(req, signal);
           return { resp, model };
         },
@@ -171,6 +163,6 @@ export async function runBatch<I extends BatchItem, R>(
   envelope.ok_count = okCount;
   envelope.error_count = errorCount;
 
-  await ctx.logger.log(callEvent(input.tool, envelope, input.logInput));
+  await ctx.logger.log(callEvent(input.tool, envelope));
   return envelope;
 }

@@ -63,6 +63,6 @@ export async function handleArtifactExportToPath(
     startedAt,
     residency: null,
   });
-  await ctx.logger.log(callEvent("ollama_artifact_export_to_path", envelope, input));
+  await ctx.logger.log(callEvent("ollama_artifact_export_to_path", envelope));
   return envelope;
 }

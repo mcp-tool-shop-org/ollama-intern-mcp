@@ -105,6 +105,6 @@ export async function handleCorpusSearch(
     residency,
   });
 
-  await ctx.logger.log(callEvent("ollama_corpus_search", envelope, input));
+  await ctx.logger.log(callEvent("ollama_corpus_search", envelope));
   return envelope;
 }

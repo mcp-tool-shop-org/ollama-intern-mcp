@@ -119,6 +119,6 @@ export async function handleArtifactRead(
     startedAt,
     residency: null,
   });
-  await ctx.logger.log(callEvent("ollama_artifact_read", envelope, input));
+  await ctx.logger.log(callEvent("ollama_artifact_read", envelope));
   return envelope;
 }
