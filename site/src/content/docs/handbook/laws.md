@@ -54,6 +54,30 @@ Tool errors return `{ code, message, hint, retryable }`. Stack traces are never 
 
 `artifact_list`, `artifact_read`, `artifact_diff`, `artifact_export_to_path`, and the three snippet helpers are all code paths. No Ollama. This keeps the filing cabinet independent from the worker.
 
+## Shadow routing is shadow-only
+
+Every call to a shadowable tool (18 in total) writes a pre-execution `RoutingReceipt` capturing what the router would have picked. **The actual invocation is unchanged.** No calibration — approved, proposed, or experimental — can "take control" in this release. Active routing is a separate future phase, gated behind a deliberate product decision.
+
+## Calibration is operator-gated
+
+`ollama_routing_calibrate` runs a full propose / replay / approve / reject / rollback lifecycle. Every approval requires a `reason` string. Every transition appends to history. **Nothing auto-applies.** If a finding points at a gap calibration can't close (e.g., `missed_abstain` on a primitive that isn't a candidate), replay returns a zero-effect result and the audit recommends skill authoring instead — the system refuses to pretend a tuning knob can fix an authoring gap.
+
+## Receipts carry their overlay version
+
+Every routing decision made under an active calibration stamps that overlay's `version` onto its receipt. Audits can always answer "which calibration produced this decision?" without inferring from timestamps.
+
+## Deterministic defaults, opt-in model
+
+Memory-layer explanations are deterministic field-level match reports. `narrate=true` opts into an Instant-tier natural-language summary; `include_excerpt=true` attaches a structured source extract. Defaults are deterministic. Opt-ins are explicit.
+
+## Nomic prefixes, never reversed
+
+Embeddings use the documented nomic contract: records get `search_document:`, queries get `search_query:`. Never reversed, never dropped. The server applies the prefix — callers don't have to remember.
+
+## Privacy-safe NDJSON
+
+The call log records the SHAPE of input (presence, counts, buckets), never content. Log text, diff text, and free-form input blobs never land in the log file. Nothing leaves the box.
+
 ## Why server-side
 
 Prompt rules drift silently when a prompt evolves. Server-side rules only change when someone explicitly changes the server — and that change gets code review. "The rules are in the prompt" is how you end up with a system that used to be safe.

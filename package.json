@@ -1,7 +1,7 @@
 {
   "name": "ollama-intern-mcp",
-  "version": "1.0.2",
-  "description": "MCP control plane for local cognitive labor — job-shaped tools with tiered Ollama models (instant/workhorse/deep/embed), server-enforced guardrails, and measured economics so Claude can delegate bulk work without losing control.",
+  "version": "1.1.0",
+  "description": "MCP control plane for local cognitive labor — 40 tools across a frozen primitive core (atoms/briefs/packs/artifacts) plus four additive layers above it (skills, memory, shadow routing, operator-gated calibration). Tiered Ollama models (instant/workhorse/deep/embed), server-enforced guardrails, and measured economics so Claude can delegate bulk work without losing control.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -32,7 +32,13 @@
     "anthropic",
     "model-context-protocol",
     "llm-router",
-    "embeddings"
+    "embeddings",
+    "skills",
+    "semantic-memory",
+    "shadow-routing",
+    "routing-calibration",
+    "qwen3",
+    "llama4"
   ],
   "author": "mcp-tool-shop <64996768+mcp-tool-shop@users.noreply.github.com>",
   "license": "MIT",

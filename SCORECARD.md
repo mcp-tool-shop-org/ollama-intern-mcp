@@ -3,7 +3,7 @@
 > Score a repo before remediation. Fill this out first, then use SHIP_GATE.md to fix.
 
 **Repo:** ollama-intern-mcp
-**Date:** 2026-04-17
+**Date:** 2026-04-18 (refreshed for v1.1.0 — skill / memory / shadow routing / calibration layers)
 **Type tags:** [all] [npm] [mcp]
 
 ## Pre-Remediation Assessment
