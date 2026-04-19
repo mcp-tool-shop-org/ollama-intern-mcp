@@ -17,6 +17,8 @@
 
 An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
+**Also drives [Hermes Agent](https://github.com/NousResearch/Hermes) on `hermes3:8b`** — validated end-to-end 2026-04-19. The default ladder is `hermes3:8b`; `qwen3:*` is the alternate rail. See [Use with Hermes](#use-with-hermes) below.
+
 No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ---
