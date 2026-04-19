@@ -119,6 +119,97 @@ describe("manifest", () => {
   it("missing manifest returns null", async () => {
     expect(await loadManifest("never-indexed")).toBeNull();
   });
+
+  it("indexCorpus captures the resolved embed tag into the manifest", async () => {
+    // When Ollama returns a resolved id like "nomic-embed-text:latest" in
+    // the EmbedResponse, the manifest stores it as the freshness anchor.
+    const p = await writeSource("a.md", "hello");
+    class ResolvedMock extends CountingEmbedMock {
+      async embed(req: EmbedRequest): Promise<EmbedResponse> {
+        const base = await super.embed(req);
+        return { ...base, model: `${req.model}:resolved-abc` };
+      }
+    }
+    const client = new ResolvedMock();
+    await indexCorpus({ name: "res1", paths: [p], model: MODEL, client });
+    const manifest = await loadManifest("res1");
+    expect(manifest!.embed_model_resolved).toBe(`${MODEL}:resolved-abc`);
+  });
+
+  it("loadManifest migrates v1 manifests to v2 in-memory with null resolved tag", async () => {
+    // Legacy v1 manifests (written before schema v2 shipped) must keep
+    // loading — they migrate to v2 with embed_model_resolved=null so the
+    // drift check activates on the next embed, not all at once.
+    const p = await writeSource("a.md", "hello");
+    await indexCorpus({ name: "legacy", paths: [p], model: MODEL, client: new CountingEmbedMock() });
+    // Simulate a v1 manifest on disk: drop the new field, pin schema_version=1.
+    const mPath = manifestPath("legacy");
+    const raw = JSON.parse(await readFile(mPath, "utf8"));
+    delete raw.embed_model_resolved;
+    raw.schema_version = 1;
+    await writeFile(mPath, JSON.stringify(raw, null, 2), "utf8");
+
+    const migrated = await loadManifest("legacy");
+    expect(migrated!.schema_version).toBe(MANIFEST_SCHEMA_VERSION);
+    expect(migrated!.embed_model_resolved).toBeNull();
+  });
+});
+
+describe("refreshCorpus — :latest drift detection", () => {
+  it("surfaces embed_model_resolved_drift when Ollama reports a different resolved tag", async () => {
+    // Initial index pins manifest to "…:resolved-v1". A subsequent refresh
+    // that embeds something gets "…:resolved-v2" → drift field appears.
+    const p = await writeSource("a.md", "alpha");
+    let phase: "v1" | "v2" = "v1";
+    class DriftMock extends CountingEmbedMock {
+      async embed(req: EmbedRequest): Promise<EmbedResponse> {
+        const base = await super.embed(req);
+        return { ...base, model: `${req.model}:resolved-${phase}` };
+      }
+    }
+    const client = new DriftMock();
+
+    await indexCorpus({ name: "drift1", paths: [p], model: MODEL, client });
+    const m1 = await loadManifest("drift1");
+    expect(m1!.embed_model_resolved).toBe(`${MODEL}:resolved-v1`);
+
+    // Change a file so refresh does real work (triggers an embed + captures
+    // the current resolved tag). Flip the mock to v2 for that call.
+    await writeFile(p, "alpha updated", "utf8");
+    phase = "v2";
+    const report = await refreshCorpus({ name: "drift1", model: MODEL, client });
+
+    expect(report.no_op).toBe(false);
+    expect(report.embed_model_resolved_drift).toEqual({
+      prior: `${MODEL}:resolved-v1`,
+      current: `${MODEL}:resolved-v2`,
+    });
+  });
+
+  it("omits drift field when no-op refresh (no probe this run)", async () => {
+    const p = await writeSource("a.md", "alpha");
+    const client = new CountingEmbedMock();
+    await indexCorpus({ name: "drift2", paths: [p], model: MODEL, client });
+    const report = await refreshCorpus({ name: "drift2", model: MODEL, client });
+    expect(report.no_op).toBe(true);
+    expect(report.embed_model_resolved_drift).toBeUndefined();
+  });
+
+  it("omits drift field when resolved tag is unchanged across refreshes", async () => {
+    const p = await writeSource("a.md", "alpha");
+    class StableMock extends CountingEmbedMock {
+      async embed(req: EmbedRequest): Promise<EmbedResponse> {
+        const base = await super.embed(req);
+        return { ...base, model: `${req.model}:stable` };
+      }
+    }
+    const client = new StableMock();
+    await indexCorpus({ name: "drift3", paths: [p], model: MODEL, client });
+    await writeFile(p, "alpha updated", "utf8");
+    const report = await refreshCorpus({ name: "drift3", model: MODEL, client });
+    expect(report.no_op).toBe(false);
+    expect(report.embed_model_resolved_drift).toBeUndefined();
+  });
 });
 
 // ── Refresh behavior ───────────────────────────────────────

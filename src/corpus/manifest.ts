@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { InternError } from "../errors.js";
 import { assertValidCorpusName } from "./storage.js";
 
-export const MANIFEST_SCHEMA_VERSION = 1;
+export const MANIFEST_SCHEMA_VERSION = 2;
 
 export interface CorpusManifest {
   schema_version: number;
@@ -27,6 +27,16 @@ export interface CorpusManifest {
   paths: string[];
   /** Embed model this manifest was built against — refresh refuses on mismatch. */
   embed_model: string;
+  /**
+   * Model identifier as Ollama RESOLVED it at index time (e.g.
+   * "nomic-embed-text:latest"). Captured from EmbedResponse.model on the
+   * first embed call during index. Refresh compares this against a live
+   * probe to detect the silent case where Ollama updates a :latest tag
+   * behind a stable profile name — vectors from the old resolved model
+   * are not comparable to vectors from the new one. Null on manifests
+   * written before schema v2 (auto-migrated on load).
+   */
+  embed_model_resolved: string | null;
   chunk_chars: number;
   chunk_overlap: number;
   created_at: string;
@@ -48,6 +58,12 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
   const raw = await readFile(path, "utf8");
   const parsed = JSON.parse(raw) as Partial<CorpusManifest> & { schema_version?: number };
   const found = parsed.schema_version;
+  if (found === 1) {
+    // v1 → v2 migration: v1 didn't capture the resolved tag. Treat as
+    // "unknown at index time" — refresh will record it on the next embed
+    // call and the drift check activates from there forward.
+    return { ...(parsed as CorpusManifest), schema_version: MANIFEST_SCHEMA_VERSION, embed_model_resolved: null };
+  }
   if (found !== MANIFEST_SCHEMA_VERSION) {
     throw new InternError(
       "SCHEMA_INVALID",

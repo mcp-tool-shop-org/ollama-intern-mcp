@@ -52,6 +52,15 @@ export interface RefreshReport {
   elapsed_ms: number;
   /** True iff the refresh made no changes at all. */
   no_op: boolean;
+  /**
+   * Silent :latest drift: present when the resolved tag captured during this
+   * refresh differs from the one stored in the manifest at refresh start.
+   * Reuse chunks are from the OLD resolved model; re-index the corpus if you
+   * want uniform vector space. Null or absent when no drift (or when the
+   * manifest had no prior resolved tag — e.g. migrated v1 manifest or
+   * no-op refresh).
+   */
+  embed_model_resolved_drift?: { prior: string; current: string };
 }
 
 export interface RefreshParams {
@@ -186,9 +195,24 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
   const prevChunkCount = existing?.chunks.length ?? 0;
   const droppedChunks = Math.max(0, prevChunkCount - indexReport.reused_chunks);
 
-  // Re-save manifest to bump updated_at, but only on actual change.
+  // Silent :latest drift: if Ollama resolved the embed tag to a different
+  // id this run than the one stored in the manifest at refresh start,
+  // surface it so the caller knows some chunks are from the old model.
+  // Report-only — we don't forcibly re-embed. Callers who want uniform
+  // vector space re-run ollama_corpus_index.
+  const priorResolved = manifest.embed_model_resolved;
+  const currentResolved = indexReport.embed_model_resolved;
+  const drift =
+    priorResolved !== null && currentResolved !== null && priorResolved !== currentResolved
+      ? { prior: priorResolved, current: currentResolved }
+      : undefined;
+
+  // Re-save manifest. Update the resolved tag only when a fresh probe
+  // happened this run (indexReport.embed_model_resolved !== null);
+  // otherwise preserve what the manifest already had.
   await saveManifest({
     ...manifest,
+    embed_model_resolved: currentResolved ?? priorResolved,
     updated_at: new Date().toISOString(),
   });
 
@@ -205,5 +229,6 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
     dropped_chunks: droppedChunks,
     elapsed_ms: Date.now() - t0,
     no_op: false,
+    ...(drift ? { embed_model_resolved_drift: drift } : {}),
   };
 }

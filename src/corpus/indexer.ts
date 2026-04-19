@@ -40,6 +40,13 @@ export interface IndexReport {
   newly_embedded_chunks: number;
   dropped_files: string[];
   elapsed_ms: number;
+  /**
+   * The tag Ollama resolved the embed model to during this index run (e.g.
+   * "nomic-embed-text:latest"), captured from EmbedResponse.model. Null if
+   * no embed happened this run (pure reuse). Refresh uses this to detect
+   * silent :latest drift.
+   */
+  embed_model_resolved: string | null;
 }
 
 async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
@@ -151,6 +158,10 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   }
 
   // Pass 2: embed everything that needs embedding, in batches.
+  // Capture the resolved tag (e.g. "nomic-embed-text:latest") from the
+  // first embed response — it's what the manifest uses as the freshness
+  // anchor, catching silent :latest drift on refresh.
+  let embedModelResolved: string | null = null;
   if (toEmbedTexts.length > 0) {
     for (let i = 0; i < toEmbedTexts.length; i += EMBED_BATCH) {
       const batch = toEmbedTexts.slice(i, i + EMBED_BATCH);
@@ -159,6 +170,9 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
         throw new Error(
           `Embed returned ${resp.embeddings.length} vectors for ${batch.length} inputs`,
         );
+      }
+      if (embedModelResolved === null && typeof resp.model === "string") {
+        embedModelResolved = resp.model;
       }
       for (let j = 0; j < batch.length; j++) {
         const meta = toEmbedMeta[i + j];
@@ -222,11 +236,15 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   const manifestPaths = [...seenPaths].sort();
   const prevManifest = await loadManifest(params.name).catch(() => null);
   const now = new Date().toISOString();
+  // Preserve the prior resolved tag when nothing was embedded this run.
+  // Writing null over a previously-known value would lose the freshness anchor.
+  const resolvedForManifest = embedModelResolved ?? prevManifest?.embed_model_resolved ?? null;
   const manifest: CorpusManifest = {
     schema_version: MANIFEST_SCHEMA_VERSION,
     name: params.name,
     paths: manifestPaths,
     embed_model: params.model,
+    embed_model_resolved: resolvedForManifest,
     chunk_chars: opts.chunk_chars,
     chunk_overlap: opts.chunk_overlap,
     created_at: prevManifest?.created_at ?? now,
@@ -244,5 +262,6 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     newly_embedded_chunks: newlyEmbeddedCount,
     dropped_files: droppedFiles,
     elapsed_ms: Date.now() - t0,
+    embed_model_resolved: embedModelResolved,
   };
 }
