@@ -67,18 +67,35 @@ let origCorpusDir: string | undefined;
 
 const MODEL = "nomic-embed-text";
 
+// Capture the original env value once at module load. Even if a beforeEach
+// throws before reaching the assignment below, afterEach still has the
+// correct pre-test value to restore — INTERN_CORPUS_DIR can never leak
+// out of this test file. (F-001)
+const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
+
 beforeEach(async () => {
+  // Snapshot per-test too, in case a nested describe mutates it between hooks.
+  origCorpusDir = process.env.INTERN_CORPUS_DIR;
   tempCorpusDir = await mkdtemp(join(tmpdir(), "intern-refresh-corpus-"));
   tempSourceDir = await mkdtemp(join(tmpdir(), "intern-refresh-src-"));
-  origCorpusDir = process.env.INTERN_CORPUS_DIR;
   process.env.INTERN_CORPUS_DIR = tempCorpusDir;
 });
 
 afterEach(async () => {
-  if (origCorpusDir === undefined) delete process.env.INTERN_CORPUS_DIR;
-  else process.env.INTERN_CORPUS_DIR = origCorpusDir;
-  await rm(tempCorpusDir, { recursive: true, force: true });
-  await rm(tempSourceDir, { recursive: true, force: true });
+  // Restore env unconditionally, regardless of any earlier throw. The
+  // finally-style try/finally wrapping the restore means even a failed
+  // directory cleanup can't leave the env pointing at a deleted path.
+  try {
+    const toRestore = origCorpusDir ?? MODULE_ORIG_CORPUS_DIR;
+    if (toRestore === undefined) {
+      delete process.env.INTERN_CORPUS_DIR;
+    } else {
+      process.env.INTERN_CORPUS_DIR = toRestore;
+    }
+  } finally {
+    if (tempCorpusDir) await rm(tempCorpusDir, { recursive: true, force: true });
+    if (tempSourceDir) await rm(tempSourceDir, { recursive: true, force: true });
+  }
 });
 
 async function writeSource(name: string, content: string): Promise<string> {

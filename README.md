@@ -87,13 +87,11 @@ The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github
 
 ## Install
 
-```bash
-npm install -g ollama-intern-mcp
-```
+Requires [Ollama](https://ollama.com) running locally and the tier models pulled (see [Model pulls](#model-pulls) below).
 
-Requires [Ollama](https://ollama.com) running locally and the tier models pulled.
+### Claude Code (recommended)
 
-### Claude Code
+Most users install this by adding it to their Claude Code MCP server config — no global install required. Claude Code runs the server on demand via `npx`:
 
 ```json
 {
@@ -113,6 +111,14 @@ Requires [Ollama](https://ollama.com) running locally and the tier models pulled
 ### Claude Desktop
 
 Same block, written to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+
+### Global install (advanced)
+
+Only needed if you want the binary on your `PATH` for ad-hoc use outside Claude Code:
+
+```bash
+npm install -g ollama-intern-mcp
+```
 
 ### Use with Hermes
 

@@ -115,7 +115,14 @@ async function roundTrip(messages: Array<Record<string, unknown>>): Promise<Map<
   });
 }
 
-describe("MCP end-to-end golden — stdio round-trip", () => {
+// Opt-out for CI / low-resource environments: set SKIP_MCP_GOLDEN=1 to skip
+// these subprocess-spawn tests. The 15s timeout can be flaky under CPU load
+// even though the test itself never contacts Ollama (it stops at tools/list).
+// (F-002)
+const SKIP_MCP_GOLDEN = process.env.SKIP_MCP_GOLDEN === "1";
+const describeOrSkip = SKIP_MCP_GOLDEN ? describe.skip : describe;
+
+describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
   it("responds to initialize with a valid server info block", async () => {
     const resp = await roundTrip([
       {
