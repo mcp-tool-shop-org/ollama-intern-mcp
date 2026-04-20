@@ -279,7 +279,7 @@ Built to the [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) bar. Ha
 - **A. Security** — SECURITY.md, threat model, no telemetry, path-safety, `confirm_write` on protected paths
 - **B. Errors** — structured shape across all tool results; no raw stacks
 - **C. Docs** — README current, CHANGELOG, LICENSE; tool schemas self-document
-- **D. Hygiene** — `npm run verify` (395 tests), CI with dep scanning, Dependabot, lockfile, `engines.node`
+- **D. Hygiene** — `npm run verify` (481 tests), CI with dep scanning, Dependabot, lockfile, `engines.node`
 
 ---
 
@@ -288,7 +288,7 @@ Built to the [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) bar. Ha
 - **Phase 1 — Delegation Spine** ✓ shipped: atom surface, uniform envelope, tiered routing, guardrails
 - **Phase 2 — Truth Spine** ✓ shipped: schema v2 chunking, BM25 + RRF, living corpora, evidence-backed briefs, retrieval eval pack
 - **Phase 3 — Pack & Artifact Spine** ✓ shipped: fixed-pipeline packs with durable artifacts + continuity tier
-- **Phase 4 — Adoption Spine** — real-use observation on the RTX 5080, hardening the rough edges that surface
+- **Phase 4 — Adoption Spine** ✓ v2.0.1: three-stage health pass hardened corpus (TOCTOU, 50 MB file cap, symlink rejection, atomic writes, per-file failure capture), tool path traversal, observability (semaphore wait events, timeout error context, profile env-override logging, prewarm cold-start signal), test safety (module-load env snapshot across 10 files, `tools/call` E2E). Troubleshooting handbook + hardware minimums added for operators.
 - **Phase 5 — M5 Max benchmarks** — publishable numbers once the hardware lands (~2026-04-24)
 
 Phase by hardening layer. The atom/pack/artifact surface stays frozen.
