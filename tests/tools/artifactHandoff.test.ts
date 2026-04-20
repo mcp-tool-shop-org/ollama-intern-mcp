@@ -79,6 +79,10 @@ let tempRoot: string;
 let exportRoot: string;
 let origArtifactDir: string | undefined;
 
+// Module-load snapshot — bulletproof restore even if beforeEach throws
+// before its own snapshot line runs. (T001)
+const MODULE_ORIG_ARTIFACT_DIR = process.env.INTERN_ARTIFACT_DIR;
+
 beforeEach(async () => {
   tempRoot = await mkdtemp(join(tmpdir(), "intern-handoff-src-"));
   exportRoot = await mkdtemp(join(tmpdir(), "intern-handoff-dst-"));
@@ -87,10 +91,14 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  if (origArtifactDir === undefined) delete process.env.INTERN_ARTIFACT_DIR;
-  else process.env.INTERN_ARTIFACT_DIR = origArtifactDir;
-  await rm(tempRoot, { recursive: true, force: true });
-  await rm(exportRoot, { recursive: true, force: true });
+  const toRestore = origArtifactDir ?? MODULE_ORIG_ARTIFACT_DIR;
+  try {
+    if (toRestore === undefined) delete process.env.INTERN_ARTIFACT_DIR;
+    else process.env.INTERN_ARTIFACT_DIR = toRestore;
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+    await rm(exportRoot, { recursive: true, force: true });
+  }
 });
 
 async function writeArtifactPair(

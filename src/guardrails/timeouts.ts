@@ -23,6 +23,12 @@ export interface RunWithTimeoutInput<T> {
   allowFallback?: boolean;
   /** Override timeouts per tier. Production leaves this undefined; tests inject short values. */
   timeoutOverrideMs?: Partial<Record<Tier, number>>;
+  /**
+   * Optional resolver so the terminal TIER_TIMEOUT error can include the
+   * concrete model that actually timed out. Left undefined, the error
+   * message falls back to just the tier — existing behavior is preserved.
+   */
+  modelFor?: (tier: Tier) => string;
 }
 
 export interface RunWithTimeoutResult<T> {
@@ -46,6 +52,7 @@ export async function runWithTimeoutAndFallback<T>(
   async function attempt(tier: Tier, fallbackFrom: Tier | undefined): Promise<RunWithTimeoutResult<T>> {
     const controller = new AbortController();
     const timeoutMs = input.timeoutOverrideMs?.[tier] ?? TIER_TIMEOUT_MS[tier];
+    const startedAt = Date.now();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -59,9 +66,25 @@ export async function runWithTimeoutAndFallback<T>(
       await input.logger.log({ kind: "timeout", ts: timestamp(), tool: input.tool, tier, timeout_ms: timeoutMs });
       const next = allowFallback ? TIER_FALLBACK[tier] : null;
       if (!next) {
+        // Include model (if available), elapsed, budget, and whether a
+        // fallback was even attempted. "timeout" alone is useless for
+        // debugging — a human reading the error should be able to tell
+        // whether this was a cold-load issue, a true runaway call, or a
+        // cascade that ran out of runway.
+        const elapsedMs = Date.now() - startedAt;
+        const model = input.modelFor ? input.modelFor(tier) : undefined;
+        const fallbackAttempted = fallbackFrom !== undefined;
+        const parts = [
+          `Tool ${input.tool} timed out on tier ${tier}`,
+          model ? `model=${model}` : null,
+          `elapsed=${elapsedMs}ms`,
+          `budget=${timeoutMs}ms`,
+          `fallback_attempted=${fallbackAttempted}`,
+          allowFallback ? "no cheaper tier available" : "fallback disabled",
+        ].filter(Boolean);
         throw new InternError(
           "TIER_TIMEOUT",
-          `Tool ${input.tool} exceeded ${timeoutMs}ms on tier ${tier} with no fallback available`,
+          parts.join(" "),
           "Increase the tier's timeout, reduce input size, or ensure the model is resident (check /api/ps).",
           true,
         );

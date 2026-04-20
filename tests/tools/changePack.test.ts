@@ -141,6 +141,10 @@ let tempCorpusDir: string;
 let tempSrcDir: string;
 let origCorpusDir: string | undefined;
 
+// Module-load snapshot — bulletproof restore even if beforeEach throws
+// before its own snapshot line runs. (T001)
+const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
+
 beforeEach(async () => {
   tempArtifactDir = await mkdtemp(join(tmpdir(), "intern-changepack-art-"));
   tempCorpusDir = await mkdtemp(join(tmpdir(), "intern-changepack-corpus-"));
@@ -150,11 +154,15 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  if (origCorpusDir === undefined) delete process.env.INTERN_CORPUS_DIR;
-  else process.env.INTERN_CORPUS_DIR = origCorpusDir;
-  await rm(tempArtifactDir, { recursive: true, force: true });
-  await rm(tempCorpusDir, { recursive: true, force: true });
-  await rm(tempSrcDir, { recursive: true, force: true });
+  const toRestore = origCorpusDir ?? MODULE_ORIG_CORPUS_DIR;
+  try {
+    if (toRestore === undefined) delete process.env.INTERN_CORPUS_DIR;
+    else process.env.INTERN_CORPUS_DIR = toRestore;
+  } finally {
+    await rm(tempArtifactDir, { recursive: true, force: true });
+    await rm(tempCorpusDir, { recursive: true, force: true });
+    await rm(tempSrcDir, { recursive: true, force: true });
+  }
 });
 
 async function writeSources(files: Array<{ name: string; content: string }>): Promise<string[]> {

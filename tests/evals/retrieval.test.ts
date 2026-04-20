@@ -105,9 +105,13 @@ let records: EvalRecord[];
 let summary: EvalSummary;
 let tempCorpusDir: string;
 
+// Module-load snapshot — bulletproof restore even if beforeAll throws
+// before its own snapshot line runs. (T001)
+const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
+
 beforeAll(async () => {
   tempCorpusDir = await mkdtemp(join(tmpdir(), "intern-retrieval-eval-"));
-  const origCorpusDir = process.env.INTERN_CORPUS_DIR;
+  const origCorpusDir = process.env.INTERN_CORPUS_DIR ?? MODULE_ORIG_CORPUS_DIR;
   process.env.INTERN_CORPUS_DIR = tempCorpusDir;
 
   try {

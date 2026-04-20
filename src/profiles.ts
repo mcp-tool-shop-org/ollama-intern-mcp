@@ -135,3 +135,37 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
   };
   return { name, description: base.description, tiers, timeouts: base.timeouts, prewarm: base.prewarm };
 }
+
+export interface EnvOverride {
+  key: string;
+  tier: Tier;
+  from: string;
+  to: string;
+}
+
+/**
+ * Report tier-model env overrides relative to the active profile's baseline.
+ *
+ * Called ONCE at startup from main() so the operator sees, e.g.,
+ *   "INTERN_TIER_DEEP overrides deep: hermes3:8b → custom:model-q4_K_M"
+ * on stderr — instead of silently pinning the wrong model and wondering
+ * later why benchmarks look off. Pure function, no side effects; caller
+ * decides how to surface it.
+ */
+export function detectEnvOverrides(env: NodeJS.ProcessEnv = process.env): EnvOverride[] {
+  const name: ProfileName = isProfileName(env.INTERN_PROFILE) ? env.INTERN_PROFILE : DEFAULT_PROFILE;
+  const base = PROFILES[name];
+  const out: EnvOverride[] = [];
+  const pairs: Array<[string, Tier, string | undefined]> = [
+    ["INTERN_TIER_INSTANT", "instant", env.INTERN_TIER_INSTANT],
+    ["INTERN_TIER_WORKHORSE", "workhorse", env.INTERN_TIER_WORKHORSE],
+    ["INTERN_TIER_DEEP", "deep", env.INTERN_TIER_DEEP],
+    ["INTERN_EMBED_MODEL", "embed", env.INTERN_EMBED_MODEL],
+  ];
+  for (const [key, tier, value] of pairs) {
+    if (value && value !== base.tiers[tier]) {
+      out.push({ key, tier, from: base.tiers[tier], to: value });
+    }
+  }
+  return out;
+}

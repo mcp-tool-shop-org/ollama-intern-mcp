@@ -8,12 +8,13 @@
  * Claude — search handlers strip them before returning.
  */
 
-import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat, rename, open, unlink } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
+import { loadManifest } from "./manifest.js";
 
 export const CORPUS_SCHEMA_VERSION = 2;
 /**
@@ -164,7 +165,24 @@ export async function saveCorpus(corpus: CorpusFile): Promise<void> {
   // Using Buffer.byteLength is accurate for non-ASCII content.
   // eslint-disable-next-line no-console
   console.error(`[corpus:save] name=${corpus.name} chunks=${corpus.chunks.length} bytes=${Buffer.byteLength(payload, "utf8")}`);
-  await writeFile(path, payload, "utf8");
+  // Atomic write: write to <path>.tmp, fsync, then rename. If Node crashes
+  // mid-write the original file is intact — rename on the same filesystem
+  // is atomic on both POSIX and NTFS.
+  const tmpPath = `${path}.tmp`;
+  const fh = await open(tmpPath, "w");
+  try {
+    await fh.writeFile(payload, "utf8");
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  try {
+    await rename(tmpPath, path);
+  } catch (err) {
+    // Best-effort cleanup of the temp file if rename failed.
+    await unlink(tmpPath).catch(() => {});
+    throw err;
+  }
 }
 
 export interface CorpusSummary {
@@ -205,4 +223,69 @@ export async function listCorpora(): Promise<CorpusSummary[]> {
   }
   summaries.sort((a, b) => a.name.localeCompare(b.name));
   return summaries;
+}
+
+/**
+ * Fast stale-detection primitive.
+ *
+ * Compares each manifest-declared path's current stat.mtime against the
+ * mtime stored in the corpus's chunks. Returns as soon as any drift is
+ * found — does NOT re-read file contents or re-hash, so it's cheap enough
+ * for callers to poll before deciding whether to pay the full refresh
+ * cost.
+ *
+ * Reasons:
+ *   - "no_corpus"   — corpus JSON missing
+ *   - "no_manifest" — manifest JSON missing
+ *   - "path_missing:<path>"  — manifest declares a path that isn't on disk
+ *   - "path_added:<path>"    — manifest declares a path the corpus has never seen
+ *   - "path_removed:<path>"  — corpus has a path the manifest no longer lists
+ *   - "mtime_drift:<path>"   — file's mtime is later than the corpus record
+ */
+export async function isCorpusStale(
+  name: string,
+): Promise<{ stale: boolean; reason?: string }> {
+  assertValidCorpusName(name);
+  let corpus: CorpusFile | null = null;
+  try {
+    corpus = await loadCorpus(name);
+  } catch {
+    // A schema-invalid corpus IS stale (re-index needed).
+    return { stale: true, reason: "no_corpus" };
+  }
+  if (!corpus) return { stale: true, reason: "no_corpus" };
+
+  const manifest = await loadManifest(name).catch(() => null);
+  if (!manifest) return { stale: true, reason: "no_manifest" };
+
+  // Build a map path → latest stored mtime from chunks.
+  const storedMtimeByPath = new Map<string, number>();
+  for (const c of corpus.chunks) {
+    const t = Date.parse(c.file_mtime);
+    if (Number.isNaN(t)) continue;
+    const prev = storedMtimeByPath.get(c.path);
+    if (prev === undefined || t > prev) storedMtimeByPath.set(c.path, t);
+  }
+
+  const manifestSet = new Set(manifest.paths);
+  // Paths in corpus that are no longer declared by the manifest.
+  for (const p of storedMtimeByPath.keys()) {
+    if (!manifestSet.has(p)) return { stale: true, reason: `path_removed:${p}` };
+  }
+
+  for (const p of manifest.paths) {
+    let currentMtime: number;
+    try {
+      const st = await stat(p);
+      currentMtime = st.mtimeMs;
+    } catch {
+      return { stale: true, reason: `path_missing:${p}` };
+    }
+    const stored = storedMtimeByPath.get(p);
+    if (stored === undefined) return { stale: true, reason: `path_added:${p}` };
+    // Only flag when current is strictly later — allow clock skew that
+    // happens to produce an earlier mtime (e.g. touch to an older date).
+    if (currentMtime > stored + 1) return { stale: true, reason: `mtime_drift:${p}` };
+  }
+  return { stale: false };
 }

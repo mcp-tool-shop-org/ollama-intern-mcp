@@ -15,10 +15,11 @@ import { realpathSync } from "node:fs";
 
 import { VERSION } from "./version.js";
 import { loadProfile } from "./profiles.js";
-import { HttpOllamaClient } from "./ollama.js";
+import { HttpOllamaClient, setClientLogger } from "./ollama.js";
 import { NdjsonLogger } from "./observability.js";
 import { toErrorShape } from "./errors.js";
-import { runPrewarm } from "./prewarm.js";
+import { runPrewarm, notePrewarmInProgressRequest } from "./prewarm.js";
+import { detectEnvOverrides } from "./profiles.js";
 import type { RunContext } from "./runContext.js";
 
 import { classifySchema, handleClassify } from "./tools/classify.js";
@@ -58,14 +59,20 @@ import { chatSchema, handleChat } from "./tools/chat.js";
 export function createServer(ctx: RunContext): McpServer {
   const server = new McpServer({ name: "ollama-intern-mcp", version: VERSION });
 
-  const wrap = <T>(p: Promise<T>): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: true }> =>
-    p.then(
+  // The `tool` label is attached in createServer below — we use "mcp" as a
+  // coarse bucket on the in-progress event because emitting one event per
+  // tool name would bloat the log during prewarm. An operator reading the
+  // log can see "calls arrived during prewarm" without per-tool granularity.
+  const wrap = <T>(p: Promise<T>, tool = "mcp"): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: true }> => {
+    notePrewarmInProgressRequest(ctx.logger, tool);
+    return p.then(
       (value) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] }),
       (err) => ({
         content: [{ type: "text" as const, text: JSON.stringify(toErrorShape(err), null, 2) }],
         isError: true as const,
       }),
     );
+  };
 
   // FLAGSHIP — ollama_research
   server.tool(
@@ -303,6 +310,21 @@ async function main(): Promise<void> {
     hardwareProfile: profile.name,
     logger: new NdjsonLogger(),
   };
+
+  // Surface env-var tier overrides at startup instead of silently applying
+  // them. Operator sees one stderr line per override (key, tier, from → to)
+  // so a pinned model never goes unnoticed through a benchmark run.
+  const overrides = detectEnvOverrides();
+  for (const o of overrides) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern: ${o.key} overrides ${o.tier}: ${o.from} → ${o.to} (profile=${profile.name})`,
+    );
+  }
+
+  // Wire the HTTP client's side-observability hook (semaphore waits,
+  // residency probe failures) to the same NDJSON logger the tools use.
+  setClientLogger(ctx.logger);
 
   // Profile-policy prewarm: pulls Instant tier into VRAM on dev profiles
   // before connecting transport, so the first real Claude call doesn't eat

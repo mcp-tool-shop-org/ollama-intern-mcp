@@ -245,7 +245,10 @@ export async function handleCorpusAnswer(
   if (hits.length === 0) {
     const startedAt = Date.now();
     const deepModel = resolveTier("deep", ctx.tiers);
-    const residency = await ctx.client.residency(deepModel);
+    // The model was never invoked in this branch, so skip the residency
+    // probe — it's a wasted Ollama round-trip on a dead-end path. null
+    // correctly signals "no residency data because no call was made."
+    const residency = null;
     const result: CorpusAnswerResult = {
       answer:
         `No matching chunks found in corpus "${input.corpus}" for the question "${input.question}". The model was not invoked — synthesis without retrieved grounding would be unsafe. Try rephrasing, switching mode, or indexing more sources.`,
@@ -289,7 +292,10 @@ export async function handleCorpusAnswer(
       format: "json",
       options: {
         temperature: TEMPERATURE_BY_SHAPE.research,
-        num_predict: Math.ceil(maxWords * 2.5),
+        // maxWords is validated ≤ 1000 upstream, so 2.5x is ≤ 2500. The
+        // explicit 4000 ceiling keeps the budget bounded if that cap is
+        // ever relaxed without re-auditing this line.
+        num_predict: Math.min(Math.ceil(maxWords * 2.5), 4000),
       },
     }),
     parse: (raw): CorpusAnswerResult => {

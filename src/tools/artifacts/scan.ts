@@ -200,7 +200,25 @@ async function safeListDir(dir: string): Promise<string[]> {
     const st = await stat(dir);
     if (!st.isDirectory()) return [];
     return (await readdir(dir)).filter((name) => name.endsWith(".json"));
-  } catch {
+  } catch (err) {
+    // Don't throw — artifact scans should degrade gracefully when a dir is
+    // unreadable (EACCES, transient I/O, etc.). But don't hide the reason
+    // either: emit a structured stderr line so operators can diagnose
+    // "why is my artifact missing?" without attaching a debugger.
+    const code = (err as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
+    const message = err instanceof Error ? err.message : String(err);
+    const event = {
+      kind: "artifact_scan_skip",
+      ts: new Date().toISOString(),
+      dir,
+      code,
+      message,
+    };
+    try {
+      process.stderr.write(JSON.stringify(event) + "\n");
+    } catch {
+      // stderr itself broken — nothing useful to do.
+    }
     return [];
   }
 }
