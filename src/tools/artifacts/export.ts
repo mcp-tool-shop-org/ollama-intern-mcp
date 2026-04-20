@@ -19,7 +19,7 @@
 
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, isAbsolute, normalize, sep } from "node:path";
+import { dirname, isAbsolute, normalize, relative } from "node:path";
 import { InternError } from "../../errors.js";
 import type { PackArtifact } from "./scan.js";
 
@@ -72,9 +72,19 @@ function assertUnderAllowedRoots(target: string, allowed: string[]): void {
       false,
     );
   }
+  // Canonical "is X under Y" check: after normalize(), path.relative()
+  // returns "" for the same path, a subpath for a descendant, or a path
+  // starting with ".." / an absolute path for anything that escapes the
+  // root. The prefix-string comparison this replaces is not safe on
+  // Windows where separators and drive letters can mask escapes.
   const underOne = allowed.some((root) => {
-    const withSep = root.endsWith(sep) ? root : root + sep;
-    return target === root || target.startsWith(withSep);
+    const rel = relative(root, target);
+    if (rel === "") return true;
+    if (rel.startsWith("..")) return false;
+    if (isAbsolute(rel)) return false;
+    // rel splits on either separator on Windows; guard against a leading ".." segment.
+    const firstSeg = rel.split(/[/\\]/)[0];
+    return firstSeg !== "..";
   });
   if (!underOne) {
     throw new InternError(

@@ -12,16 +12,105 @@
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, isAbsolute, normalize, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
 import { assertValidCorpusName } from "./storage.js";
 
 export const MANIFEST_SCHEMA_VERSION = 2;
 
+/**
+ * Package version stamped on every manifest write. Loader refuses to read
+ * a manifest whose writer version is newer than this build, to prevent
+ * silent downgrade even when schema_version matches.
+ */
+const MANIFEST_WRITER_VERSION = (() => {
+  try {
+    const pkgUrl = new URL("../../package.json", import.meta.url);
+    const raw = readFileSync(fileURLToPath(pkgUrl), "utf8");
+    return (JSON.parse(raw) as { version?: string }).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map((n) => parseInt(n, 10));
+  const pb = b.split(".").map((n) => parseInt(n, 10));
+  for (let i = 0; i < 3; i++) {
+    const ai = pa[i] ?? 0;
+    const bi = pb[i] ?? 0;
+    if (Number.isNaN(ai) || Number.isNaN(bi)) return 0;
+    if (ai < bi) return -1;
+    if (ai > bi) return 1;
+  }
+  return 0;
+}
+
+/**
+ * Allowlisted roots a manifest's paths may live under. Defaults to the
+ * user's home dir; extendable via INTERN_CORPUS_ALLOWED_ROOTS (colon-
+ * separated on POSIX, semicolon-separated on Windows). A malicious
+ * manifest that points at /etc/shadow or C:/Windows/... is rejected here.
+ */
+function allowedRoots(): string[] {
+  const extra = process.env.INTERN_CORPUS_ALLOWED_ROOTS;
+  const roots = [homedir()];
+  if (extra) {
+    const sep = process.platform === "win32" ? ";" : ":";
+    for (const r of extra.split(sep)) {
+      if (r.trim()) roots.push(r.trim());
+    }
+  }
+  return roots.map((r) => normalize(r));
+}
+
+function assertSafePath(p: string): void {
+  if (!isAbsolute(p)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest path is not absolute: ${p}`,
+      "All manifest paths must be absolute. Re-run ollama_corpus_index to rewrite the manifest with resolved paths.",
+      false,
+    );
+  }
+  const normalized = normalize(p);
+  // Reject any `..` segments that survived normalize (shouldn't happen on
+  // absolute paths, but be defensive).
+  const segments = normalized.split(sep);
+  if (segments.includes("..")) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest path contains traversal segment after normalize: ${p}`,
+      "Reject corpora whose manifest was hand-edited with `..` segments. Re-index with trusted paths.",
+      false,
+    );
+  }
+  const roots = allowedRoots();
+  const ok = roots.some((root) => {
+    const r = root.endsWith(sep) ? root : root + sep;
+    return normalized === root || normalized.startsWith(r);
+  });
+  if (!ok) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest path is outside allowed roots: ${p}`,
+      `Path must live under one of: ${roots.join(", ")}. Set INTERN_CORPUS_ALLOWED_ROOTS to add more.`,
+      false,
+    );
+  }
+}
+
 export interface CorpusManifest {
   schema_version: number;
+  /**
+   * Package version that wrote this manifest. Loader rejects when this is
+   * higher than the current build — prevents a newer build writing a
+   * manifest that an older build would silently downgrade.
+   */
+  schema_version_written_by?: string;
   name: string;
   /** Absolute paths the corpus is declared to contain. */
   paths: string[];

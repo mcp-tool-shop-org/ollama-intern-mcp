@@ -45,7 +45,12 @@ export class NdjsonLogger implements Logger {
 
   private ready(): Promise<void> {
     if (!this.readyPromise) {
-      this.readyPromise = mkdir(dirname(this.path), { recursive: true }).then(() => undefined);
+      // Swallow mkdir rejection — observability failures (e.g. EACCES) must
+      // never hang the process via unhandled rejection. log() catches append
+      // errors too, so a disabled log dir degrades silently.
+      this.readyPromise = mkdir(dirname(this.path), { recursive: true })
+        .then(() => undefined)
+        .catch(() => undefined);
     }
     return this.readyPromise;
   }

@@ -96,6 +96,10 @@ function runProcess(
   timeoutMs: number,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
+    // shell:true on Windows is required to resolve .cmd shims (npx, tsc).
+    // Safe here because args are never user-controlled: cmd/baseArgs are hardcoded
+    // above, and the only dynamic arg is a filename produced by mkdtemp + join,
+    // which is a random OS-temp path — never untrusted input.
     const proc = spawn(cmd, args, { shell: process.platform === "win32" });
     let stdout = "";
     let stderr = "";

@@ -168,9 +168,12 @@ export function metadataFromArtifact(obj: unknown, jsonPath: string): ArtifactMe
   const a = obj as Record<string, unknown>;
   if (!isKnownPack(a.pack)) return null;
   if (typeof a.slug !== "string" || typeof a.title !== "string" || typeof a.generated_at !== "string") return null;
-  const brief = a.brief as Record<string, unknown> | undefined;
+  const brief =
+    a.brief && typeof a.brief === "object"
+      ? (a.brief as Record<string, unknown>)
+      : undefined;
   const weak = typeof brief?.weak === "boolean" ? brief.weak : false;
-  const evidence = Array.isArray(brief?.evidence) ? (brief!.evidence as unknown[]).length : 0;
+  const evidence = brief && Array.isArray(brief.evidence) ? (brief.evidence as unknown[]).length : 0;
   const corpusUsed = (brief?.corpus_used as ArtifactMetadata["corpus_used"]) ?? null;
   const artifactBlock = a.artifact as { markdown_path?: unknown; json_path?: unknown } | undefined;
   const md_path = typeof artifactBlock?.markdown_path === "string" ? artifactBlock.markdown_path : jsonPath.replace(/\.json$/, ".md");

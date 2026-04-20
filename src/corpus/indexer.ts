@@ -10,7 +10,7 @@
  * burning the embed tier on unchanged content.
  */
 
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
@@ -20,6 +20,8 @@ import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifes
 import { InternError } from "../errors.js";
 
 const EMBED_BATCH = 64;
+/** Hard cap on input file size. Prevents OOM from a user pointing at a 100GB file. */
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export interface IndexParams {
   name: string;
@@ -49,11 +51,51 @@ export interface IndexReport {
   embed_model_resolved: string | null;
 }
 
+/**
+ * Read a file and hash it with TOCTOU protection.
+ *
+ * Invariant: a successful return means "the file was in exactly this state
+ * (size + mtime) when we hashed it". We stat BEFORE read (to enforce size
+ * cap and symlink rejection without reading bytes first), then stat AGAIN
+ * after read and fail if size or mtime drifted — that means the file
+ * mutated mid-read and the hash doesn't match the returned content.
+ */
 async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
-  const content = await readFile(path, "utf8");
+  // Symlink check FIRST — reject before any size/read work so a symlink to
+  // a sensitive file can't leak even partial bytes via error messages.
+  const lst = await lstat(path);
+  if (lst.isSymbolicLink()) {
+    throw new InternError(
+      "SOURCE_PATH_NOT_FOUND",
+      `Refusing to index symlink: ${path}`,
+      "Pass the real file path, not a symlink. Symlinks are rejected to avoid traversal into unintended targets.",
+      false,
+    );
+  }
+  // Resolve to a real path as a belt-and-suspenders check against
+  // intermediate symlinked directories.
+  const realPath = await realpath(path);
+  const stBefore = await stat(realPath);
+  if (stBefore.size > MAX_FILE_BYTES) {
+    throw new InternError(
+      "SOURCE_PATH_NOT_FOUND",
+      `File exceeds max size (${stBefore.size} bytes > ${MAX_FILE_BYTES} bytes cap): ${path}`,
+      `Split the file or raise the cap. The 50MB limit exists to prevent OOM from a user pointing at a huge file.`,
+      false,
+    );
+  }
+  const content = await readFile(realPath, "utf8");
   const hash = "sha256:" + createHash("sha256").update(content).digest("hex");
-  const st = await stat(path);
-  return { hash, mtime: st.mtime.toISOString(), content };
+  const stAfter = await stat(realPath);
+  if (stAfter.size !== stBefore.size || stAfter.mtimeMs !== stBefore.mtimeMs) {
+    throw new InternError(
+      "SOURCE_PATH_NOT_FOUND",
+      `File mutated during read (TOCTOU): ${path}`,
+      "Another process wrote to the file while we were hashing it. Re-run the index.",
+      true,
+    );
+  }
+  return { hash, mtime: stBefore.mtime.toISOString(), content };
 }
 
 export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
@@ -77,6 +119,16 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     } else {
       throw err;
     }
+  }
+  // Refuse silent embed-model mismatch. Mixing vectors from different
+  // embed models in one corpus ruins search — the space isn't shared.
+  if (existing && existing.model_version !== params.model) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${params.name}" was indexed with embed model "${existing.model_version}"; refusing to re-index with "${params.model}".`,
+      `Re-index with the original model, or pass a different corpus name to keep the new model isolated.`,
+      false,
+    );
   }
   const reusable = new Map<string, CorpusChunk[]>();
   if (existing && existing.model_version === params.model) {
@@ -176,8 +228,14 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
       }
       for (let j = 0; j < batch.length; j++) {
         const meta = toEmbedMeta[i + j];
+        // ID is stable per (content-hash, chunk_index): re-indexing the
+        // same content produces the same chunk IDs, and a content change
+        // flips the hash so IDs can't collide across runs. Width of 6
+        // hex on the index is still >16M per file, but it's now scoped
+        // to file+content not to global run order.
+        const hashShort = meta.file_hash.replace(/^sha256:/, "").slice(0, 8);
         allChunks.push({
-          id: `${params.name}-${allChunks.length.toString(16).padStart(6, "0")}`,
+          id: `${params.name}-${hashShort}-${meta.chunk_index.toString(16).padStart(6, "0")}`,
           path: meta.path,
           file_hash: meta.file_hash,
           file_mtime: meta.file_mtime,

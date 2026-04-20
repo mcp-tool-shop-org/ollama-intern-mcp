@@ -1,0 +1,57 @@
+# Belt-and-braces deny list. The authoritative allowlist is `files` in package.json
+# (dist/, README, LICENSE, SECURITY). This file ensures a stray untracked file
+# at the repo root can't leak into the tarball.
+
+# Source and test trees
+src/
+tests/
+bench/
+evals/
+smoke/
+artifacts/
+coverage/
+
+# Docs & site (published separately to GitHub Pages)
+docs/
+site/
+HANDOFF.md
+SHIP_GATE.md
+SCORECARD.md
+CHANGELOG.md
+
+# Translated READMEs (only canonical README.md ships)
+README.es.md
+README.fr.md
+README.hi.md
+README.it.md
+README.ja.md
+README.pt-BR.md
+README.zh.md
+
+# CI / repo config
+.github/
+.gitignore
+.editorconfig
+.polyglot-cache.json
+
+# Build / test config
+tsconfig.json
+tsconfig*.json
+vitest.config.*
+*.tsbuildinfo
+
+# Test files anywhere in the tree
+*.test.*
+*.spec.*
+
+# Example configs (not needed at runtime)
+hermes.config.example.yaml
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.tgz
+.env
+.env.local

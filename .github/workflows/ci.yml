@@ -11,6 +11,8 @@ on:
       - "src/**"
       - "tests/**"
       - ".github/workflows/**"
+      - ".github/dependabot.yml"
+      - ".npmignore"
   pull_request:
     paths:
       - "package.json"
@@ -20,6 +22,8 @@ on:
       - "src/**"
       - "tests/**"
       - ".github/workflows/**"
+      - ".github/dependabot.yml"
+      - ".npmignore"
   workflow_dispatch:
 
 concurrency:

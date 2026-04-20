@@ -42,6 +42,36 @@ export interface TriageLogsResult {
   suspected_root_cause?: string;
 }
 
+const MAX_PATTERN_LEN = 200;
+
+/**
+ * Reject patterns that could break out of the triage prompt. User-supplied
+ * strings flow directly into the LLM prompt body, so newlines, carriage
+ * returns, and code-fence delimiters are injection vectors. Length-cap
+ * keeps a single pattern from dominating the prompt budget.
+ */
+function sanitizePatterns(patterns: string[] | undefined): void {
+  if (!patterns || patterns.length === 0) return;
+  for (const p of patterns) {
+    if (p.length > MAX_PATTERN_LEN) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `patterns entry exceeds ${MAX_PATTERN_LEN} chars (got ${p.length}).`,
+        "Shorten the pattern — triage patterns are regex hints, not log snippets.",
+        false,
+      );
+    }
+    if (/[\r\n]/.test(p) || p.includes("```")) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `patterns entry contains disallowed characters (newlines or triple backticks).`,
+        "Patterns must be single-line literals without code-fence delimiters — they are embedded directly into the triage prompt.",
+        false,
+      );
+    }
+  }
+}
+
 function buildPromptFor(logText: string, patterns?: string[]): string {
   const patternsLine = patterns && patterns.length > 0
     ? `\nPay particular attention to these patterns: ${patterns.join(", ")}`
@@ -90,6 +120,7 @@ export async function handleTriageLogs(
   ctx: RunContext,
 ): Promise<Envelope<TriageLogsResult> | Envelope<BatchResult<TriageLogsResult>>> {
   assertExactlyOneInput(input);
+  sanitizePatterns(input.patterns);
 
   if (input.items) {
     return runBatch<{ id: string; log_text: string }, TriageLogsResult>({

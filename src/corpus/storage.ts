@@ -9,12 +9,34 @@
  */
 
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
 
 export const CORPUS_SCHEMA_VERSION = 2;
+/**
+ * Hard cap on in-memory chunk count per corpus. A single JSON file that
+ * holds 1M+ chunks will blow past Node's string-length ceiling and OOM on
+ * write. If you hit this, split the corpus.
+ */
+export const MAX_CHUNKS = 100_000;
+/**
+ * Stamped into every write so a newer-schema file is never silently
+ * downgraded by an older build. Resolved at import time from the running
+ * package version.
+ */
+const PKG_VERSION = (() => {
+  try {
+    const pkgUrl = new URL("../../package.json", import.meta.url);
+    const raw = readFileSync(fileURLToPath(pkgUrl), "utf8");
+    return (JSON.parse(raw) as { version?: string }).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+export const SCHEMA_WRITER_VERSION = PKG_VERSION;
 
 export type ChunkType = "heading" | "paragraph" | "code" | "list" | "frontmatter";
 
@@ -34,6 +56,13 @@ export interface CorpusChunk {
 
 export interface CorpusFile {
   schema_version: number;
+  /**
+   * Package version that wrote this file. Used to reject the case where a
+   * newer build wrote the corpus and an older build (still on the same
+   * schema number) loads it and silently downgrades. Optional for
+   * backward-compat with files written before this field existed.
+   */
+  schema_version_written_by?: string;
   name: string;
   model_version: string;
   model_digest: string | null;
@@ -47,6 +76,20 @@ export interface CorpusFile {
   };
   titles: Record<string, string | null>;
   chunks: CorpusChunk[];
+}
+
+/** semver-ish compare: returns -1 if a<b, 0 if equal, 1 if a>b. Falls back to 0 on parse error. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map((n) => parseInt(n, 10));
+  const pb = b.split(".").map((n) => parseInt(n, 10));
+  for (let i = 0; i < 3; i++) {
+    const ai = pa[i] ?? 0;
+    const bi = pb[i] ?? 0;
+    if (Number.isNaN(ai) || Number.isNaN(bi)) return 0;
+    if (ai < bi) return -1;
+    if (ai > bi) return 1;
+  }
+  return 0;
 }
 
 export function corpusDir(): string {
@@ -85,14 +128,43 @@ export async function loadCorpus(name: string): Promise<CorpusFile | null> {
       false,
     );
   }
+  // Refuse to load a corpus that was written by a newer pkg version than
+  // ours. Same schema number, but a newer build may have added fields the
+  // current build would lose on the next write.
+  const writtenBy = parsed.schema_version_written_by;
+  if (typeof writtenBy === "string" && compareVersions(writtenBy, SCHEMA_WRITER_VERSION) > 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" was written by v${writtenBy}; this build is v${SCHEMA_WRITER_VERSION} and refuses to downgrade. File: ${path}`,
+      `Upgrade ollama-intern-mcp to v${writtenBy} or newer, or re-index after downgrading the package deliberately.`,
+      false,
+    );
+  }
   return parsed as CorpusFile;
 }
 
 export async function saveCorpus(corpus: CorpusFile): Promise<void> {
   assertValidCorpusName(corpus.name);
+  // Refuse to serialize absurdly large corpora — a single JSON.stringify
+  // over 100k+ chunks will hit Node's max string length and OOM.
+  if (corpus.chunks.length > MAX_CHUNKS) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${corpus.name}" has ${corpus.chunks.length} chunks; cap is ${MAX_CHUNKS}.`,
+      `Split this into multiple smaller corpora (e.g. by directory or topic). A single JSON file this large will blow Node's string-length ceiling on write.`,
+      false,
+    );
+  }
   const path = corpusPath(corpus.name);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(corpus), "utf8");
+  // Stamp the writer version so older builds can refuse to downgrade.
+  const stamped: CorpusFile = { ...corpus, schema_version_written_by: SCHEMA_WRITER_VERSION };
+  const payload = JSON.stringify(stamped);
+  // Observability: payload size in bytes (UTF-8) so ops can spot runaway growth.
+  // Using Buffer.byteLength is accurate for non-ASCII content.
+  // eslint-disable-next-line no-console
+  console.error(`[corpus:save] name=${corpus.name} chunks=${corpus.chunks.length} bytes=${Buffer.byteLength(payload, "utf8")}`);
+  await writeFile(path, payload, "utf8");
 }
 
 export interface CorpusSummary {

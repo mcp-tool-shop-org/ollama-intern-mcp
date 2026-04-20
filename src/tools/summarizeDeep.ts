@@ -18,6 +18,7 @@ import type { SummarizeResult } from "./summarizeFast.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { detectCoverage, type CoverageReport } from "../coverage.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 /**
@@ -47,8 +48,11 @@ export type SummarizeDeepInput = z.infer<typeof summarizeDeepSchema>;
 function assertExactlyOneSource(input: SummarizeDeepInput): void {
   const given = (input.text ? 1 : 0) + (input.source_paths ? 1 : 0);
   if (given !== 1) {
-    throw new Error(
-      "ollama_summarize_deep: provide exactly one of `text` or `source_paths` (given " + given + ").",
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `ollama_summarize_deep: provide exactly one of "text" or "source_paths" (given ${given}).`,
+      "Pass text for raw content, or source_paths:[...] to have the server read files. Not both, not neither.",
+      false,
     );
   }
 }
