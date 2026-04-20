@@ -32,6 +32,24 @@ export type LogEvent =
       elapsed_ms: number;
       residency: Residency | null;
       error?: string;
+    }
+  // Emitted when a tool call arrives while prewarm is still running. Lets an
+  // operator reading the log correlate "first call was slow" with cold-start
+  // instead of blaming the tool. Purely informational — the call proceeds
+  // normally (semaphore + Ollama keep_alive serialize it behind prewarm).
+  | { kind: "prewarm:in_progress_request"; ts: string; tool: string }
+  // Emitted when a semaphore acquire has to wait (permits exhausted). Gives
+  // an operator debugging "why was this slow?" the queue depth and a rough
+  // expected-wait estimate based on the longest in-flight request. One event
+  // per acquire that actually queues; release events omitted to keep volume
+  // bounded on hot paths.
+  | {
+      kind: "semaphore:wait";
+      ts: string;
+      tier: Tier | "unknown";
+      queue_depth: number;
+      in_flight: number;
+      expected_wait_ms: number;
     };
 
 export interface Logger {
@@ -40,6 +58,14 @@ export interface Logger {
 
 export class NdjsonLogger implements Logger {
   private readyPromise: Promise<void> | null = null;
+  /**
+   * Logger failures (EACCES, ENOSPC, read-only fs) used to be fully silent —
+   * observability would quietly disable itself and the operator had no way
+   * to know. Emit ONCE to stderr on the first write failure so the operator
+   * sees "log disabled because of X" without drowning them in per-call noise.
+   * Subsequent failures still swallow; tool calls never break on log writes.
+   */
+  private warnedOnFailure = false;
 
   constructor(private path: string = DEFAULT_LOG_PATH) {}
 
@@ -59,8 +85,19 @@ export class NdjsonLogger implements Logger {
     try {
       await this.ready();
       await appendFile(this.path, JSON.stringify(event) + "\n", "utf8");
-    } catch {
-      // observability failures must never break tool calls
+    } catch (err) {
+      // observability failures must never break tool calls, but the
+      // operator deserves to know observability is disabled. Emit once,
+      // on stderr (never the envelope so callers don't see log noise).
+      if (!this.warnedOnFailure) {
+        this.warnedOnFailure = true;
+        const code = (err as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
+        const message = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.error(
+          `ollama-intern: observability log disabled (${code}: ${message}) — path=${this.path}. Tool calls continue; subsequent log errors suppressed.`,
+        );
+      }
     }
   }
 }

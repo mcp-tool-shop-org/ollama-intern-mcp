@@ -67,11 +67,29 @@ async function roundTrip(messages: Array<Record<string, unknown>>): Promise<Map<
     );
     const timeout = setTimeout(() => {
       proc.kill("SIGKILL");
-      reject(new Error(`MCP golden test timeout. Received ids: ${[...responses.keys()].join(",")}, expected: ${[...expectedIds].join(",")}`));
+      // On timeout, surface the actual stdout (first 500 chars) and any
+      // parse errors so the failure names its cause — "subprocess emitted
+      // non-JSON" vs "subprocess emitted nothing at all" are very different
+      // bugs and used to both present as a generic 15s timeout.
+      const stdoutPreview = rawStdout.slice(0, 500);
+      const parseSummary = parseErrors.length > 0
+        ? `\nParse errors (${parseErrors.length}): ${parseErrors.slice(0, 3).map((e) => `[${e.error}] ${e.line}`).join(" | ")}`
+        : "\nParse errors: none (subprocess emitted nothing parseable)";
+      reject(new Error(
+        `MCP golden test timeout. Received ids: ${[...responses.keys()].join(",")}, expected: ${[...expectedIds].join(",")}.` +
+        `\nFirst 500 chars of stdout: ${JSON.stringify(stdoutPreview)}` +
+        parseSummary,
+      ));
     }, 15_000);
 
+    // Track non-JSON stdout so a timeout can surface what the server
+     // actually emitted instead of failing silently with "timeout".
+    let rawStdout = "";
+    const parseErrors: Array<{ line: string; error: string }> = [];
     proc.stdout.on("data", (chunk: Buffer) => {
-      buf += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      rawStdout += text;
+      buf += text;
       const lines = buf.split("\n");
       buf = lines.pop() ?? "";
       for (const line of lines) {
@@ -87,8 +105,13 @@ async function roundTrip(messages: Array<Record<string, unknown>>): Promise<Map<
               resolveFn(responses);
             }
           }
-        } catch {
-          // ignore non-JSON lines (log output, etc.)
+        } catch (err) {
+          // Track the parse error so a timeout reports concretely why
+          // nothing decoded, instead of a cryptic "timeout".
+          parseErrors.push({
+            line: line.slice(0, 200),
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     });
@@ -225,6 +248,47 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
     // Chat is last-resort and MUST advertise itself that way — so Claude doesn't default to it.
     const chat = tools!.find((t) => t.name === "ollama_chat");
     expect(chat?.description).toMatch(/last resort/i);
+  }, 30_000);
+
+  it("tools/call works end-to-end on a read-only tool that needs no Ollama", async () => {
+    // Minimum E2E regression guard for the tools/call RPC path — if the
+    // router, envelope, or stdio framing ever breaks for real invocations,
+    // this fires even without Ollama running. artifact_list is read-only
+    // and tolerates a missing INTERN_ARTIFACT_DIR (returns an empty list).
+    const resp = await roundTrip([
+      {
+        jsonrpc: "2.0",
+        id: 0,
+        method: "initialize",
+        params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+      },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ollama_artifact_list",
+          arguments: { extra_artifact_dirs: [tmpdir()] },
+        },
+      },
+    ]);
+    const callResp = resp.get(1);
+    expect(callResp?.error, `tools/call returned an error: ${JSON.stringify(callResp?.error)}`).toBeUndefined();
+    // MCP servers wrap tool output in { content: [{ type: "text", text: JSON }] }.
+    const result = callResp?.result as { content?: Array<{ type: string; text?: string }> } | undefined;
+    expect(result?.content).toBeDefined();
+    expect(Array.isArray(result!.content)).toBe(true);
+    expect(result!.content!.length).toBeGreaterThan(0);
+    // The first content block is the envelope — verify we can parse it and
+    // the tool actually ran (it'll either list items or be empty, but the
+    // envelope shape has to be there).
+    const first = result!.content![0];
+    expect(first.type).toBe("text");
+    const envelope = JSON.parse(first.text ?? "{}");
+    expect(envelope).toHaveProperty("tier_used");
+    expect(envelope).toHaveProperty("result");
+    expect(envelope.result).toHaveProperty("items");
   }, 30_000);
 
   it("summarize_deep input schema advertises both text and source_paths modes", async () => {

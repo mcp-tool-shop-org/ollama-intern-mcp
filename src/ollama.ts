@@ -10,8 +10,22 @@
 import { ollamaSemaphore } from "./semaphore.js";
 import { InternError } from "./errors.js";
 import type { Residency } from "./envelope.js";
+import type { Logger } from "./observability.js";
+import { timestamp } from "./observability.js";
 
 const API_TIMEOUT_MS = 10_000;
+
+/**
+ * Optional logger for HTTP-level observability events (semaphore waits,
+ * residency probe failures). Set once at startup from index.ts; remains
+ * null in tests, where those events aren't meaningful. Keeping this as a
+ * module-level hook avoids threading a logger through every fetch call
+ * site — these events are environmental, not per-request.
+ */
+let sideLogger: Logger | null = null;
+export function setClientLogger(logger: Logger | null): void {
+  sideLogger = logger;
+}
 
 export interface GenerateRequest {
   model: string;
@@ -156,12 +170,37 @@ export class HttpOllamaClient implements OllamaClient {
         evicted,
         expires_at: hit.expires_at ?? null,
       };
-    } catch {
+    } catch (err) {
+      // Silent probe failure here is what poisoned tier selection in
+      // Stage B: operator sees a weird tier choice and has no hint why.
+      // Emit a single console.error (stderr, not the envelope — the caller
+      // already got a null, which is load-bearing behavior) so the reason
+      // (network, auth, 404, malformed JSON) is visible.
+      const endpoint = `${this.baseUrl}/api/ps`;
+      const message = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.error(
+        `ollama-intern: residency probe failed for model="${model}" at ${endpoint} — ${message}`,
+      );
       return null;
     }
   }
 
   private async post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal): Promise<TRes> {
+    // Before acquiring, peek at the gate. If we'd block, emit a single
+    // semaphore:wait event with queue depth + rough wait estimate so an
+    // operator debugging "why was this slow?" has the context they need.
+    if (sideLogger !== null && ollamaSemaphore.wouldBlock) {
+      const snap = ollamaSemaphore.snapshot();
+      void sideLogger.log({
+        kind: "semaphore:wait",
+        ts: timestamp(),
+        tier: "unknown",
+        queue_depth: snap.queue_depth,
+        in_flight: snap.in_flight,
+        expected_wait_ms: snap.expected_wait_ms,
+      });
+    }
     const release = await ollamaSemaphore.acquire();
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {

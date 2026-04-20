@@ -30,6 +30,22 @@ export interface IndexParams {
   chunk_chars?: number;
   chunk_overlap?: number;
   client: OllamaClient;
+  /**
+   * Optional progress callback invoked after each input file is processed
+   * (success OR failure). `done` counts files that have been handled,
+   * `total` is params.paths.length, `currentPath` is the path just
+   * processed. Safe to ignore — purely observability. A second callback
+   * fires after each embed batch with done=total+batchIdx, so callers can
+   * see embed progress too; MCP tool layer can filter on `currentPath`
+   * starting with "embed:" to distinguish.
+   */
+  onProgress?: (done: number, total: number, currentPath: string) => void;
+}
+
+/** One entry per path that could not be read/hashed during indexing. */
+export interface IndexFailedPath {
+  path: string;
+  reason: string;
 }
 
 export interface IndexReport {
@@ -49,6 +65,13 @@ export interface IndexReport {
    * silent :latest drift.
    */
   embed_model_resolved: string | null;
+  /**
+   * Paths that could not be read (size cap, symlink, permission denied,
+   * TOCTOU, etc.) during this index run. Indexing continues past these so
+   * one bad file in a batch of 1000 no longer halts the whole pass. Empty
+   * array on the happy path.
+   */
+  failed_paths: IndexFailedPath[];
 }
 
 /**
@@ -168,6 +191,7 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     chunk_type: ChunkType;
   }> = [];
 
+  const failedPaths: IndexFailedPath[] = [];
   for (const rawPath of params.paths) {
     const absPath = resolve(rawPath);
     seenPaths.add(absPath);
@@ -175,12 +199,14 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     try {
       fileInfo = await sha256File(absPath);
     } catch (err) {
-      throw new InternError(
-        "SOURCE_PATH_NOT_FOUND",
-        `Cannot read input file: ${rawPath} — ${(err as Error).message}`,
-        "Check the path exists and is readable.",
-        false,
-      );
+      // Stage C humanization: capture per-file failure and continue so one
+      // bad file in a batch of 1000 does not halt the whole pass. Caller
+      // sees failed_paths in the report.
+      failedPaths.push({
+        path: rawPath,
+        reason: (err as Error).message ?? String(err),
+      });
+      continue;
     }
     totalChars += fileInfo.content.length;
     const reuseKey = `${absPath}::${fileInfo.hash}`;
@@ -321,5 +347,6 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     dropped_files: droppedFiles,
     elapsed_ms: Date.now() - t0,
     embed_model_resolved: embedModelResolved,
+    failed_paths: failedPaths,
   };
 }

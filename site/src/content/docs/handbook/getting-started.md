@@ -15,6 +15,24 @@ This page takes you from zero to one real tool call in about five minutes.
 - **[Ollama](https://ollama.com)** installed and running at `http://127.0.0.1:11434`.
 - **Claude Code** (or any MCP-capable client).
 
+### Hardware minimums
+
+The models this server drives run on your machine — you need enough VRAM (or system RAM for CPU inference) to load them. Ballpark figures, honest:
+
+| Model | Role | VRAM (GPU) | RAM (CPU fallback) |
+|---|---|---|---|
+| `hermes3:8b` | Default workhorse — Instant / Workhorse / Deep | ~6 GB | ~16 GB |
+| `nomic-embed-text` | Embed tier | ~500 MB | ~1 GB |
+
+See [Ollama's hardware notes](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-much-ram-does-a-model-need) for the full picture — quantization, context length, and concurrent loaded models all move the number.
+
+**Profile hints:**
+- `dev-rtx5080` — tested on RTX 5080 (16 GB VRAM). Default.
+- `dev-rtx5080-qwen3` — same hardware, Qwen 3 alternate rail.
+- `m5-max` — tuned for M5 Max MacBook Pro (128 GB unified memory); swaps the ladder to heavier Qwen 3 tiers.
+
+Alternate tiers live in each profile file under `src/profiles/`. If `hermes3:8b` can't fit, drop to a smaller Ollama model or use a lighter profile — `ollama ps` will show what's actually resident.
+
 ## 2. Install
 
 Most users do **not** install globally. The recommended path is the Claude Code MCP config block below, which runs the server on demand via `npx`.

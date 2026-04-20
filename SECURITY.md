@@ -13,9 +13,11 @@ The primary risks are not network-facing. They are:
 
 ## Reporting
 
-Email: 64996768+mcp-tool-shop@users.noreply.github.com
+Please do **not** file public issues for security bugs.
 
-Please do not file public issues for security bugs. We will acknowledge within 72 hours.
+Open a private [security advisory](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/security/advisories/new) via the **Security** tab on this repo. The advisory stays private until a fix is ready. We will acknowledge within 72 hours.
+
+The repo is owned by **mcp-tool-shop-org**; advisories route to the org maintainers.
 
 ## Supported Versions
 
