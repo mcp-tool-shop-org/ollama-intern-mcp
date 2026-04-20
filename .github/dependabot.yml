@@ -5,11 +5,18 @@ updates:
     schedule:
       interval: monthly
     groups:
-      all-deps:
+      # Group minor + patch bumps together — safe to batch.
+      # Majors are excluded so each one gets its own PR and dedicated migration review.
+      non-major:
         patterns: ["*"]
-    open-pull-requests-limit: 3
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: monthly
+    groups:
+      actions-non-major:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     open-pull-requests-limit: 3
