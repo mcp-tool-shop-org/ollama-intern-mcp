@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-04-20
+
+Three-stage dogfood-swarm health pass. No API changes, no tool-surface changes — everything here is hardening, observability, and operator-experience polish on the existing v2.0.0 surface.
+
+### Fixed (Stage A — bugs + security)
+
+- **corpus/indexer: TOCTOU race between `readFile` and `stat`.** `stat()` now runs before read; `mtime` is the pre-read state, guaranteeing a successful index means "the file was in this state when hashed."
+- **corpus/indexer: unbounded file reads.** 50 MB hard cap on indexed files (`MAX_FILE_BYTES`). Throws a typed error naming the offending path and size when exceeded.
+- **corpus/indexer: symlink-follow vulnerability.** `realpath` + `lstat` check now rejects symlinks before read.
+- **corpus/indexer: chunk ID collisions across re-index runs.** Chunk IDs now include the content hash so they are stable-per-content and can't collide across runs or wrap at 16 M.
+- **corpus/indexer: silent model-mismatch on reindex.** Indexing an existing corpus with a different embed model now errors instead of quietly mixing vector spaces.
+- **corpus/manifest: unvalidated paths on load.** Manifest paths are validated against `..` escapes on load and rejected with a clear error.
+- **corpus/manifest: silent schema downgrade.** Every write stamps `schema_version_written_by`; loading a newer-than-runtime manifest now errors instead of silently downgrading.
+- **corpus/storage: 1 GB+ JSON writes.** `MAX_CHUNKS` guard (100 k) before serialize.
+- **tools/artifacts: path-traversal hole under Windows.** `assertUnderAllowedRoots` rewritten with `path.relative` for authoritative containment (pre-normalize `..` check kept as defence-in-depth).
+- **tools/triage_logs: prompt injection via user-supplied patterns.** `sanitizePatterns()` rejects patterns with newlines, triple-backticks, or over 200 chars before prompt build.
+- **tools/summarize_deep: generic `Error` instead of `InternError`.** Error shape consistency restored.
+- **tools/artifacts/scan: unsafe `brief!` non-null assertion.** Guard rewritten to narrow `brief` directly.
+- **observability: unhandled promise rejection in `mkdir`.** `.catch` added; logger failures degrade silently instead of hanging the process.
+- **tests/corpus/refresh: env restore leak under setup failure.** Module-load `MODULE_ORIG_CORPUS_DIR` snapshot + try/finally `afterEach` — applied to 10 more test files for parallel-run safety.
+- **tests/mcpGolden: flaky subprocess timeout.** `SKIP_MCP_GOLDEN=1` opt-out; timeout now reports first 500 chars of stdout + parse-error details.
+
+### Added (Stage B proactive + Stage C humanization)
+
+- **Corpus partial-failure results.** `indexCorpus` now captures per-file failures in `failed_paths: Array<{path, reason}>` and continues past them. One bad file in a batch of 1000 no longer halts the whole pass.
+- **Corpus atomic writes.** `saveCorpus` writes to `${path}.tmp` then `rename` (atomic on same filesystem). A crash mid-write leaves the prior corpus intact.
+- **Prewarm cold-start signal.** `prewarm:in_progress_request` observability event emitted when a tool call arrives while prewarm is still running, so first-call-slow has a correlation point.
+- **Semaphore wait observability.** `semaphore:wait` event emitted with `queue_depth`, `in_flight`, `expected_wait_ms` when a caller blocks. `Semaphore` also now exposes `snapshot()` + `wouldBlock`.
+- **Actionable timeout error messages.** Terminal `TIER_TIMEOUT` messages now include tool, tier, model, elapsed ms, budget ms, and `fallback_attempted` flag.
+- **Profile env-override logging.** `INTERN_TIER_*` env overrides log one stderr line at startup with `KEY overrides tier: from → to`. No more silent config surprises.
+- **Residency probe diagnostics.** Probe failures log endpoint + model + error string (was silent).
+- **Logger self-report.** First NDJSON logger write failure emits one stderr warning with errno + path; further warnings suppressed.
+- **artifacts/scan safeListDir observability.** Unreadable directory emits a structured NDJSON `artifact_scan_skip` event to stderr (was silent).
+- **corpus_answer zero-retrieval fast path.** Skips the residency probe when retrieval returns nothing (saves one Ollama round-trip on dead-end queries).
+- **mcpGolden `tools/call` E2E test.** Uses `ollama_artifact_list` (no Ollama needed) as the minimum regression guard for the tools/call RPC path.
+- **Troubleshooting handbook page.** New `site/handbook/troubleshooting.md` covering Ollama not running, model pull failures, hardware insufficient + tier fallbacks, `OLLAMA_MODEL_MISSING`, MCP server not appearing in Claude Code.
+- **Hardware minimums in getting-started.** VRAM / RAM table for `hermes3:8b` + `nomic-embed-text`, with profile hints (`dev-rtx5080` / `dev-rtx5080-qwen3` / `m5-max`).
+- **`.npmignore`.** Conservative deny-list belt-and-braces the `package.json` files allowlist.
+
+### Changed
+
+- **`num_predict` clamped** in `corpus_answer` to `Math.min(maxWords * 2.5, 4000)`.
+- **README install order.** Claude Code MCP config block is now the recommended install; global install moved to "advanced" with an explicit "no global install required" note.
+- **CI timeouts.** Every job in `ci.yml` and `pages.yml` now has `timeout-minutes: 15`. Prevents runaway minute burn from hung tests or Ollama timeouts.
+- **CI paths-gating.** `.github/dependabot.yml`, `.npmignore`, and `package-lock.json` now trigger CI.
+- **`.github/workflows/pages.yml` Node version 22 → 20** to match `ci.yml` and `engines.node >= 18`.
+- **SECURITY.md vulnerability disclosure** now points to a GitHub private security advisory (the previous `@users.noreply` mailto was non-deliverable).
+- **`.github/dependabot.yml`** no longer groups major upgrades. Minor + patch stay grouped (safe to batch); each major now gets its own PR so migrations get dedicated review. Fixes the root cause of the 5-major bundle in closed PR #4.
+
+### Tests
+
+- **464 → 481 tests** (+17). +16 tests in `guardrails/confidence.test.ts` (boundary / NaN / negative / > 1 / threshold=0,1 corners). +1 `tools/call` E2E in `mcpGolden.test.ts`.
+
+### Deferred
+
+- 16 LOW findings from Stages A/B (cosmetic, unused-code, micro-consistency).
+- Corpus progress callback + `isCorpusStale` primitive (the Stage C corpus amend agent ran out of steam mid-task; followed up with the `failed_paths` half to close the type gap it opened).
+
+### Meta
+
+Swarm run: `swarm-1776670768-fd1a`, save point `swarm-save-1776670761`. Three PRs: #9 (dependabot config), #15 (Stage A), #16 (Stage B + C).
+
 ## [2.0.0] - 2026-04-19
 
 Hermes-ready release. The blocker that stopped `incident_pack` working end-to-end with Hermes Agent on `hermes3:8b` is fixed, the default model ladder moves to the validated integration path, and Qwen 3 gets first-class runtime support for callers who want it.
