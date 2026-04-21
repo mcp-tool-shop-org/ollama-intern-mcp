@@ -50,9 +50,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
+    "@types/node": "^22.19.17",
     "rimraf": "^5.0.5",
-    "typescript": "^5.3.3",
+    "typescript": "^6.0.3",
     "vitest": "^1.6.0"
   },
   "engines": {
