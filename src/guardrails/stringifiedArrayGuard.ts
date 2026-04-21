@@ -107,7 +107,7 @@ export function strictStringArray(
       }
       const res = real.safeParse(v);
       if (!res.success) {
-        for (const issue of res.error.issues) ctx.addIssue(issue);
+        for (const issue of res.error.issues) ctx.addIssue({ ...issue });
         return z.NEVER;
       }
       return res.data;

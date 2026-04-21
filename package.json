@@ -47,7 +47,7 @@
   "homepage": "https://github.com/mcp-tool-shop-org/ollama-intern-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^3.23.8"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
