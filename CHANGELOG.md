@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-04-21
+
+### Changed
+
+- **deps: zod 3.25.76 → 4.3.6.** Two breaking-change fixes in-house: `z.record` now requires an explicit key type (`z.record(z.string(), z.unknown())`); `ctx.addIssue` no longer accepts bare `$ZodIssue`, so issues are spread into a plain object to satisfy the new index-signature shape. No runtime behavior change. Closes #13.
+- **deps: typescript 5.9.3 → 6.0.3, @types/node 20 → 22.** TS 6 tightened ambient-type handling; `tsconfig.json` now declares `"types": ["node"]` so node globals (`process`, `console`, `Buffer`, `node:` imports) resolve without the implicit fallback TS 5 allowed. Zero source changes. Closes #14.
+
+All 481 tests pass on the new toolchain.
+
 ## [2.0.1] - 2026-04-20
 
 Three-stage dogfood-swarm health pass. No API changes, no tool-surface changes — everything here is hardening, observability, and operator-experience polish on the existing v2.0.0 surface.
