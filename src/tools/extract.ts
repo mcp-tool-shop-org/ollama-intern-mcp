@@ -35,7 +35,7 @@ export const extractSchema = z.object({
     .min(1)
     .optional()
     .describe("Batch of texts to extract from, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
-  schema: z.record(z.unknown()).describe("JSONSchema the output must conform to — shared across all items in a batch."),
+  schema: z.record(z.string(), z.unknown()).describe("JSONSchema the output must conform to — shared across all items in a batch."),
   hint: z.string().optional().describe("Optional field-by-field hint."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
 });
