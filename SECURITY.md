@@ -21,4 +21,4 @@ The repo is owned by **mcp-tool-shop-org**; advisories route to the org maintain
 
 ## Supported Versions
 
-Pre-1.0. Only the latest release receives security fixes.
+v2.x is the active line (v2.0.2 current). Only the latest v2.x release receives security fixes. v1.x is end-of-life.

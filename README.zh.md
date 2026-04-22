@@ -79,7 +79,7 @@
 - 组装包：已冻结在3个。 不会增加新的组装包类型。
 - 遗物等级：已冻结在7级。
 
-完整的工具参考资料请查阅[手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/)。
+完整的工具参考资料请查阅[手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/)。
 
 ---
 

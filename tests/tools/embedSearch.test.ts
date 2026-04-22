@@ -117,6 +117,40 @@ describe("handleEmbedSearch", () => {
     expect(withoutPreview.result.ranked[0].preview).toBeUndefined();
   });
 
+  it("throws a structured InternError with EMBED_COUNT_MISMATCH when the embed server returns a short vector count", async () => {
+    // Mock that deliberately returns fewer vectors than inputs.
+    class ShortEmbedMock implements OllamaClient {
+      async generate(_req: GenerateRequest): Promise<GenerateResponse> { throw new Error("not used"); }
+      async chat(_req: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
+      async embed(req: EmbedRequest): Promise<EmbedResponse> {
+        return { model: req.model, embeddings: [[1, 0]] }; // one vector for N inputs
+      }
+      async residency(_m: string): Promise<Residency | null> { return null; }
+    }
+    const { InternError } = await import("../../src/errors.js");
+    try {
+      await handleEmbedSearch(
+        {
+          query: "q",
+          candidates: [
+            { id: "c1", text: "a" },
+            { id: "c2", text: "b" },
+          ],
+        },
+        makeCtx(new ShortEmbedMock()),
+      );
+      // Should have thrown.
+      expect.fail("expected InternError to be thrown on vector-count mismatch");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InternError);
+      const ie = err as InstanceType<typeof InternError>;
+      expect(ie.code).toBe("EMBED_COUNT_MISMATCH");
+      expect(ie.retryable).toBe(true);
+      expect(ie.hint).toMatch(/OLLAMA_HOST|embed model/i);
+      expect(ie.message).toMatch(/1 vectors for 3 inputs/);
+    }
+  });
+
   it("sends a single embed call with query + all candidates in one batch", async () => {
     const client = new EmbedMock({ q: [1, 0], a: [1, 0], b: [0, 1] });
     await handleEmbedSearch(

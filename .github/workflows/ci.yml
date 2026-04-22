@@ -11,7 +11,6 @@ on:
       - "src/**"
       - "tests/**"
       - ".github/workflows/**"
-      - ".github/dependabot.yml"
       - ".npmignore"
   pull_request:
     paths:
@@ -22,7 +21,6 @@ on:
       - "src/**"
       - "tests/**"
       - ".github/workflows/**"
-      - ".github/dependabot.yml"
       - ".npmignore"
   workflow_dispatch:
 
@@ -35,10 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - name: Install (regenerate lockfile for runner platform)
         run: |
@@ -52,10 +52,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - name: Install (regenerate lockfile for runner platform)
         run: |

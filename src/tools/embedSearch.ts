@@ -16,6 +16,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
 import { rankByCosine } from "../embedMath.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 export const embedSearchSchema = z.object({
@@ -68,9 +69,13 @@ export async function handleEmbedSearch(
   const resp = await ctx.client.embed({ model, input: inputs });
   if (resp.embeddings.length !== inputs.length) {
     // Defensive — shouldn't happen, but if the embed server returns the wrong
-    // count we can't trust the ranking.
-    throw new Error(
-      `Embed returned ${resp.embeddings.length} vectors for ${inputs.length} inputs`,
+    // count we can't trust the ranking. Retryable because a mid-request model
+    // swap or transient embed-server glitch is the most plausible cause.
+    throw new InternError(
+      "EMBED_COUNT_MISMATCH",
+      `Embed returned ${resp.embeddings.length} vectors for ${inputs.length} inputs.`,
+      "Check OLLAMA_HOST is reachable and the embed model is not being swapped mid-request. Retrying is usually safe.",
+      true,
     );
   }
   const [queryVec, ...candVecs] = resp.embeddings;

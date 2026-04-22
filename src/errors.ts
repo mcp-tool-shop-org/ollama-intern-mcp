@@ -15,6 +15,10 @@ export type ErrorCode =
   | "SOURCE_PATH_NOT_FOUND"
   | "SCHEMA_INVALID"
   | "DRAFT_BANNED_PHRASE"
+  | "EMBED_COUNT_MISMATCH"
+  | "EMBED_DIMENSION_MISMATCH"
+  | "SYMLINK_NOT_ALLOWED"
+  | "CONFIG_INVALID"
   | "INTERNAL";
 
 export class InternError extends Error {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runPrewarm } from "../src/prewarm.js";
+import { runPrewarm, prewarmTimeoutForTier } from "../src/prewarm.js";
 import { PROFILES } from "../src/profiles.js";
 import { NullLogger } from "../src/observability.js";
 import type {
@@ -96,5 +96,29 @@ describe("runPrewarm", () => {
     await runPrewarm(makeCtx(client), ["instant"]);
     expect(client.generates[0].options?.num_predict).toBe(1);
     expect(client.generates[0].options?.temperature).toBe(0);
+  });
+});
+
+describe("prewarmTimeoutForTier", () => {
+  it("honors the 60s floor for fast tiers (instant @ 15s → 60s)", () => {
+    const ctx = makeCtx(new MockClient("ok"));
+    // dev-rtx5080 profile: instant timeout is 15s. 2× = 30s, floor = 60s → 60s.
+    expect(prewarmTimeoutForTier(ctx, "instant")).toBe(60_000);
+  });
+
+  it("extends past the floor when the tier timeout is slow (deep @ 90s → 180s)", () => {
+    const ctx = makeCtx(new MockClient("ok"));
+    // dev-rtx5080 profile: deep timeout is 90s. 2× = 180s → 180s (beats floor).
+    expect(prewarmTimeoutForTier(ctx, "deep")).toBe(180_000);
+  });
+
+  it("falls back to the floor when the tier timeout is missing", () => {
+    const ctx = makeCtx(new MockClient("ok"));
+    // Synthesize a context with a missing tier entry.
+    const brokenCtx = {
+      ...ctx,
+      timeouts: { ...ctx.timeouts, deep: undefined as unknown as number },
+    };
+    expect(prewarmTimeoutForTier(brokenCtx, "deep")).toBe(60_000);
   });
 });

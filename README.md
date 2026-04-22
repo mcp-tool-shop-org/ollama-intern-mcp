@@ -81,7 +81,7 @@ Freeze lines:
 - Packs frozen at 3. No new pack types.
 - Artifact tier frozen at 7.
 
-The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
+The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 

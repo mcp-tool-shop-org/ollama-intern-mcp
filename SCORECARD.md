@@ -1,9 +1,9 @@
 # Scorecard
 
-> Score a repo before remediation. Fill this out first, then use SHIP_GATE.md to fix.
+> **Historical — superseded by shipcheck audit.** This scorecard captured the pre-v2.0.0 state on 2026-04-17. For the current quality state, run `npx @mcptoolshop/shipcheck audit` in the repo root. The numbers below are not kept in sync.
 
 **Repo:** ollama-intern-mcp
-**Date:** 2026-04-17
+**Date:** 2026-04-17 (pre-remediation snapshot, kept for reference)
 **Type tags:** [all] [npm] [mcp]
 
 ## Pre-Remediation Assessment

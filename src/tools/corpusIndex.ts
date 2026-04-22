@@ -15,31 +15,42 @@ import { indexCorpus, type IndexReport } from "../corpus/indexer.js";
 import { assertValidCorpusName } from "../corpus/storage.js";
 import type { RunContext } from "../runContext.js";
 
-export const corpusIndexSchema = z.object({
-  name: z
-    .string()
-    .min(1)
-    .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
-    .describe("Corpus name (e.g. 'memory', 'canon', 'handbook'). Maps to a file under ~/.ollama-intern/corpora/."),
-  paths: z
-    .array(z.string().min(1))
-    .min(1)
-    .describe("Absolute file paths to include in the corpus. Unchanged files are reused from the existing corpus by sha256."),
-  chunk_chars: z
-    .number()
-    .int()
-    .min(100)
-    .max(8000)
-    .optional()
-    .describe("Chars per chunk (default 800)."),
-  chunk_overlap: z
-    .number()
-    .int()
-    .min(0)
-    .max(4000)
-    .optional()
-    .describe("Overlap between adjacent chunks (default 100)."),
-});
+export const corpusIndexSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1)
+      .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
+      .describe("Corpus name (e.g. 'memory', 'canon', 'handbook'). Maps to a file under ~/.ollama-intern/corpora/."),
+    paths: z
+      .array(z.string().min(1))
+      .min(1)
+      .describe("Absolute file paths to include in the corpus. Unchanged files are reused from the existing corpus by sha256."),
+    chunk_chars: z
+      .number()
+      .int()
+      .min(100)
+      .max(8000)
+      .optional()
+      .describe("Chars per chunk (default 800)."),
+    chunk_overlap: z
+      .number()
+      .int()
+      .min(0)
+      .max(4000)
+      .optional()
+      .describe("Overlap between adjacent chunks (default 100)."),
+  })
+  // chunk_overlap >= chunk_chars collapses all chunks to a single
+  // chunk-worth of content — nonsensical. Reject at the schema layer
+  // so the tool fails loud before allocating an embed batch.
+  .refine(
+    (d) => {
+      if (d.chunk_chars === undefined || d.chunk_overlap === undefined) return true;
+      return d.chunk_overlap < d.chunk_chars;
+    },
+    { message: "chunk_overlap must be less than chunk_chars" },
+  );
 
 export type CorpusIndexInput = z.infer<typeof corpusIndexSchema>;
 

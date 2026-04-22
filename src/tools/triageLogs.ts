@@ -19,18 +19,30 @@ import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
+/**
+ * Cap on a single log blob. 5 MB is well past any reasonable log that fits
+ * in an 8B model's context, but it prevents an unbounded-input DoS where a
+ * caller ships a multi-gigabyte blob and OOMs the server.
+ */
+export const MAX_LOG_TEXT_BYTES = 5_000_000;
+
 export const triageLogsSchema = z.object({
-  log_text: z.string().min(1).optional().describe("Single log output to triage. Use this OR items, not both."),
+  log_text: z
+    .string()
+    .min(1)
+    .max(MAX_LOG_TEXT_BYTES)
+    .optional()
+    .describe("Single log output to triage. Use this OR items, not both. Max 5MB."),
   items: z
     .array(
       z.object({
         id: z.string().min(1).describe("Caller-provided, unique within the batch."),
-        log_text: z.string().min(1),
+        log_text: z.string().min(1).max(MAX_LOG_TEXT_BYTES),
       }),
     )
     .min(1)
     .optional()
-    .describe("Batch of log blobs, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
+    .describe("Batch of log blobs, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries. Each log_text is capped at 5MB."),
   patterns: strictStringArray({ min: 0, minItemLen: 0, fieldName: "patterns" }).optional().describe("Optional regex patterns the triage should bias toward — applied to every item in a batch."),
 });
 

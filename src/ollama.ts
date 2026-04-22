@@ -131,6 +131,9 @@ export interface OllamaClient {
  * that looks like host[:port] into a proper http:// URL, and strip trailing
  * slashes so path concatenation stays clean.
  */
+// By design, arbitrary host URLs are permitted for local-first MCP usage.
+// Scoping `OLLAMA_HOST` (private network, loopback, tunnel, etc.) is an
+// operator responsibility — no SSRF-style validation is applied here.
 export function normalizeOllamaHost(raw: string | undefined): string {
   const fallback = "http://127.0.0.1:11434";
   const value = (raw ?? "").trim();

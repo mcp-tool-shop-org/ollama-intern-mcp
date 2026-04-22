@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexCorpus } from "../../src/corpus/indexer.js";
 import { searchCorpus } from "../../src/corpus/searcher.js";
 import { loadCorpus, listCorpora, assertValidCorpusName, CORPUS_SCHEMA_VERSION, corpusPath } from "../../src/corpus/storage.js";
+import { corpusIndexSchema } from "../../src/tools/corpusIndex.js";
 import { InternError } from "../../src/errors.js";
 import type {
   OllamaClient,
@@ -52,22 +53,31 @@ function toVec(text: string): number[] {
 
 let tempDir: string;
 let origCorpusDir: string | undefined;
+let origAllowedRoots: string | undefined;
 
 // Module-load snapshot — if a beforeEach throws before its own snapshot
 // line runs, afterEach still has a correct pre-test value to restore. (T001)
 const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
+const MODULE_ORIG_ALLOWED_ROOTS = process.env.INTERN_CORPUS_ALLOWED_ROOTS;
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "intern-corpus-"));
   origCorpusDir = process.env.INTERN_CORPUS_DIR;
+  origAllowedRoots = process.env.INTERN_CORPUS_ALLOWED_ROOTS;
   process.env.INTERN_CORPUS_DIR = tempDir;
+  // tmpdir() is outside homedir on Linux/CI — whitelist it so the
+  // realpath safety check in sha256File accepts test fixtures.
+  process.env.INTERN_CORPUS_ALLOWED_ROOTS = tmpdir();
 });
 
 afterEach(async () => {
   const toRestore = origCorpusDir ?? MODULE_ORIG_CORPUS_DIR;
+  const toRestoreRoots = origAllowedRoots ?? MODULE_ORIG_ALLOWED_ROOTS;
   try {
     if (toRestore === undefined) delete process.env.INTERN_CORPUS_DIR;
     else process.env.INTERN_CORPUS_DIR = toRestore;
+    if (toRestoreRoots === undefined) delete process.env.INTERN_CORPUS_ALLOWED_ROOTS;
+    else process.env.INTERN_CORPUS_ALLOWED_ROOTS = toRestoreRoots;
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -288,5 +298,94 @@ describe("indexCorpus + searchCorpus", () => {
     const corpus = (await loadCorpus("upgrade"))!;
     expect(corpus.schema_version).toBe(CORPUS_SCHEMA_VERSION);
     expect(corpus.titles[p]).toBe("Hello");
+  });
+
+  it("rejects symlinks with SYMLINK_NOT_ALLOWED before any size or read work", async () => {
+    // A symlink must be rejected BEFORE the size check — otherwise a user
+    // could swap the target between stat and read (size-cap bypass).
+    const real = join(tempDir, "real.md");
+    const link = join(tempDir, "link.md");
+    await writeFile(real, "real content", "utf8");
+    try {
+      await symlink(real, link);
+    } catch {
+      // Some test environments (e.g. Windows without dev mode) disallow
+      // symlink creation — skip silently rather than fail the suite.
+      return;
+    }
+    const client = new HashEmbedMock();
+    const report = await indexCorpus({
+      name: "symlink",
+      paths: [link],
+      model: "nomic-embed-text",
+      client,
+    });
+    expect(report.failed_paths).toHaveLength(1);
+    expect(report.failed_paths[0].path).toBe(link);
+    expect(report.failed_paths[0].reason).toContain("symlink");
+  });
+
+  it("corpusIndexSchema rejects chunk_overlap >= chunk_chars (degenerate chunking)", () => {
+    // Overlap >= chunk_chars would collapse every chunk's window to at
+    // most chunk_chars of novel content — pointless, wastes embed budget.
+    const bad = corpusIndexSchema.safeParse({
+      name: "x",
+      paths: ["/tmp/a.md"],
+      chunk_chars: 500,
+      chunk_overlap: 500,
+    });
+    expect(bad.success).toBe(false);
+    if (!bad.success) {
+      expect(JSON.stringify(bad.error.issues)).toContain("chunk_overlap must be less than chunk_chars");
+    }
+    const worse = corpusIndexSchema.safeParse({
+      name: "x",
+      paths: ["/tmp/a.md"],
+      chunk_chars: 500,
+      chunk_overlap: 900,
+    });
+    expect(worse.success).toBe(false);
+    // Valid case still parses clean.
+    const good = corpusIndexSchema.safeParse({
+      name: "x",
+      paths: ["/tmp/a.md"],
+      chunk_chars: 500,
+      chunk_overlap: 100,
+    });
+    expect(good.success).toBe(true);
+  });
+
+  it("rejects paths whose realpath is outside allowed roots (TOCTOU on intermediate symlinks)", async () => {
+    // Simulate the outcome of an intermediate symlink being rotated
+    // between lstat(path) and realpath(path): final realpath resolves to
+    // a location NOT covered by INTERN_CORPUS_ALLOWED_ROOTS. We can't
+    // race the rotation deterministically, but we can narrow the roots
+    // and verify assertSafePath runs on the resolved real path.
+    //
+    // allowedRoots() always implicitly includes homedir(). On Windows,
+    // tmpdir() is under homedir(), so we can't use a tmpdir-based fixture
+    // to exercise "outside". Skip on that platform.
+    const home = (await import("node:os")).homedir();
+    if (tmpdir().startsWith(home)) {
+      return; // tmpdir is inside homedir — can't simulate "outside" here.
+    }
+    const outside = join(tempDir, "outside.md");
+    await writeFile(outside, "should not be indexed", "utf8");
+    // Shrink allowed roots to a sibling path so the real file is outside.
+    const siblingDir = await mkdtemp(join(tmpdir(), "intern-sibling-"));
+    try {
+      process.env.INTERN_CORPUS_ALLOWED_ROOTS = siblingDir;
+      const client = new HashEmbedMock();
+      const report = await indexCorpus({
+        name: "toctou",
+        paths: [outside],
+        model: "nomic-embed-text",
+        client,
+      });
+      expect(report.failed_paths).toHaveLength(1);
+      expect(report.failed_paths[0].reason).toMatch(/outside allowed roots/);
+    } finally {
+      await rm(siblingDir, { recursive: true, force: true });
+    }
   });
 });

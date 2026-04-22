@@ -79,7 +79,7 @@ Linhas fixas:
 - Pacotes fixos em 3. Sem novos tipos de pacote.
 - Nível de artefato fixo em 7.
 
-A referência completa das ferramentas está no [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
+A referência completa das ferramentas está no [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 

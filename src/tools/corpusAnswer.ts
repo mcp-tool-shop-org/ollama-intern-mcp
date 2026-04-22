@@ -202,6 +202,20 @@ export function computeCoverage(
   if (stripped > 0) {
     notes.push(`Stripped ${stripped} invalid citation number(s) from model output.`);
   }
+  // Distinguish the two failure shapes when an answer ends up with zero
+  // valid citations — a caller scanning coverage_notes must be able to
+  // tell "model output had citations but they were all out of range"
+  // (usually a prompt or context-length bug) apart from "model produced
+  // text with no structured citations at all" (JSON contract violation).
+  if (citations.length === 0) {
+    if (stripped > 0) {
+      notes.push(
+        `Stripped ${stripped} out-of-range citation(s) — answer has zero valid citations.`,
+      );
+    } else {
+      notes.push("Model produced answer without structured citations.");
+    }
+  }
   return { covered, omitted, notes };
 }
 

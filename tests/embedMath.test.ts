@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { cosine, rankByCosine } from "../src/embedMath.js";
+import { InternError } from "../src/errors.js";
 
 describe("cosine", () => {
   it("returns 1 for identical vectors", () => {
@@ -14,11 +15,23 @@ describe("cosine", () => {
     expect(cosine([1, 0], [0, 1])).toBeCloseTo(0);
   });
 
-  it("returns 0 for length mismatch (defensive)", () => {
-    expect(cosine([1, 2], [1, 2, 3])).toBe(0);
+  it("throws EMBED_DIMENSION_MISMATCH on length mismatch (catches :latest drift, mixed-model corpora)", () => {
+    let caught: InternError | undefined;
+    try {
+      cosine([1, 2], [1, 2, 3]);
+    } catch (err) {
+      caught = err as InternError;
+    }
+    expect(caught).toBeInstanceOf(InternError);
+    expect(caught!.code).toBe("EMBED_DIMENSION_MISMATCH");
+    // Dimensions appear in the message so the operator can see both sides.
+    expect(caught!.message).toContain("2d");
+    expect(caught!.message).toContain("3d");
+    expect(caught!.hint).toContain("Re-index");
+    expect(caught!.retryable).toBe(false);
   });
 
-  it("returns 0 for empty vectors (defensive)", () => {
+  it("returns 0 for empty vectors (both sides zero-length)", () => {
     expect(cosine([], [])).toBe(0);
   });
 });

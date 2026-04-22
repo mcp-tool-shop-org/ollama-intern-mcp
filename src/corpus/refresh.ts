@@ -30,7 +30,8 @@ import type { OllamaClient } from "../ollama.js";
 import { InternError } from "../errors.js";
 import { loadCorpus } from "./storage.js";
 import { loadManifest, saveManifest } from "./manifest.js";
-import { indexCorpus } from "./indexer.js";
+import { indexCorpusUnlocked } from "./indexer.js";
+import { withCorpusLock } from "./lock.js";
 
 export interface RefreshReport {
   name: string;
@@ -83,6 +84,12 @@ async function sha256Of(absPath: string): Promise<string> {
 }
 
 export async function refreshCorpus(params: RefreshParams): Promise<RefreshReport> {
+  // Serialize against concurrent index/refresh on the same corpus name
+  // so corpus.json and manifest.json writes don't interleave across calls.
+  return withCorpusLock(params.name, () => refreshCorpusUnlocked(params));
+}
+
+async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshReport> {
   const t0 = Date.now();
 
   const manifest = await loadManifest(params.name);
@@ -181,7 +188,9 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
     .filter((c) => c.klass !== "missing")
     .map((c) => c.path);
 
-  const indexReport = await indexCorpus({
+  // Use the unlocked variant — we already hold the corpus lock. Calling
+  // indexCorpus here would try to re-acquire and self-deadlock.
+  const indexReport = await indexCorpusUnlocked({
     name: params.name,
     paths: livePaths,
     model: params.model,
@@ -200,6 +209,15 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
   // surface it so the caller knows some chunks are from the old model.
   // Report-only — we don't forcibly re-embed. Callers who want uniform
   // vector space re-run ollama_corpus_index.
+  //
+  // Suppression rules (noise reduction):
+  //   - prior === null: the manifest never captured a resolved tag
+  //     (migrated v1 manifest, or no prior embed). There's nothing to
+  //     compare against — don't fabricate a drift report.
+  //   - current === null: no embed fired this run (pure reuse). We
+  //     learned nothing new about the resolved tag, so we can't claim drift.
+  //   - A no_op refresh also can't reach this code path — the early
+  //     return above ensures it.
   const priorResolved = manifest.embed_model_resolved;
   const currentResolved = indexReport.embed_model_resolved;
   const drift =

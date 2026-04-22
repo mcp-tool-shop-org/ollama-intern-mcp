@@ -79,7 +79,7 @@ Linee congelate:
 - I pacchetti sono congelati a 3. Nessun nuovo tipo di pacchetto.
 - Il livello degli artefatti è congelato a 7.
 
-Il riferimento completo agli strumenti si trova nel [manuale](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
+Il riferimento completo agli strumenti si trova nel [manuale](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 

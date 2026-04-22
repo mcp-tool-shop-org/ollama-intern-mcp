@@ -67,7 +67,7 @@ function allowedRoots(): string[] {
   return roots.map((r) => normalize(r));
 }
 
-function assertSafePath(p: string): void {
+export function assertSafePath(p: string): void {
   if (!isAbsolute(p)) {
     throw new InternError(
       "SCHEMA_INVALID",

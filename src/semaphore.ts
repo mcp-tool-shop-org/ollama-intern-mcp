@@ -9,12 +9,22 @@
  * shrug. See `observeWait` and the `semaphore:wait` LogEvent for that path.
  */
 
+import { InternError } from "./errors.js";
+
 export class Semaphore {
   private permits: number;
   private maxPermits: number;
   private queue: Array<() => void> = [];
-  /** Start timestamps of in-flight holders — used to estimate wait time. */
-  private inFlightStartedAt: number[] = [];
+  /**
+   * Start timestamps of in-flight holders, keyed by a monotonic ticket id.
+   * A Map (not a FIFO array) is required so out-of-order release — which is
+   * the common case once tier timeouts and heterogeneous call durations enter
+   * the picture — deletes the correct entry. An earlier FIFO `shift()` would
+   * drop the oldest marker regardless of which holder actually released,
+   * corrupting the `expected_wait_ms` estimate in `snapshot()`.
+   */
+  private inFlightStartedAt = new Map<number, number>();
+  private nextTicket = 0;
 
   constructor(permits: number) {
     this.permits = permits;
@@ -24,23 +34,23 @@ export class Semaphore {
   async acquire(): Promise<() => void> {
     if (this.permits > 0) {
       this.permits--;
-      this.inFlightStartedAt.push(Date.now());
-      return () => this.release();
+      const ticket = this.nextTicket++;
+      this.inFlightStartedAt.set(ticket, Date.now());
+      return () => this.release(ticket);
     }
     return new Promise<() => void>((resolve) => {
       this.queue.push(() => {
         this.permits--;
-        this.inFlightStartedAt.push(Date.now());
-        resolve(() => this.release());
+        const ticket = this.nextTicket++;
+        this.inFlightStartedAt.set(ticket, Date.now());
+        resolve(() => this.release(ticket));
       });
     });
   }
 
-  private release(): void {
+  private release(ticket: number): void {
     this.permits++;
-    // Remove the oldest in-flight marker — we don't track per-release identity,
-    // so drain FIFO. Good enough for wait estimation.
-    this.inFlightStartedAt.shift();
+    this.inFlightStartedAt.delete(ticket);
     const next = this.queue.shift();
     if (next) next();
   }
@@ -63,9 +73,13 @@ export class Semaphore {
    */
   snapshot(): { queue_depth: number; in_flight: number; expected_wait_ms: number } {
     const now = Date.now();
-    const oldest = this.inFlightStartedAt[0];
-    // Assume the oldest call finishes soon; remaining queue ahead of us waits
-    // queue_depth * typical-duration. Use oldest-age as a proxy for typical.
+    // Oldest remaining in-flight start — smallest timestamp across all live
+    // tickets. Map iteration order is insertion order, but out-of-order
+    // release means the earliest insert may already be gone, so scan.
+    let oldest: number | undefined;
+    for (const started of this.inFlightStartedAt.values()) {
+      if (oldest === undefined || started < oldest) oldest = started;
+    }
     const typical = oldest !== undefined ? Math.max(0, now - oldest) : 0;
     return {
       queue_depth: this.queue.length,
@@ -75,6 +89,29 @@ export class Semaphore {
   }
 }
 
-const DEFAULT_CONCURRENCY = Number(process.env.INTERN_MAX_CONCURRENT ?? 2);
+/**
+ * Parse INTERN_MAX_CONCURRENT with validation. `Number("abc")` silently
+ * returns NaN, which produced a semaphore that blocked every acquire — the
+ * operator saw "Ollama is slow" with no hint the concurrency cap was
+ * misconfigured. Reject NaN, non-integers, and values < 1.
+ */
+function parseConcurrency(raw: string | undefined): number {
+  if (raw === undefined) return 2;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+    throw new InternError(
+      "CONFIG_INVALID",
+      `Invalid INTERN_MAX_CONCURRENT: '${raw}'`,
+      `INTERN_MAX_CONCURRENT must be a positive integer; got '${raw}'`,
+      false,
+    );
+  }
+  return parsed;
+}
+
+const DEFAULT_CONCURRENCY = parseConcurrency(process.env.INTERN_MAX_CONCURRENT);
 
 export const ollamaSemaphore = new Semaphore(DEFAULT_CONCURRENCY);
+
+/** Exported for tests. */
+export { parseConcurrency };

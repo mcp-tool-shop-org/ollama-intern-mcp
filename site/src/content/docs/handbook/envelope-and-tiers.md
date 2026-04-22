@@ -63,7 +63,7 @@ When you see any of these during a slow call, trim `OLLAMA_MAX_LOADED_MODELS` or
 Every call is logged as one line of NDJSON to `~/.ollama-intern/log.ndjson`:
 
 ```json
-{"kind":"call","ts":"2026-04-19T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"hermes3:8b","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
+{"kind":"call","ts":"2026-04-21T12:00:00Z","tool":"ollama_classify","envelope":{"tier_used":"instant","model":"hermes3:8b","hardware_profile":"dev-rtx5080","tokens_in":87,"tokens_out":12,"elapsed_ms":340,"residency":{"in_vram":true,"evicted":false}}}
 ```
 
 No prompts are logged. No inline text is logged. Just the envelope. Nothing leaves the box.

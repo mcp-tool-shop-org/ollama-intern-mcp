@@ -79,7 +79,7 @@
 - 3 पर जमी हुई पैक। कोई नया पैक प्रकार नहीं।
 - 7 पर जमी हुई कलाकृति स्तर।
 
-उपकरणों का पूरा संदर्भ [हैंडबुक](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/) में है।
+उपकरणों का पूरा संदर्भ [हैंडबुक](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/) में है।
 
 ---
 

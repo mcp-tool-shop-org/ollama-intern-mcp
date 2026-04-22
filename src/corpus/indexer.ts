@@ -16,7 +16,8 @@ import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
-import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest } from "./manifest.js";
+import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest, assertSafePath } from "./manifest.js";
+import { withCorpusLock } from "./lock.js";
 import { InternError } from "../errors.js";
 
 const EMBED_BATCH = 64;
@@ -84,20 +85,28 @@ export interface IndexReport {
  * mutated mid-read and the hash doesn't match the returned content.
  */
 async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
-  // Symlink check FIRST — reject before any size/read work so a symlink to
-  // a sensitive file can't leak even partial bytes via error messages.
+  // Symlink check FIRST — reject before any size/read or realpath work so
+  // a symlink can't bypass the size cap (pointing the symlink at a 100GB
+  // file after the stat but before the read) and can't leak even partial
+  // bytes via error messages. Using a dedicated SYMLINK_NOT_ALLOWED code
+  // instead of the generic SOURCE_PATH_NOT_FOUND so callers can tell a
+  // missing file apart from a deliberately-rejected symlink.
   const lst = await lstat(path);
   if (lst.isSymbolicLink()) {
     throw new InternError(
-      "SOURCE_PATH_NOT_FOUND",
+      "SYMLINK_NOT_ALLOWED",
       `Refusing to index symlink: ${path}`,
-      "Pass the real file path, not a symlink. Symlinks are rejected to avoid traversal into unintended targets.",
+      "Pass the real file path, not a symlink. Symlinks are rejected to avoid size-cap bypass and traversal into unintended targets.",
       false,
     );
   }
   // Resolve to a real path as a belt-and-suspenders check against
-  // intermediate symlinked directories.
+  // intermediate symlinked directories. After resolving, re-verify the
+  // real path still lies under an allowed root — closes the TOCTOU gap
+  // where an intermediate symlink was rotated between lstat(path) and
+  // realpath(path) to point at e.g. /etc/shadow.
   const realPath = await realpath(path);
+  assertSafePath(realPath);
   const stBefore = await stat(realPath);
   if (stBefore.size > MAX_FILE_BYTES) {
     throw new InternError(
@@ -122,6 +131,19 @@ async function sha256File(path: string): Promise<{ hash: string; mtime: string; 
 }
 
 export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
+  // Serialize per corpus name. Two concurrent indexCorpus / refreshCorpus
+  // calls targeting the same corpus would otherwise interleave their
+  // corpus.json and manifest.json writes, producing a pair that no
+  // longer describes the same state.
+  return withCorpusLock(params.name, () => indexCorpusUnlocked(params));
+}
+
+/**
+ * Internal: indexCorpus body without the per-corpus lock. Refresh uses
+ * this because it already holds the lock — calling indexCorpus from
+ * inside a held lock would self-deadlock.
+ */
+export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexReport> {
   const t0 = Date.now();
   const opts: ChunkOptions = {
     chunk_chars: params.chunk_chars ?? DEFAULT_CHUNK.chunk_chars,
