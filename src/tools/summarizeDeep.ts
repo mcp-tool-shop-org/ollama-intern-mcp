@@ -29,6 +29,11 @@ import type { RunContext } from "../runContext.js";
  */
 export const summarizeDeepSchema = z.object({
   text: z.string().min(1).optional().describe("Raw text to digest. Use this when you already have the content in hand."),
+  source_path: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("A single file path to read + chunk server-side. Shortcut for `source_paths: [one]` — use whichever reads more naturally. Closes adoption SEAM #2 (large single-file summaries no longer force Claude to pre-read the file)."),
   source_paths: strictStringArray({ min: 1, fieldName: "source_paths" })
     .optional()
     .describe("File paths to read + chunk server-side. Use this instead of `text` to save Claude context — the tool reads the files, Claude never sees the raw content."),
@@ -46,12 +51,15 @@ export const summarizeDeepSchema = z.object({
 export type SummarizeDeepInput = z.infer<typeof summarizeDeepSchema>;
 
 function assertExactlyOneSource(input: SummarizeDeepInput): void {
-  const given = (input.text ? 1 : 0) + (input.source_paths ? 1 : 0);
+  const given =
+    (input.text ? 1 : 0) +
+    (input.source_paths ? 1 : 0) +
+    (input.source_path ? 1 : 0);
   if (given !== 1) {
     throw new InternError(
       "SCHEMA_INVALID",
-      `ollama_summarize_deep: provide exactly one of "text" or "source_paths" (given ${given}).`,
-      "Pass text for raw content, or source_paths:[...] to have the server read files. Not both, not neither.",
+      `ollama_summarize_deep: provide exactly one of "text", "source_path", or "source_paths" (given ${given}).`,
+      "Pass text for raw content, source_path for a single file, or source_paths for multiple. Not combined, not none.",
       false,
     );
   }
@@ -93,8 +101,11 @@ export async function handleSummarizeDeep(
   let sourceChars: number;
   let sources: LoadedSource[] | null = null;
 
-  if (input.source_paths) {
-    sources = await loadSources(input.source_paths, perFileMax);
+  if (input.source_paths || input.source_path) {
+    // Normalize both shapes to the loader's array input — source_path is just
+    // a single-file alias so callers don't have to wrap in brackets.
+    const paths = input.source_paths ?? [input.source_path as string];
+    sources = await loadSources(paths, perFileMax);
     body = formatSourcesBlock(sources);
     sourcePreview = sources[0]?.body.slice(0, 200) ?? "";
     sourceChars = sources.reduce((n, s) => n + s.body.length, 0);

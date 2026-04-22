@@ -19,7 +19,26 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 
 **Also drives [Hermes Agent](https://github.com/NousResearch/hermes-agent) on `hermes3:8b`** — validated end-to-end 2026-04-19. The default ladder is `hermes3:8b`; `qwen3:*` is the alternate rail. See [Use with Hermes](#use-with-hermes) below.
 
+**Hardware requirements:** ~6 GB VRAM for `hermes3:8b`, or ~16 GB RAM for CPU inference. See [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums) for the full breakdown.
+
+**Not using Claude?** The [`examples/`](./examples/) directory has a minimal Node.js and Python MCP client you can spawn over stdio. See also [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
+
 No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
+
+---
+
+## New in v2.1.0
+
+Feature pass extends existing tiers — no new tier class, atoms+briefs freeze at 18 stays intact.
+
+- **`ollama_log_tail`** — read the NDJSON call log from inside an MCP session. [handbook/observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/#the-ollama_log_tail-tool).
+- **`ollama_batch_proof_check`** — run `tsc` / `eslint` / `pytest` across a set of paths; single envelope with per-check pass/fail. New execution surface; see [SECURITY.md](./SECURITY.md).
+- **`ollama_code_map`** — structural map of a code tree (exports, call-graph sketches, TODOs).
+- **`ollama_code_citation`** — given a symbol, return the defining file + line + surrounding context.
+- **`ollama_corpus_amend`** — additive in-place edits to an existing corpus; later answers surface `has_amended_content: true`.
+- **`ollama_artifact_prune`** — age-based deletion with dry-run default. [handbook/artifacts](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/artifacts/#artifact_prune).
+- **Enhancements** — `summarize_deep` now accepts `source_path`; `corpus_answer` surfaces amended-content state; new observability events documented end-to-end.
+- **New handbook pages** — [Observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/) (NDJSON log + jq recipes) and [Comparison](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/comparison/) (honest matrix vs alternatives).
 
 ---
 
@@ -301,7 +320,7 @@ Built to the [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) bar. Ha
 - **A. Security** — SECURITY.md, threat model, no telemetry, path-safety, `confirm_write` on protected paths
 - **B. Errors** — structured shape across all tool results; no raw stacks
 - **C. Docs** — README current, CHANGELOG, LICENSE; tool schemas self-document
-- **D. Hygiene** — `npm run verify` (481 tests), CI with dep scanning, Dependabot, lockfile, `engines.node`
+- **D. Hygiene** — `npm run verify` (full vitest suite), CI with dep scanning, Dependabot, lockfile, `engines.node`
 
 ---
 

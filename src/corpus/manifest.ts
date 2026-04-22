@@ -160,6 +160,15 @@ export interface CorpusManifest {
    * always reflects the latest state.
    */
   failed_paths?: ManifestFailedPath[];
+  /**
+   * Set true by ollama_corpus_amend when the corpus has had single-file
+   * mutations applied on top of the normal "snapshot of disk" invariant.
+   * corpus_list / corpus_health surface this as a warning so callers know
+   * the corpus no longer mirrors the filesystem. Cleared (set false) by
+   * the next clean index/refresh run, which re-establishes the invariant.
+   * Absent on manifests written before the amend tool shipped.
+   */
+  has_amended_content?: boolean;
 }
 
 function manifestDir(): string {

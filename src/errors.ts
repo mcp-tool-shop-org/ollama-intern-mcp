@@ -19,6 +19,21 @@ export type ErrorCode =
   | "EMBED_DIMENSION_MISMATCH"
   | "SYMLINK_NOT_ALLOWED"
   | "CONFIG_INVALID"
+  | "DOCTOR_PROBE_FAILED"
+  | "ARTIFACT_PRUNE_FAILED"
+  | "LOG_READ_FAILED"
+  | "CODE_MAP_SCAN_FAILED"
+  | "CITATION_OUT_OF_SCOPE"
+  | "ARTIFACT_NOT_FOUND"
+  | "HYPOTHESIS_INDEX_INVALID"
+  | "REFACTOR_WEAK_OUTPUT"
+  | "PROOF_CHECK_TOOL_MISSING"
+  // Corpus-domain feature-pass codes (Phase 7) — kept distinct from
+  // SCHEMA_INVALID so callers can tell input-shape failures apart from
+  // operational failures specific to amend/rerank/filter paths.
+  | "CORPUS_AMEND_FAILED"
+  | "RERANK_INPUT_INVALID"
+  | "FILTER_INVALID"
   | "INTERNAL";
 
 export class InternError extends Error {

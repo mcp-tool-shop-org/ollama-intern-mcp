@@ -94,6 +94,47 @@ describe("handleSummarizeDeep", () => {
     ).rejects.toThrow(/exactly one/i);
   });
 
+  // ── source_path (singular) — SEAM #2 fix ────────────────────
+
+  it("accepts source_path (singular) and reads the file server-side", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "intern-sd-single-"));
+    const p = join(dir, "single.md");
+    await writeFile(p, "single-file content for seam fix", "utf8");
+    try {
+      const client = new MockClient();
+      const env = await handleSummarizeDeep(
+        { source_path: p, max_words: 40 },
+        makeCtx(client),
+      );
+      expect(env.result.summary).toBe("digest");
+      expect(client.lastPrompt).toContain("single-file content for seam fix");
+      expect(env.result.source_preview).toBe("single-file content for seam fix");
+      expect(env.result.source_chars).toBe("single-file content for seam fix".length);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects calls that pass both text AND source_path", async () => {
+    const client = new MockClient();
+    await expect(
+      handleSummarizeDeep(
+        { text: "a", source_path: "/x.md" },
+        makeCtx(client),
+      ),
+    ).rejects.toThrow(/exactly one/i);
+  });
+
+  it("rejects calls that pass both source_path AND source_paths", async () => {
+    const client = new MockClient();
+    await expect(
+      handleSummarizeDeep(
+        { source_path: "/x.md", source_paths: ["/y.md"] },
+        makeCtx(client),
+      ),
+    ).rejects.toThrow(/exactly one/i);
+  });
+
   it("surfaces SOURCE_PATH_NOT_FOUND when a source path doesn't exist", async () => {
     const client = new MockClient();
     await expect(

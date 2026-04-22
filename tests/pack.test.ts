@@ -13,6 +13,24 @@
 import { spawnSync } from "node:child_process";
 import { describe, it, expect, beforeAll } from "vitest";
 
+/**
+ * Size-regression floor for the published tarball.
+ *
+ * The "size" field in `npm pack --json` output is the COMPRESSED tarball size
+ * in bytes. At v2.0.2 with the current dist/ output, this sits around
+ * ~302 KB. We fail if a change pushes the compressed size more than 10%
+ * above this baseline — an early signal that something accidentally got
+ * added to `files`, dist/ swelled, or a sourcemap/asset leaked into the
+ * tarball.
+ *
+ * Update process when the baseline moves legitimately (e.g. new shipped tool
+ * or required asset): run `npm pack --dry-run --json | jq '.[0].size'` on a
+ * clean build of main, and set BASELINE_PACKED_BYTES to that value. Keep the
+ * tolerance at 10% unless you have a reason to widen it.
+ */
+export const BASELINE_PACKED_BYTES = 310_000;
+export const BASELINE_TOLERANCE = 0.10;
+
 type PackEntry = { path: string; size: number; mode: number };
 type PackReport = {
   name: string;
@@ -34,7 +52,12 @@ function runPackDryRun(): PackReport | null {
   if (!npmOnPath()) return null;
   // On Windows, `npm` resolves to npm.cmd — spawnSync needs shell:true so the
   // shim is found the same way the user's terminal finds it.
-  const res = spawnSync("npm", ["pack", "--dry-run", "--json"], {
+  // --ignore-scripts: our prepack runs `clean && build`, which races the
+  // mcpGolden subprocess test by wiping dist/ mid-spawn. Skipping scripts
+  // here is safe: the suite runs after `npm run build` (see beforeAll in
+  // mcpGolden.test.ts and the `verify` / `ship` scripts), so dist/ is already
+  // present and current. The tarball listing does NOT require prepack to run.
+  const res = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     encoding: "utf8",
     shell: process.platform === "win32",
     // Give npm enough time on cold caches; still bounded so a hung child
@@ -116,5 +139,20 @@ describe("tarball contract (npm pack --dry-run)", () => {
   it.skipIf(!npmOnPath())("ships the package under the expected name", () => {
     expect(report).not.toBeNull();
     expect(report!.name).toBe("ollama-intern-mcp");
+  });
+
+  it.skipIf(!npmOnPath())("stays under the packed-size regression baseline (+10%)", () => {
+    // Fails loudly when a commit grows the COMPRESSED tarball more than 10%
+    // above BASELINE_PACKED_BYTES. Sitting at ~302 KB as of v2.0.2 — the
+    // ceiling is 341 KB. When the baseline legitimately moves, update
+    // BASELINE_PACKED_BYTES per the comment above (not the tolerance).
+    expect(report).not.toBeNull();
+    const ceiling = Math.floor(BASELINE_PACKED_BYTES * (1 + BASELINE_TOLERANCE));
+    expect(
+      report!.size,
+      `packed size ${report!.size} bytes exceeds baseline ceiling ${ceiling} bytes ` +
+        `(baseline ${BASELINE_PACKED_BYTES} + ${BASELINE_TOLERANCE * 100}% tolerance). ` +
+        `If this growth is intentional, bump BASELINE_PACKED_BYTES in tests/pack.test.ts.`,
+    ).toBeLessThanOrEqual(ceiling);
   });
 });

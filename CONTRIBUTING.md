@@ -23,11 +23,14 @@ The 28-tool surface is frozen. PRs that add new tools or reshape existing tool s
 npm install
 npm test           # vitest run
 npm run verify     # typecheck + build + tests — what CI runs
+npm run ship       # pre-publish verify (runs verify + any release hooks); run before publishing
 ```
 
 You'll also need a local [Ollama](https://ollama.com) with the tier models pulled (see README → Model pulls). Tests that hit the model are gated; the default suite is fast and pure.
 
 **Test shape:** [`tests/tools/classify.test.ts`](./tests/tools/classify.test.ts) is the canonical small example — mock `OllamaClient`, drive `handleClassify`, assert on the envelope. Copy its pattern when adding a tool test.
+
+**Minimal client shape:** [`examples/`](./examples/) has a Node.js and a Python MCP client that spawn the server over stdio, list tools, and call one. They're the reference for what "a client using this MCP" looks like — copy the handshake + RPC pattern if you're writing bindings.
 
 ## Code style
 

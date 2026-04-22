@@ -44,3 +44,5 @@ Every local-LLM MCP server leads with token-savings. Ours leads with _what the i
 - [Error codes](./error-codes/) — every structured error code, when you'll see it, what to do
 - [Use with Hermes](./with-hermes/) — drive this MCP from Nous Research's Hermes Agent on hermes3:8b (validated 2026-04-19)
 - [Troubleshooting](./troubleshooting/) — Ollama not running, model pull failures, hardware insufficient, MCP server not appearing in Claude Code
+- [Observability](./observability/) — read the NDJSON log, field semantics, jq recipes, degradation signatures, `ollama_log_tail`
+- [Comparison](./comparison/) — honest matrix vs other local-LLM MCPs, raw Ollama, and Claude-direct
