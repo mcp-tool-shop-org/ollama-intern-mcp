@@ -36,6 +36,10 @@ import { corpusSearchSchema, handleCorpusSearch } from "./tools/corpusSearch.js"
 import { corpusAnswerSchema, handleCorpusAnswer } from "./tools/corpusAnswer.js";
 import { corpusRefreshSchema, handleCorpusRefresh } from "./tools/corpusRefresh.js";
 import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
+import { corpusHealthSchema, handleCorpusHealth } from "./tools/corpusHealth.js";
+import { corpusAmendSchema, handleCorpusAmend } from "./tools/corpusAmend.js";
+import { corpusAmendHistorySchema, handleCorpusAmendHistory } from "./tools/corpusAmendHistory.js";
+import { corpusRerankSchema, handleCorpusRerank } from "./tools/corpusRerank.js";
 import { incidentBriefSchema, handleIncidentBrief } from "./tools/incidentBrief.js";
 import { repoBriefSchema, handleRepoBrief } from "./tools/repoBrief.js";
 import { changeBriefSchema, handleChangeBrief } from "./tools/changeBrief.js";
@@ -55,6 +59,18 @@ import {
   handleArtifactReleaseNoteSnippet,
 } from "./tools/artifactSnippets.js";
 import { chatSchema, handleChat } from "./tools/chat.js";
+
+// ── Feature-pass tools (agent: Tools) — no-LLM ops + instant-tier helpers ──
+import { doctorSchema, handleDoctor } from "./tools/doctor.js";
+import { artifactPruneSchema, handleArtifactPrune } from "./tools/artifactPrune.js";
+import { logTailSchema, handleLogTail } from "./tools/logTail.js";
+import { codeMapSchema, handleCodeMap } from "./tools/codeMap.js";
+// ── Feature-pass tools (agent: Tools-new) — refactor/proof/citation/drill ──
+import { multiFileRefactorProposeSchema, handleMultiFileRefactorPropose } from "./tools/multiFileRefactorPropose.js";
+import { batchProofCheckSchema, handleBatchProofCheck } from "./tools/batchProofCheck.js";
+import { refactorPlanSchema, handleRefactorPlan } from "./tools/refactorPlan.js";
+import { codeCitationSchema, handleCodeCitation } from "./tools/codeCitation.js";
+import { hypothesisDrillSchema, handleHypothesisDrill } from "./tools/hypothesisDrill.js";
 
 export function createServer(ctx: RunContext): McpServer {
   const server = new McpServer({ name: "ollama-intern-mcp", version: VERSION });
@@ -234,10 +250,42 @@ export function createServer(ctx: RunContext): McpServer {
     (args) => wrap(handleCorpusList(args, ctx)),
   );
 
+  // Corpus health — dedicated superset of corpus_list with drift + staleness surfaced.
+  server.tool(
+    "ollama_corpus_health",
+    "Health summary for indexed corpora. No Ollama call. Superset of ollama_corpus_list: staleness_days, embed_model_resolved, within-refresh :latest drift, failed_paths_count, write_complete, and per-corpus warnings[]. Optional `name` narrows to a single corpus (typos fail loud). Optional `detailed: true` adds a per-file list with mtime + stale_days. Use this as your go-to 'is anything broken?' check before search or refresh.",
+    corpusHealthSchema.shape,
+    (args) => wrap(handleCorpusHealth(args, ctx)),
+  );
+
+  // Corpus amend — single-file mutation, breaks snapshot invariant (warned).
+  server.tool(
+    "ollama_corpus_amend",
+    "Update one file's chunks in a corpus without running a full refresh. INVARIANT CAVEAT: the corpus is normally a snapshot of disk — amend bypasses that. new_content doesn't have to match (or even exist on) disk. The manifest records has_amended_content: true so corpus_list / corpus_health surface the break; a subsequent clean index/refresh re-establishes the invariant. Takes the per-corpus lock. Re-chunks + re-embeds the new_content using the manifest's chunk params (unless explicitly overridden). Returns `{corpus, file_path, chunks_removed, chunks_added, embed_model_resolved}`.",
+    corpusAmendSchema.shape,
+    (args) => wrap(handleCorpusAmend(args, ctx)),
+  );
+
+  // Corpus amend history — read-only companion to corpus_amend (no LLM).
+  server.tool(
+    "ollama_corpus_amend_history",
+    "Read-only companion to ollama_corpus_amend. Lists which paths have been amended on top of the disk snapshot, when each amendment happened, and the chunk-count delta. Use this before deciding whether to re-index — a clean ollama_corpus_index or ollama_corpus_refresh re-establishes the snapshot invariant and clears the history. No LLM call; pure manifest read.",
+    corpusAmendHistorySchema.shape,
+    (args) => wrap(handleCorpusAmendHistory(args, ctx)),
+  );
+
+  // Corpus rerank — post-retrieval re-sort (no LLM).
+  server.tool(
+    "ollama_corpus_rerank",
+    "Post-retrieval re-sort of hits from a prior ollama_corpus_search. No Ollama call (no embed, no generate). Three modes: 'recency' (newer file mtime wins; stats the file), 'path_specificity' (deeper paths win), 'lexical_boost' (boosts hits whose preview/heading_path/title contains any lexical_terms — case-insensitive, word-boundary; lexical_terms REQUIRED for this mode). Preserves each hit's original score + original_rank; appends rerank_score + rank. Use after corpus_search when you need a different ordering heuristic than semantic similarity.",
+    corpusRerankSchema.shape,
+    (args) => wrap(handleCorpusRerank(args, ctx)),
+  );
+
   // LOW-LEVEL — ollama_embed (raw vectors for external index builds)
   server.tool(
     "ollama_embed",
-    "LOW-LEVEL primitive. Returns raw 768-dim vectors for one text or a batch. Use `ollama_embed_search` instead for concept-search — this tool is for building external indexes (sqlite-vss, pgvector) where you need the raw geometry. Output can be large.",
+    "LOW-LEVEL primitive. Returns raw 768-dim vectors for one text or a batch. WARNING: raw vectors can overflow MCP tool-output limits on large batches — for concept search prefer `ollama_embed_search` (ephemeral candidates) or `ollama_corpus_search` (persistent corpora); both return ranked hits, not raw geometry. Use this only for building external vector indexes (sqlite-vss, pgvector) where you need the vectors themselves. Envelope emits a warnings[] entry when the serialized payload crosses ~500KB.",
     embedSchema.shape,
     (args) => wrap(handleEmbed(args, ctx)),
   );
@@ -269,7 +317,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — summarize_deep
   server.tool(
     "ollama_summarize_deep",
-    "Digest of long input with optional focus. Pass EITHER `text` (when you already have the content) OR `source_paths[]` (server reads + chunks locally — use this to save Claude context). Exactly one of the two. Carries source_preview for fabrication spot-checks.",
+    "Digest of long input with optional focus. Pass EXACTLY ONE of: `text` (raw content in hand), `source_path` (single file — server reads + chunks, Claude never pre-reads), or `source_paths[]` (multiple files). The path-based shapes save Claude context — the whole point of delegating summarization. Carries source_preview for fabrication spot-checks.",
     summarizeDeepSchema.shape,
     (args) => wrap(handleSummarizeDeep(args, ctx)),
   );
@@ -288,6 +336,86 @@ export function createServer(ctx: RunContext): McpServer {
     "Schema-constrained JSON extraction using Ollama's JSON mode. Single: pass `text`, returns `{ok: true, data}` or `{ok: false, error: 'unparseable'}` — never partial. BATCH: pass `items:[{id,text}]` with a shared schema — returns one envelope with per-item `{id, ok, result|error}`. Use the batch shape for any 10+-similar-inputs workload (frontmatter, package.json, release metadata) so you hand over the whole job, not N calls.",
     extractSchema.shape,
     (args) => wrap(handleExtract(args, ctx)),
+  );
+
+  // ── Feature-pass tools (agent: Tools) — no-LLM ops + instant-tier helpers ──
+  // This block is intentionally isolated so the Tools-refactor agent can
+  // register alongside without conflicts. Do not interleave with tiered tools.
+
+  // OPS — ollama_doctor (first-run prerequisites + status snapshot)
+  server.tool(
+    "ollama_doctor",
+    "OPS. First-run prerequisites + status snapshot for this MCP. No model call. Probes Ollama reachability (/api/ps + /api/tags), lists loaded vs pulled models, flags missing models against the active profile's tiers, and reports profile, tiers, OLLAMA_HOST, allowed_roots, artifact_root, log_path, plus the last 10 errors from ~/.ollama-intern/log.ndjson. Returns `{ollama, models:{required, pulled, loaded, missing, suggested_pulls}, profile, paths, recent_errors, healthy}`. Use this BEFORE the first real delegation to decide whether the operator needs to pull a model or start Ollama. Safe to call on every session start.",
+    doctorSchema.shape,
+    (args) => wrap(handleDoctor(args, ctx)),
+  );
+
+  // OPS — ollama_artifact_prune (dry-run-by-default cleanup of pack artifacts)
+  server.tool(
+    "ollama_artifact_prune",
+    "OPS. Clean up ~/.ollama-intern/artifacts/. No model call. DRY-RUN BY DEFAULT — pass `dry_run: false` to actually delete. Filter by `older_than_days` (file mtime) and/or `pack_type` ('incident' | 'change' | 'repo' | 'all'). Deletes matched files in .md + .json pairs. Returns `{matched:[{pack, slug, age_days, bytes}], total_matched, total_bytes, dry_run, deleted, artifact_root}`. Use this when disk is creeping or the artifact dir has stale handoffs you don't need.",
+    artifactPruneSchema.shape,
+    (args) => wrap(handleArtifactPrune(args, ctx)),
+  );
+
+  // OPS — ollama_log_tail (structured NDJSON log tail)
+  server.tool(
+    "ollama_log_tail",
+    "OPS. Structured tail of the NDJSON observability log at ~/.ollama-intern/log.ndjson (override via INTERN_LOG_PATH). No model call. Optional filters: `limit` (default 50, max 500), `filter_kind` ('call' | 'timeout' | 'fallback' | 'guardrail' | 'pack_step' | 'semaphore:wait' | 'prewarm' | 'prewarm:in_progress_request'), `filter_tool`, `since` (ISO-8601). Truncated final lines are skipped silently. Missing log file is a soft-empty case, not an error. Returns `{events, total_returned, log_path, log_present}`. Use this to debug why a call was slow / what timed out / what the last failures were.",
+    logTailSchema.shape,
+    (args) => wrap(handleLogTail(args, ctx)),
+  );
+
+  // ORIENT — ollama_code_map (fast structural repo summary, deterministic)
+  server.tool(
+    "ollama_code_map",
+    "ORIENT. Fast structural summary of a repo — deterministic, no model call. Pass `source_paths: string[]` (files OR directories; directories are walked recursively, skipping node_modules/dist/target/.git/.venv) and optional `max_files` (default 500). Reads package.json / pyproject.toml / Cargo.toml / go.mod for framework hints; tallies files by extension; classifies entrypoints (cli/lib/web/test/config) by filename + manifest bin field; collects build_commands from package.json scripts. Returns `{languages, frameworks, entrypoints, build_commands, notable_files, total_files_scanned, max_files_hit}`. Cheap first pass before ollama_repo_pack or ollama_research. When the pass is partial (max_files_hit), the warning says so.",
+    codeMapSchema.shape,
+    (args) => wrap(handleCodeMap(args, ctx)),
+  );
+
+  // ── Feature-pass tools (agent: Tools-new) — refactor/proof/citation/drill ──
+  // This block is intentionally isolated so the Tools-new agent can
+  // register alongside without conflicts. Do not interleave with tiered tools.
+
+  // REFACTOR — ollama_multi_file_refactor_propose (Workhorse tier)
+  server.tool(
+    "ollama_multi_file_refactor_propose",
+    "REFACTOR. Coordinated multi-file refactor PLAN — NO WRITES. Server reads each file in `files` (1-20 paths, path validation via SOURCE_PATH_NOT_FOUND), hands the bodies + `change_description` to the Workhorse tier, and returns `{per_file_changes:[{file, before_summary, after_summary, risk_level, change_kinds[]}], cross_file_impact, affected_imports:[{from, to, files[]}], verification_steps, weak}`. change_kinds are normalized from {rename, signature-change, import-update, move, delete, new}. Files the model invents (not in input) are stripped. Thin output → weak=true. Use BEFORE touching files so Claude can see a coordinated plan. Pair with ollama_refactor_plan for sequencing and ollama_batch_proof_check for verification.",
+    multiFileRefactorProposeSchema.shape,
+    (args) => wrap(handleMultiFileRefactorPropose(args, ctx)),
+  );
+
+  // OPS — ollama_batch_proof_check (no-LLM, parallel CLI proof aggregation)
+  server.tool(
+    "ollama_batch_proof_check",
+    "OPS. Parallel typecheck/lint/test across a file list. NO MODEL CALL. Pass `checks: ['typescript' | 'eslint' | 'pytest' | 'ruff' | 'cargo-check'][]` (min 1), optional `files[]` (scope filter for lint/test tools that accept it), optional `cwd` (default process.cwd()), optional `timeout_ms` (default 60_000 per check). Each check runs in parallel under its own timeout. Missing tools (ENOENT / exit 127) report as status:'missing' — NOT a fail. Timeouts are status:'timeout'. Returns `{checks:[{check, status:'pass'|'fail'|'timeout'|'missing', exit_code, stderr_tail, stdout_tail, elapsed_ms, failures?:[{file?, line?, message}]}], all_passed, any_missing}`. Use AFTER ollama_multi_file_refactor_propose to verify the refactor landed green.",
+    batchProofCheckSchema.shape,
+    (args) => wrap(handleBatchProofCheck(args, ctx)),
+  );
+
+  // REFACTOR — ollama_refactor_plan (Workhorse tier — phased sequencing)
+  server.tool(
+    "ollama_refactor_plan",
+    "REFACTOR. Phased SEQUENCING plan for a multi-file refactor — complement to multi_file_refactor_propose. Same inputs (`files`, `change_description`, optional `per_file_max_chars`) plus `priority: 'safety' | 'speed' | 'parallelism'` (default 'safety'). Server reads the files and asks the Workhorse tier for a phased plan: `{phases:[{phase, files_involved, reason, tests_to_write, parallelizable}], sequencing_notes, rollback_strategy, estimated_phases, weak}`. Phases are renumbered 1..N in arrival order. files_involved is strictly intersected with the input set. Missing rollback_strategy or empty tests with no sequencing notes → weak=true. Use this when you know WHAT to change (multi_file_refactor_propose covers that) but need HOW to land it safely.",
+    refactorPlanSchema.shape,
+    (args) => wrap(handleRefactorPlan(args, ctx)),
+  );
+
+  // RESEARCH — ollama_code_citation (Deep tier — per-claim line-range citations)
+  server.tool(
+    "ollama_code_citation",
+    "RESEARCH. Answer a code question with PER-CLAIM CITATIONS (file + line range). Distinct from ollama_research: research cites files, code_citation cites LINES. Pass `question` (10-1000 chars), `source_paths[]`, optional `per_file_max_chars` (default 100_000). Server numbers each line 1-based in the prompt so the Deep tier can anchor claims exactly. Returns `{answer, citations:[{claim_fragment, file, start_line, end_line, excerpt}], uncited_fragments[], weak}`. Citations to files outside source_paths are stripped (same rule as ollama_research). Citations with line ranges outside the loaded file bounds are also stripped — each stripping reason lands in warnings[]. Empty answer or answer-without-citations flips weak=true.",
+    codeCitationSchema.shape,
+    (args) => wrap(handleCodeCitation(args, ctx)),
+  );
+
+  // DRILL — ollama_hypothesis_drill (Deep tier — zoom into one incident hypothesis)
+  server.tool(
+    "ollama_hypothesis_drill",
+    "DRILL. Zoom into ONE hypothesis from an existing incident_pack artifact. No re-running triage + brief. Pass `artifact_slug` (from ollama_artifact_list), `hypothesis_index` (0-based into that artifact's root_cause_hypotheses), optional `extra_artifact_dirs[]`. Server loads the artifact, extracts the targeted hypothesis + its linked evidence, and runs a Deep-tier focused sub-brief. Returns `{parent_artifact_slug, drilled_hypothesis:{statement, confidence, evidence_cited:[{id, preview}], supporting_reasoning, ruled_out_reasons?}, other_hypotheses_summary:[{index, summary}], weak}`. Invalid index → HYPOTHESIS_INDEX_INVALID with the valid range. Non-incident or missing slug → ARTIFACT_NOT_FOUND with a next-step hint.",
+    hypothesisDrillSchema.shape,
+    (args) => wrap(handleHypothesisDrill(args, ctx)),
   );
 
   // Last resort — chat

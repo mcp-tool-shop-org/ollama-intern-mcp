@@ -21,7 +21,8 @@
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "verify": "npm run typecheck && npm run build && npm test"
+    "verify": "npm run typecheck && npm run build && npm test",
+    "ship": "npm run typecheck && npm run build && npm test && npm pack --dry-run"
   },
   "keywords": [
     "mcp",

@@ -7,9 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Feature pass (Phase 7) — extends existing tiers with ops, refactor, corpus, and artifact tools. No new tier class. Atom+brief freeze at 18 stays intact for tools that count against it; new tools sit alongside the existing tier families.
+
 ### Added
 
+- **`ollama_log_tail`** — read the NDJSON call log at `~/.ollama-intern/log.ndjson` from inside an MCP session. Filterable by `lines`, `kind`, `tool`, `since` (ISO-8601). Returns `{ events, truncated, log_path }`. Artifact-tier — no Ollama round-trip.
+- **`ollama_batch_proof_check`** — run `tsc` / `eslint` / `pytest` over a set of paths; one envelope with per-check pass/fail. Executes under cwd validation against `allowed_roots` + per-check timeouts. New process-execution security surface — see SECURITY.md §7 new surfaces.
+- **`ollama_code_map`** — structural map of a code tree (exports, call-graph sketches, TODO scan). Reads files under `allowed_roots`.
+- **`ollama_code_citation`** — given a symbol name, return the defining file + line + surrounding context.
+- **`ollama_corpus_amend`** — additive in-place edits to an existing corpus. Breaks the "corpus is a pure disk snapshot" invariant; subsequent `corpus_answer` calls surface `has_amended_content: true` so audit-grade callers can detect amendment.
+- **`ollama_artifact_prune`** — age-based pack-artifact deletion. Dry-run default; `dry_run: false` must be explicit. Operates only under `~/.ollama-intern/artifacts/<pack>/`.
+- **Handbook — Observability page.** `site/handbook/observability.md`. NDJSON log anatomy, every `kind` value, eight jq recipes, two degradation signatures (`residency.evicted`, `size_vram_bytes < size_bytes`), `ollama_log_tail` usage.
+- **Handbook — Comparison page.** `site/handbook/comparison.md`. Honest matrix vs `houtini-lm`, `mcp-local-llm`, raw Ollama HTTP, Claude-direct. Including rows we're blank on (streaming, vector DB, code sandbox, cloud models).
+- **`examples/` directory.** `simple-client-node.js` and `simple-client-python.py` — minimal MCP clients that spawn the server over stdio, list tools, call `ollama_log_tail`. `curl-example.md` explains why `curl` isn't directly applicable. Not shipped to npm (outside `package.json` → `files`).
+- **Corpus event `corpus_amend`** added to the NDJSON log-event union so operators can see when a corpus drifted from its manifest-hashed origin.
+
 ### Changed
+
+- **`summarize_deep` accepts `source_path`.** Single-file shape added alongside the existing `source_paths` plural form. Callers stop having to prepack text for single-file digests.
+- **`corpus_answer` surfaces `has_amended_content`** in the result envelope when the backing corpus has been amended via `corpus_amend`. Default `false`; set to `true` when any amendment has been recorded.
+- **Handbook — Tools reference** adds batch workflow examples for `classify`, `extract`, `triage_logs` (10 / 5 / 3 items), plus a concurrency-contention note for the `dev-rtx5080` semaphore=2 default and id-collision behavior.
+- **Handbook — Artifacts** adds walkthroughs for the three snippet tools (`incident_note_snippet`, `onboarding_section_snippet`, `release_note_snippet`) and a safety example for `artifact_prune`.
+- **README** — "New in v2.1.0" block near the top; hardware-minimums callout under the Hermes section; pointer to `examples/` for non-Claude callers.
+- **CONTRIBUTING** — pointer to `examples/` as the minimal-client reference; note on `npm run ship` as pre-publish verify.
+
+### Security
+
+- **Filesystem delete in `artifact_prune`** — first tool that deletes. Dry-run default; deletion restricted to `~/.ollama-intern/artifacts/<pack>/` with pack enum; `..` refused.
+- **Process execution in `batch_proof_check`** — new surface. Mitigated by cwd validation against `allowed_roots`, per-check timeouts, tool whitelist (only `tsc` / `eslint` / `pytest`), and structured error shape on failure.
+- **Corpus-snapshot invariant** explicitly named in SECURITY.md §9. `corpus_amend` breaks the "identical input → identical output" invariant earlier versions had; `has_amended_content` flag surfaces state on downstream `corpus_answer` calls.
+- **File-reading surface in `code_map` / `code_citation`** — same `allowed_roots` mitigation as `research` / corpus tools.
 
 ### Fixed
 

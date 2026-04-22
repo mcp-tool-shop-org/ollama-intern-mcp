@@ -387,6 +387,11 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     created_at: prevManifest?.created_at ?? now,
     updated_at: now,
     failed_paths: failedPaths.map((f) => ({ path: f.path, reason: f.reason })),
+    // A clean index/refresh re-establishes the "snapshot of disk" invariant
+    // — clear the amend-breadcrumb so list/health stop warning. Callers who
+    // re-amend after the reindex get the flag back on their next amend call.
+    has_amended_content: false,
+    amended_paths: [],
     ...(withinRefreshDrift
       ? { embed_model_resolved_drift_within_refresh: withinRefreshDrift }
       : {}),

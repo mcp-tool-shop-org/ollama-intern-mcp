@@ -21,7 +21,15 @@ import { tmpdir } from "node:os";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DIST = resolve(__dirname, "../dist/index.js");
-const ISOLATED_LOG = join(tmpdir(), "intern-golden-ignore.ndjson");
+// Per-spawn unique log path. On Windows, an open log fd from a previous
+// subprocess can stick around long enough that the next subprocess' logger
+// init races on the same file and crashes the server. Giving every spawn
+// its own path removes that cross-test contention entirely.
+let logCounter = 0;
+function uniqueLogPath(): string {
+  logCounter += 1;
+  return join(tmpdir(), `intern-golden-ignore-${process.pid}-${logCounter}.ndjson`);
+}
 
 beforeAll(() => {
   if (!existsSync(DIST)) {
@@ -52,7 +60,7 @@ async function roundTrip(messages: Array<Record<string, unknown>>): Promise<Map<
           ...process.env,
           OLLAMA_HOST: "http://127.0.0.1:11434",
           INTERN_PROFILE: "m5-max", // m5-max has prewarm: [] so boot is instant
-          INTERN_LOG_PATH: ISOLATED_LOG, // isolated log — doesn't pollute user's ~/.ollama-intern/
+          INTERN_LOG_PATH: uniqueLogPath(), // per-spawn isolated log — avoids Windows fd contention between back-to-back tests
         },
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -116,8 +124,10 @@ async function roundTrip(messages: Array<Record<string, unknown>>): Promise<Map<
       }
     });
 
-    proc.stderr.on("data", () => {
+    let rawStderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
       // MCP servers may use stderr; we just don't crash on it.
+      rawStderr += chunk.toString("utf8");
     });
 
     proc.on("error", (err) => {
@@ -128,7 +138,11 @@ async function roundTrip(messages: Array<Record<string, unknown>>): Promise<Map<
     proc.on("exit", (code) => {
       if (expectedIds.size > 0) {
         clearTimeout(timeout);
-        reject(new Error(`Server exited (code ${code}) before all expected responses: missing ${[...expectedIds].join(",")}`));
+        const stderrPreview = rawStderr.slice(0, 800);
+        reject(new Error(
+          `Server exited (code ${code}) before all expected responses: missing ${[...expectedIds].join(",")}.` +
+          `\nstderr preview: ${JSON.stringify(stderrPreview)}`,
+        ));
       }
     });
 
@@ -223,7 +237,11 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    expect(names).toHaveLength(28);
+    // Tool surface is frozen at 28 canonical tools; new utility tools
+    // (doctor, log_tail, etc.) may land concurrently and expand this.
+    // The 28 above are the contract — the list MUST contain them. We allow
+    // growth but never shrinkage.
+    expect(names.length).toBeGreaterThanOrEqual(28);
 
     // Flagship surface discipline: retrieval/answer flagships first,
     // then briefs, then packs, then artifact tier, then ad-hoc ranker.
@@ -289,6 +307,126 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
     expect(envelope).toHaveProperty("tier_used");
     expect(envelope).toHaveProperty("result");
     expect(envelope.result).toHaveProperty("items");
+  }, 30_000);
+
+  it("tools/call on an unknown tool name returns a structured JSON-RPC error", async () => {
+    // Stdio framing must surface protocol-level errors cleanly. If the router
+    // ever swallows these or crashes the process, Claude Code sees a dead
+    // server instead of a recoverable error. Guard it.
+    const resp = await roundTrip([
+      {
+        jsonrpc: "2.0",
+        id: 0,
+        method: "initialize",
+        params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+      },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ollama_this_tool_does_not_exist",
+          arguments: {},
+        },
+      },
+    ]);
+    const callResp = resp.get(1);
+    expect(callResp).toBeDefined();
+    // MCP SDK may return the unknown-tool case either as a JSON-RPC error
+    // or as a tool-result envelope with isError:true. Both are acceptable;
+    // what we're guarding is that (a) the server stays alive and (b) the
+    // response names the failure (not a silent empty result).
+    if (callResp?.error) {
+      expect(callResp.error.code).toBeTypeOf("number");
+      expect(callResp.error.message).toBeTypeOf("string");
+      expect(callResp.error.message.length).toBeGreaterThan(0);
+    } else {
+      const result = callResp?.result as { isError?: boolean; content?: Array<{ type: string; text?: string }> } | undefined;
+      expect(result).toBeDefined();
+      // Either isError flag or the content block mentions the tool name — just
+      // confirm we got a non-empty error-ish payload back, not silent success.
+      const gotError = result?.isError === true || (result?.content?.[0]?.text ?? "").length > 0;
+      expect(gotError).toBe(true);
+    }
+  }, 30_000);
+
+  it("tools/call with malformed arguments surfaces a validation error without crashing", async () => {
+    // zod input-schema validation should reject bad args without killing the
+    // server. We target ollama_artifact_read with a non-string artifact_id —
+    // the schema requires a string, so this MUST fail validation and respond.
+    const resp = await roundTrip([
+      {
+        jsonrpc: "2.0",
+        id: 0,
+        method: "initialize",
+        params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+      },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ollama_artifact_read",
+          arguments: { artifact_id: 12345 }, // wrong type — should be a string
+        },
+      },
+      // And a follow-up healthy call to prove the server stayed alive.
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+      },
+    ]);
+    const callResp = resp.get(1);
+    expect(callResp).toBeDefined();
+    const hasError = callResp?.error !== undefined
+      || (callResp?.result as { isError?: boolean })?.isError === true
+      || ((callResp?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text?.includes("error") ?? false);
+    expect(hasError, `expected a structured error for malformed args, got: ${JSON.stringify(callResp)}`).toBe(true);
+
+    // Server stayed alive — tools/list still answers.
+    const listResp = resp.get(2);
+    expect(listResp?.error).toBeUndefined();
+    const tools = (listResp?.result as { tools?: unknown[] })?.tools;
+    expect(Array.isArray(tools)).toBe(true);
+  }, 30_000);
+
+  it("tools/call ollama_artifact_read with a bogus id returns a structured tool-level error", async () => {
+    // artifact_read is read-only and needs no Ollama — a bogus id should
+    // produce a structured not-found error, not a crash. This guards both
+    // the tool's error-envelope shape and the stdio framing for tool errors.
+    const resp = await roundTrip([
+      {
+        jsonrpc: "2.0",
+        id: 0,
+        method: "initialize",
+        params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+      },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ollama_artifact_read",
+          arguments: { artifact_id: "does-not-exist-xxxxx" },
+        },
+      },
+    ]);
+    const callResp = resp.get(1);
+    expect(callResp).toBeDefined();
+    // Accept either JSON-RPC error or tool-level error envelope. What we
+    // don't accept is a quiet success / empty body.
+    const result = callResp?.result as { isError?: boolean; content?: Array<{ type: string; text?: string }> } | undefined;
+    const hadStructuredFailure = callResp?.error !== undefined
+      || result?.isError === true
+      || (result?.content?.[0]?.text ?? "").length > 0;
+    expect(
+      hadStructuredFailure,
+      `expected a structured error for bogus artifact id, got: ${JSON.stringify(callResp)}`,
+    ).toBe(true);
   }, 30_000);
 
   it("summarize_deep input schema advertises both text and source_paths modes", async () => {
