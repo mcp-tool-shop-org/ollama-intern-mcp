@@ -251,12 +251,18 @@ export async function handleCorpusAmend(
     // manifest tracks DECLARED intent; the empty amend is effectively
     // "clear this file's chunks", not "forget the file". A future refresh
     // will re-scan it from disk.
+    const amendedAt = new Date().toISOString();
+    const priorAmended = manifest.amended_paths ?? [];
     const updatedManifest = {
       ...manifest,
       paths: [...pathSet].sort(),
       has_amended_content: true,
+      amended_paths: [
+        ...priorAmended,
+        { path: absPath, amended_at: amendedAt, chunks_before: removed, chunks_after: newChunks.length },
+      ],
       embed_model_resolved: embedModelResolved ?? manifest.embed_model_resolved ?? null,
-      updated_at: new Date().toISOString(),
+      updated_at: amendedAt,
     };
     await saveManifest(updatedManifest);
 

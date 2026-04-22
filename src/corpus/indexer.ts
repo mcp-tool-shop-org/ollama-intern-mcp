@@ -391,6 +391,7 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     // — clear the amend-breadcrumb so list/health stop warning. Callers who
     // re-amend after the reindex get the flag back on their next amend call.
     has_amended_content: false,
+    amended_paths: [],
     ...(withinRefreshDrift
       ? { embed_model_resolved_drift_within_refresh: withinRefreshDrift }
       : {}),

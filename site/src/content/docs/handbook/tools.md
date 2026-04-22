@@ -180,28 +180,50 @@ Tier freeze stays at 4 — everything here extends existing tiers, no new tier c
 
 | Tool | Purpose |
 |---|---|
+| `ollama_doctor` | First-run prereqs + status snapshot: Ollama reachability, loaded vs pulled vs required models, profile/tiers, allowed_roots, recent errors. Returns `healthy: boolean` for a quick gate. |
 | `ollama_log_tail` | Tail the NDJSON call log from inside an MCP session, with filters. See [Observability → ollama_log_tail](../observability/#the-ollama_log_tail-tool). |
-| `ollama_batch_proof_check` | Run `tsc` / `eslint` / `pytest` over a set of paths; single envelope with per-check pass/fail. Executes under cwd validation + per-check timeouts — new security surface, see [SECURITY.md](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md). |
+| `ollama_batch_proof_check` | Run `tsc` / `eslint` / `pytest` / `ruff` / `cargo-check` over a set of paths; single envelope with per-check pass/fail. Executes under cwd validation + per-check timeouts — new security surface, see [SECURITY.md](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md). |
 
 ### Refactor tools
 
 | Tool | Purpose |
 |---|---|
-| `ollama_code_map` | Structural map of a code tree (exports, call graph sketches, TODOs). Reads files under `allowed_roots`. |
-| `ollama_code_citation` | Given a symbol name, return the file + line + surrounding context that defines it. Reads files under `allowed_roots`. |
-
-### Corpus tools
-
-| Tool | Purpose |
-|---|---|
-| `ollama_corpus_amend` | Additive in-place edit to an existing corpus. Breaks the "corpus is a pure disk snapshot" invariant; subsequent answers over the corpus surface `has_amended_content: true`. See [Observability → corpus_amend](../observability/#corpus_amend). |
-| `ollama_summarize_deep` with `source_path` | Existing tool gained a single-file `source_path` shape so callers stop having to prepack text. |
+| `ollama_code_map` | Structural map of a code tree (languages, frameworks, entrypoints, build commands). Reads files under `allowed_roots`. |
+| `ollama_code_citation` | Given a question over `source_paths`, returns a synthesized answer with every claim grounded at `{file, start_line, end_line}`. Citations outside scope stripped. |
+| `ollama_multi_file_refactor_propose` | Reads N files, returns a coordinated per-file change plan with risk levels, cross-file impact, affected imports, and verification steps. No writes — a plan for you (or Claude) to execute. |
+| `ollama_refactor_plan` | Phased sequencing for a proposed refactor: which files change in which phase, parallelism, tests to write, rollback strategy. Pairs with `multi_file_refactor_propose`. |
 
 ### Artifact tools
 
 | Tool | Purpose |
 |---|---|
 | `ollama_artifact_prune` | Age-based artifact deletion (`older_than_days`, optional `pack` filter). Dry-run default — `dry_run: false` must be explicit. See [Artifacts → artifact_prune](../artifacts/#artifact_prune). |
+| `ollama_hypothesis_drill` | Takes `{artifact_slug, hypothesis_index}` from an existing `incident_pack`, produces a focused sub-brief for that single hypothesis without re-running the pack. |
+
+### Corpus tools
+
+| Tool | Purpose |
+|---|---|
+| `ollama_corpus_health` | Per-corpus health summary: chunks, staleness_days, embed_model, drift detection, failed_paths count, write_complete flag, amend status. Superset of `corpus_list`. |
+| `ollama_corpus_amend` | Additive in-place edit to an existing corpus. Breaks the "corpus is a pure disk snapshot" invariant; subsequent answers over the corpus surface `has_amended_content: true`. See [Observability → corpus_amend](../observability/#corpus_amend). |
+| `ollama_corpus_amend_history` | Read-only companion to `corpus_amend`: lists which paths have been amended, when, and the current vs original chunk hashes. Use before deciding whether to re-index. |
+| `ollama_corpus_rerank` | Post-retrieval re-sort of `corpus_search` hits by `recency` (file mtime), `path_specificity` (deeper paths), or `lexical_boost` (term matches in preview). |
+| `ollama_corpus_search` with `filter` | Existing tool gained `{filter: {path_glob?, since?}}` to narrow to matching paths or freshness window. |
+| `ollama_corpus_search` with `explain: true` | Existing tool gained per-hit "why matched" reasoning (top-5 cap, graceful degrade if the explain model is unavailable). |
+| `ollama_summarize_deep` with `source_path` | Existing tool gained a single-file `source_path` shape so callers stop having to prepack text. |
+
+### End-to-end refactor workflow (new tools composed)
+
+Say you want to rename `foo` to `bar` across five files. The v2.1.0 flow:
+
+1. `ollama_code_map({source_paths: [...]})` — confirm the repo's languages, frameworks, entrypoints. Feeds context.
+2. `ollama_multi_file_refactor_propose({files, change_description: "rename foo to bar"})` — get the coordinated per-file change plan with risk levels and affected imports.
+3. `ollama_refactor_plan({files, change_description})` — get the phased sequencing (which file first, parallelism, rollback).
+4. Execute the changes (via Claude / editor / `ollama_draft` per file).
+5. `ollama_batch_proof_check({checks: ["typescript", "eslint"], files})` — verify nothing broke.
+6. If something surprises you: `ollama_code_citation({question: "where is bar now called?", source_paths})` to audit.
+
+None of the 12 new tools write to disk; all writes are yours to authorize.
 
 ## Envelope
 

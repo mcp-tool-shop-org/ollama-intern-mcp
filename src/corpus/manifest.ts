@@ -169,6 +169,18 @@ export interface CorpusManifest {
    * Absent on manifests written before the amend tool shipped.
    */
   has_amended_content?: boolean;
+  /**
+   * Per-path amend history. Appended by corpus_amend; cleared by the next
+   * clean index/refresh. Surfaced via ollama_corpus_amend_history so callers
+   * can inspect what drifted from disk before deciding whether to re-index.
+   * Absent on manifests that have never been amended.
+   */
+  amended_paths?: Array<{
+    path: string;
+    amended_at: string;
+    chunks_before: number;
+    chunks_after: number;
+  }>;
 }
 
 function manifestDir(): string {

@@ -38,6 +38,7 @@ import { corpusRefreshSchema, handleCorpusRefresh } from "./tools/corpusRefresh.
 import { corpusListSchema, handleCorpusList } from "./tools/corpusList.js";
 import { corpusHealthSchema, handleCorpusHealth } from "./tools/corpusHealth.js";
 import { corpusAmendSchema, handleCorpusAmend } from "./tools/corpusAmend.js";
+import { corpusAmendHistorySchema, handleCorpusAmendHistory } from "./tools/corpusAmendHistory.js";
 import { corpusRerankSchema, handleCorpusRerank } from "./tools/corpusRerank.js";
 import { incidentBriefSchema, handleIncidentBrief } from "./tools/incidentBrief.js";
 import { repoBriefSchema, handleRepoBrief } from "./tools/repoBrief.js";
@@ -263,6 +264,14 @@ export function createServer(ctx: RunContext): McpServer {
     "Update one file's chunks in a corpus without running a full refresh. INVARIANT CAVEAT: the corpus is normally a snapshot of disk — amend bypasses that. new_content doesn't have to match (or even exist on) disk. The manifest records has_amended_content: true so corpus_list / corpus_health surface the break; a subsequent clean index/refresh re-establishes the invariant. Takes the per-corpus lock. Re-chunks + re-embeds the new_content using the manifest's chunk params (unless explicitly overridden). Returns `{corpus, file_path, chunks_removed, chunks_added, embed_model_resolved}`.",
     corpusAmendSchema.shape,
     (args) => wrap(handleCorpusAmend(args, ctx)),
+  );
+
+  // Corpus amend history — read-only companion to corpus_amend (no LLM).
+  server.tool(
+    "ollama_corpus_amend_history",
+    "Read-only companion to ollama_corpus_amend. Lists which paths have been amended on top of the disk snapshot, when each amendment happened, and the chunk-count delta. Use this before deciding whether to re-index — a clean ollama_corpus_index or ollama_corpus_refresh re-establishes the snapshot invariant and clears the history. No LLM call; pure manifest read.",
+    corpusAmendHistorySchema.shape,
+    (args) => wrap(handleCorpusAmendHistory(args, ctx)),
   );
 
   // Corpus rerank — post-retrieval re-sort (no LLM).
