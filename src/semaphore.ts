@@ -109,9 +109,35 @@ function parseConcurrency(raw: string | undefined): number {
   return parsed;
 }
 
-const DEFAULT_CONCURRENCY = parseConcurrency(process.env.INTERN_MAX_CONCURRENT);
+/**
+ * Lazily resolve the permit count the first time `ollamaSemaphore` is
+ * touched, not at module load. Throwing at import time turned a malformed
+ * INTERN_MAX_CONCURRENT into an unhelpful stack trace before main() had a
+ * chance to catch it and print a human-readable message. Deferring to first
+ * use lets main() / the test harness see a CONFIG_INVALID InternError at a
+ * controllable point. Result is cached after first resolve so the semaphore
+ * doesn't shape-shift if env changes mid-run.
+ */
+let _ollamaSemaphore: Semaphore | null = null;
+function getOllamaSemaphore(): Semaphore {
+  if (_ollamaSemaphore === null) {
+    _ollamaSemaphore = new Semaphore(parseConcurrency(process.env.INTERN_MAX_CONCURRENT));
+  }
+  return _ollamaSemaphore;
+}
 
-export const ollamaSemaphore = new Semaphore(DEFAULT_CONCURRENCY);
+/**
+ * Exported proxy — forwards property access to the lazily-resolved singleton.
+ * Lets existing `ollamaSemaphore.acquire()` / `.snapshot()` call sites keep
+ * working without threading a resolver everywhere.
+ */
+export const ollamaSemaphore: Semaphore = new Proxy({} as Semaphore, {
+  get(_t, prop: keyof Semaphore) {
+    const sem = getOllamaSemaphore();
+    const v = sem[prop];
+    return typeof v === "function" ? v.bind(sem) : v;
+  },
+}) as Semaphore;
 
 /** Exported for tests. */
 export { parseConcurrency };
