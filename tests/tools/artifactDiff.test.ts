@@ -580,3 +580,76 @@ describe("handleArtifactDiff — identity", () => {
     expect(env.result.a.title).toBe("a");
   });
 });
+
+// ── Schema-version guard ───────────────────────────────────
+
+async function writeArtifactWithVersion(
+  pack: string,
+  slug: string,
+  schemaVersion: number | undefined,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const dirMap: Record<string, string> = {
+    incident_pack: "incident",
+    repo_pack: "repo",
+    change_pack: "change",
+  };
+  const dir = join(tempRoot, dirMap[pack]);
+  await mkdir(dir, { recursive: true });
+  const jsonPath = join(dir, `${slug}.json`);
+  const mdPath = join(dir, `${slug}.md`);
+  const full: Record<string, unknown> = {
+    ...(schemaVersion !== undefined ? { schema_version: schemaVersion } : {}),
+    pack,
+    title: slug,
+    slug,
+    generated_at: "2026-04-17T10:00:00Z",
+    hardware_profile: "dev-rtx5080",
+    ...payload,
+    artifact: { markdown_path: mdPath, json_path: jsonPath },
+    steps: [],
+  };
+  await writeFile(jsonPath, JSON.stringify(full), "utf8");
+  await writeFile(mdPath, "", "utf8");
+}
+
+describe("handleArtifactDiff — schema_version guard", () => {
+  it("refuses diff when schema_version differs between artifacts", async () => {
+    await writeArtifactWithVersion("incident_pack", "a", 1, { input: {}, triage: null, brief: incidentBrief() });
+    await writeArtifactWithVersion("incident_pack", "b", 2, { input: {}, triage: null, brief: incidentBrief() });
+    await expect(
+      handleArtifactDiff(
+        { a: { pack: "incident_pack", slug: "a" }, b: { pack: "incident_pack", slug: "b" } },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({
+      code: "SCHEMA_INVALID",
+      message: expect.stringContaining("schema_version mismatch"),
+      hint: expect.stringContaining("artifact_read"),
+    });
+  });
+
+  it("refuses diff when one artifact is missing schema_version", async () => {
+    await writeArtifactWithVersion("incident_pack", "a", 1, { input: {}, triage: null, brief: incidentBrief() });
+    await writeArtifactWithVersion("incident_pack", "b", undefined, { input: {}, triage: null, brief: incidentBrief() });
+    await expect(
+      handleArtifactDiff(
+        { a: { pack: "incident_pack", slug: "a" }, b: { pack: "incident_pack", slug: "b" } },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({
+      code: "SCHEMA_INVALID",
+      message: expect.stringContaining("missing schema_version"),
+    });
+  });
+
+  it("allows diff when both artifacts share the same schema_version", async () => {
+    await writeArtifactWithVersion("incident_pack", "a", 1, { input: {}, triage: null, brief: incidentBrief() });
+    await writeArtifactWithVersion("incident_pack", "b", 1, { input: {}, triage: null, brief: incidentBrief() });
+    const env = await handleArtifactDiff(
+      { a: { pack: "incident_pack", slug: "a" }, b: { pack: "incident_pack", slug: "b" } },
+      makeCtx(),
+    );
+    expect(env.result.pack).toBe("incident_pack");
+  });
+});

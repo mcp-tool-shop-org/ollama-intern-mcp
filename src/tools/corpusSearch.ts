@@ -16,7 +16,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
 import { loadCorpus } from "../corpus/storage.js";
-import { searchCorpus, DEFAULT_SEARCH_MODE, SEARCH_MODES, type CorpusHit, type SearchMode } from "../corpus/searcher.js";
+import { searchCorpus, DEFAULT_SEARCH_MODE, SEARCH_MODES, isEmptyQuery, type CorpusHit, type SearchMode } from "../corpus/searcher.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -26,7 +26,15 @@ export const corpusSearchSchema = z.object({
     .min(1)
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
     .describe("Name of the corpus to search (e.g. 'memory', 'canon'). Must have been indexed first with ollama_corpus_index."),
-  query: z.string().min(1).describe("Concept or question to search for."),
+  query: z
+    .string()
+    .min(1)
+    // 1000-char cap is generous — briefs cap at 200, but corpus queries are
+    // the flagship tool for longer agent-style prompts. Beyond 1000 chars
+    // you're not searching, you're pasting a document; the retrieval
+    // contract degrades and the embed call is an API misuse.
+    .max(1000, "query must be 1000 characters or fewer")
+    .describe("Concept or question to search for (max 1000 chars)."),
   mode: z
     .enum(SEARCH_MODES as unknown as [SearchMode, ...SearchMode[]])
     .optional()
@@ -51,6 +59,14 @@ export interface CorpusSearchResult {
   model_version: string;
   total_chunks: number;
   mode: SearchMode;
+  /**
+   * True when retrieval was skipped or degenerate — e.g. empty query.
+   * Absent on the happy path. Pairs with `reason` so callers can tell
+   * "zero hits because of a degenerate query" apart from "zero matches".
+   */
+  weak?: boolean;
+  /** Plain-English explanation when `weak: true`. */
+  reason?: string;
 }
 
 export async function handleCorpusSearch(
@@ -65,7 +81,7 @@ export async function handleCorpusSearch(
     throw new InternError(
       "SCHEMA_INVALID",
       `Corpus "${input.corpus}" does not exist`,
-      `Build it first with ollama_corpus_index, or use ollama_corpus_list to see available corpora.`,
+      `Build it first with ollama_corpus_index({ name: "${input.corpus}", paths: [...] }), or call ollama_corpus_list to see available corpora.`,
       false,
     );
   }
@@ -73,6 +89,34 @@ export async function handleCorpusSearch(
   const topK = input.top_k ?? 10;
   const previewChars = input.preview_chars ?? 200;
   const mode: SearchMode = input.mode ?? DEFAULT_SEARCH_MODE;
+
+  // Empty / whitespace-only query short-circuit. Zod's .min(1) rejects
+  // length-0 strings, but "   " passes the schema and would otherwise
+  // fall through to an embed call that returns noise. Returning a
+  // weak: true envelope gives callers a legible "why zero?" signal.
+  if (isEmptyQuery(input.query)) {
+    const envelope = buildEnvelope<CorpusSearchResult>({
+      result: {
+        hits: [],
+        corpus_name: corpus.name,
+        model_version: corpus.model_version,
+        total_chunks: corpus.chunks.length,
+        mode,
+        weak: true,
+        reason: "empty query",
+      },
+      tier: "embed",
+      model,
+      hardwareProfile: ctx.hardwareProfile,
+      tokensIn: 0,
+      tokensOut: 0,
+      startedAt,
+      residency: null,
+      warnings: ["corpus_search: empty query; retrieval skipped"],
+    });
+    await ctx.logger.log(callEvent("ollama_corpus_search", envelope));
+    return envelope;
+  }
 
   const hits = await searchCorpus({
     corpus,

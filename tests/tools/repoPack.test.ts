@@ -463,3 +463,26 @@ describe("buildSlug", () => {
     expect(slug).toMatch(/^\d{4}-\d{2}-\d{2}-\d{4}$/);
   });
 });
+
+// ── Progress events (pack_step) ─────────────────────────────
+
+describe("handleRepoPack — pack_step progress events", () => {
+  it("emits pack_step events in order: assemble_evidence, brief, extract, artifact_write", async () => {
+    const paths = await writeSources([{ name: "README.md", content: "# Repo\n\nThe thing." }]);
+    const client = new PipelineMock(BRIEF_OUT, EXTRACT_OUT);
+    const ctx = makeCtx(client);
+    await handleRepoPack(
+      { source_paths: paths, title: "Repo", artifact_dir: tempArtifactDir },
+      ctx,
+    );
+    const steps = ctx.logger.events
+      .filter((e) => e.kind === "pack_step")
+      .map((e) => (e.kind === "pack_step" ? { step: e.step, idx: e.step_index, total: e.total_steps, pack: e.pack } : null));
+    expect(steps).toEqual([
+      { pack: "repo", step: "assemble_evidence", idx: 1, total: 4 },
+      { pack: "repo", step: "brief", idx: 2, total: 4 },
+      { pack: "repo", step: "extract", idx: 3, total: 4 },
+      { pack: "repo", step: "artifact_write", idx: 4, total: 4 },
+    ]);
+  });
+});

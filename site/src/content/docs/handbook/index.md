@@ -40,5 +40,7 @@ Every local-LLM MCP server leads with token-savings. Ours leads with _what the i
 - [Artifacts & continuity](./artifacts/) — how packs write to disk and how to use what they wrote
 - [Laws & guardrails](./laws/) — evidence-first, no remediation drift, deterministic renderers
 - [Security & threat model](./security/) — what's touched, what's not, what's in the log
+- [Corpora](./corpora/) — build, refresh, search, answer over a living corpus; manifest v2 + `:latest` drift
+- [Error codes](./error-codes/) — every structured error code, when you'll see it, what to do
 - [Use with Hermes](./with-hermes/) — drive this MCP from Nous Research's Hermes Agent on hermes3:8b (validated 2026-04-19)
 - [Troubleshooting](./troubleshooting/) — Ollama not running, model pull failures, hardware insufficient, MCP server not appearing in Claude Code

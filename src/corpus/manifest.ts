@@ -103,6 +103,11 @@ export function assertSafePath(p: string): void {
   }
 }
 
+export interface ManifestFailedPath {
+  path: string;
+  reason: string;
+}
+
 export interface CorpusManifest {
   schema_version: number;
   /**
@@ -126,10 +131,35 @@ export interface CorpusManifest {
    * written before schema v2 (auto-migrated on load).
    */
   embed_model_resolved: string | null;
+  /**
+   * Set only when more than one distinct resolved tag was observed during
+   * a single refresh/index run — i.e. Ollama silently bumped `:latest`
+   * mid-stream. Listed in ascending-string order. Absent on the happy path.
+   * Cleared on the next clean run (single tag) so this field represents the
+   * LAST known inconsistency, not historical ones.
+   */
+  embed_model_resolved_drift_within_refresh?: string[];
   chunk_chars: number;
   chunk_overlap: number;
   created_at: string;
   updated_at: string;
+  /**
+   * Timestamp written AFTER the corpus JSON has been saved. Its absence on
+   * load is the signal that the previous mutation was interrupted between
+   * corpus write and manifest write — callers still load the corpus (we
+   * don't block on this), but corpus_list surfaces a warning so the user
+   * knows to re-run corpus_refresh to restore inter-file consistency.
+   * Optional for backward-compat with manifests written before Stage B+C.
+   */
+  completed_at?: string;
+  /**
+   * Paths that failed to read during the most recent index/refresh run.
+   * Empty array on the happy path. When non-empty, corpus_refresh with
+   * retry_failed:true will scan these in addition to the normal manifest
+   * paths. Replaced (not appended) on every index run so the manifest
+   * always reflects the latest state.
+   */
+  failed_paths?: ManifestFailedPath[];
 }
 
 function manifestDir(): string {
@@ -150,8 +180,16 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
   if (found === 1) {
     // v1 → v2 migration: v1 didn't capture the resolved tag. Treat as
     // "unknown at index time" — refresh will record it on the next embed
-    // call and the drift check activates from there forward.
-    return { ...(parsed as CorpusManifest), schema_version: MANIFEST_SCHEMA_VERSION, embed_model_resolved: null };
+    // call and the drift check activates from there forward. failed_paths
+    // defaults to empty and completed_at stays undefined (we don't know
+    // whether the prior run landed cleanly, but legacy manifests in the
+    // wild are almost certainly intact, so skip the interrupted-write
+    // warning for them).
+    return {
+      ...(parsed as CorpusManifest),
+      schema_version: MANIFEST_SCHEMA_VERSION,
+      embed_model_resolved: null,
+    };
   }
   if (found !== MANIFEST_SCHEMA_VERSION) {
     throw new InternError(

@@ -34,7 +34,7 @@ import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
-import { callEvent } from "../../observability.js";
+import { callEvent, packStepEvent } from "../../observability.js";
 import type { RunContext } from "../../runContext.js";
 import { assembleEvidence } from "../briefs/common.js";
 import { loadSources, formatSourcesBlock } from "../../sources.js";
@@ -44,6 +44,7 @@ import {
   type RepoBriefResult,
 } from "../repoBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
+import { normalizeCorpusQuery } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -362,8 +363,13 @@ export async function handleRepoPack(
   let tokensIn = 0;
   let tokensOut = 0;
 
+  // Fixed repo-pack pipeline: assemble → brief → extract → artifact_write.
+  const TOTAL_STEPS = 4;
+
   // Step 1 — assemble evidence (source_paths + corpus if given).
-  const corpusQuery = input.corpus_query ?? "repo architecture and surfaces";
+  await ctx.logger.log(packStepEvent({ pack: "repo", step: "assemble_evidence", step_index: 1, total_steps: TOTAL_STEPS }));
+  const sanitizedUserQuery = normalizeCorpusQuery(input.corpus_query);
+  const corpusQuery = sanitizedUserQuery ?? "repo architecture and surfaces";
   const assembleStart = Date.now();
   const assembled = await assembleEvidence(
     {
@@ -383,6 +389,7 @@ export async function handleRepoPack(
   }
 
   // Step 2 — repo_brief synthesis, reusing the evidence.
+  await ctx.logger.log(packStepEvent({ pack: "repo", step: "brief", step_index: 2, total_steps: TOTAL_STEPS }));
   const briefInput: RepoBriefInput = {
     source_paths: input.source_paths,
     corpus: input.corpus,
@@ -409,6 +416,7 @@ export async function handleRepoPack(
   // the concrete repo. Source_paths are already loaded — re-reading
   // them is cheap at this size, but we use the existing sources loader
   // for the extract input to stay consistent with the shared helper.
+  await ctx.logger.log(packStepEvent({ pack: "repo", step: "extract", step_index: 3, total_steps: TOTAL_STEPS }));
   const perFileMax = input.per_file_max_chars ?? 20_000;
   const sources = await loadSources(input.source_paths, perFileMax);
   const extractInputText = formatSourcesBlock(sources);
@@ -451,6 +459,7 @@ export async function handleRepoPack(
   }
 
   // Step 4 — artifact write.
+  await ctx.logger.log(packStepEvent({ pack: "repo", step: "artifact_write", step_index: 4, total_steps: TOTAL_STEPS }));
   const artifactDir = input.artifact_dir ?? defaultArtifactDir();
   const when = new Date();
   const thesisHead = brief.repo_thesis.split(/[.\n]/)[0]?.trim();

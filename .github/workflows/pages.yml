@@ -30,6 +30,18 @@ jobs:
         with:
           node-version: "22"
 
+      # Fail loudly if the runner somehow booted with a Node version outside
+      # our supported range. engines.node is ">=20.0.0"; the pinned runner
+      # version is 22.
+      - name: Assert Node major version (20.x or 22.x)
+        run: |
+          NODE_V="$(node --version)"
+          echo "node --version: $NODE_V"
+          case "$NODE_V" in
+            v20.*|v22.*) echo "ok" ;;
+            *) echo "::error::Unsupported Node version: $NODE_V (want v20.x or v22.x)"; exit 1 ;;
+          esac
+
       - name: Install site dependencies
         working-directory: site
         run: npm ci

@@ -24,8 +24,8 @@ export const corpusIndexSchema = z
       .describe("Corpus name (e.g. 'memory', 'canon', 'handbook'). Maps to a file under ~/.ollama-intern/corpora/."),
     paths: z
       .array(z.string().min(1))
-      .min(1)
-      .describe("Absolute file paths to include in the corpus. Unchanged files are reused from the existing corpus by sha256."),
+      .min(1, "paths must contain at least one absolute file path; pass a directory? Enumerate its files with a shell glob (e.g. ls dir/*.md) and pass that array — corpus_index does not walk directories on your behalf, so you control exactly what gets indexed.")
+      .describe("Absolute file paths to include in the corpus. Pass an explicit list of files — corpus_index does NOT walk directories; you enumerate. Unchanged files are reused from the existing corpus by sha256."),
     chunk_chars: z
       .number()
       .int()

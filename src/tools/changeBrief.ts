@@ -33,6 +33,7 @@ import {
   readArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
+import { normalizeCorpusQuery } from "./_helpers.js";
 
 export const changeBriefSchema = z.object({
   diff_text: z.string().min(1).optional().describe("Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers into numbered evidence items."),
@@ -173,13 +174,16 @@ export async function handleChangeBrief(
 ): Promise<Envelope<ChangeBriefResult>> {
   assertAtLeastOnePrimary(input);
 
+  // Cap + sanitize caller-supplied corpus_query before it flows to embed.
+  const sanitizedUserQuery = normalizeCorpusQuery(input.corpus_query);
+
   // Fall back the corpus query to the head of diff_text or first source
   // path name so it has some grounding signal when the caller doesn't
   // supply one.
   const fallback = input.diff_text
     ? input.diff_text.slice(0, 400)
     : (input.source_paths?.[0] ?? "");
-  const corpusQuery = input.corpus_query ?? fallback;
+  const corpusQuery = sanitizedUserQuery ?? fallback;
 
   const assembled = await assembleEvidence({
     diff_text: input.diff_text,

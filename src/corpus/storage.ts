@@ -193,6 +193,21 @@ export interface CorpusSummary {
   chunks: number;
   total_chars: number;
   bytes_on_disk: number;
+  /**
+   * Number of paths the last index/refresh recorded as failed to read
+   * (symlink, size cap, TOCTOU, permission). 0 on the happy path. Non-zero
+   * means callers should consider ollama_corpus_refresh({retry_failed: true}).
+   */
+  failed_path_count?: number;
+  /**
+   * False when the manifest is missing `completed_at` — the previous
+   * mutation landed the corpus JSON but was interrupted before the
+   * manifest completed. Absent (undefined) on legacy pre-Stage-B+C
+   * manifests that never had the marker. Treat undefined as "unknown, not
+   * necessarily bad"; treat false as "run corpus_refresh to restore
+   * inter-file consistency".
+   */
+  write_complete?: boolean;
 }
 
 export async function listCorpora(): Promise<CorpusSummary[]> {
@@ -201,13 +216,29 @@ export async function listCorpora(): Promise<CorpusSummary[]> {
   const entries = await readdir(dir);
   const summaries: CorpusSummary[] = [];
   for (const entry of entries) {
+    // Skip the manifest sibling files — listCorpora is the "primary file
+    // per corpus" view, and we derive manifest info by loading alongside.
     if (!entry.endsWith(".json")) continue;
+    if (entry.endsWith(".manifest.json")) continue;
     const name = entry.slice(0, -".json".length);
     if (!NAME_RX.test(name)) continue;
     try {
       const full = join(dir, entry);
-      const [corpus, st] = await Promise.all([loadCorpus(name), stat(full)]);
+      const [corpus, st, manifest] = await Promise.all([
+        loadCorpus(name),
+        stat(full),
+        loadManifest(name).catch(() => null),
+      ]);
       if (!corpus) continue;
+      const failedCount = manifest?.failed_paths?.length ?? 0;
+      // `completed_at` is only present on manifests written after the
+      // Stage B+C atomic-marker landed. Undefined on legacy manifests —
+      // emit `write_complete: undefined` there so callers can distinguish
+      // "unknown" from "known-incomplete".
+      const writeComplete =
+        manifest == null
+          ? undefined
+          : typeof manifest.completed_at === "string" && manifest.completed_at.length > 0;
       summaries.push({
         name: corpus.name,
         model_version: corpus.model_version,
@@ -216,6 +247,8 @@ export async function listCorpora(): Promise<CorpusSummary[]> {
         chunks: corpus.stats.chunks,
         total_chars: corpus.stats.total_chars,
         bytes_on_disk: st.size,
+        ...(failedCount > 0 ? { failed_path_count: failedCount } : {}),
+        ...(writeComplete === undefined ? {} : { write_complete: writeComplete }),
       });
     } catch {
       // Skip malformed corpora silently in list; load will surface the error.

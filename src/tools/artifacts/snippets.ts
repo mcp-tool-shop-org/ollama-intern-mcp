@@ -41,52 +41,60 @@ function sourceLine(pack: string, slug: string, createdAt: string): string {
  * keeps the operator tone from the brief.
  */
 export function renderIncidentNote(artifact: IncidentPackArtifact): string {
-  const b = artifact.brief;
+  const b = artifact.brief ?? ({} as IncidentPackArtifact["brief"]);
+  const hypotheses = Array.isArray(b.root_cause_hypotheses) ? b.root_cause_hypotheses : [];
+  const surfaces = Array.isArray(b.affected_surfaces) ? b.affected_surfaces : [];
+  const nextChecks = Array.isArray(b.next_checks) ? b.next_checks : [];
+  const title = artifact.title ?? "(untitled incident)";
+  const jsonPath = artifact.artifact?.json_path ?? "(unknown path)";
   const lines: string[] = [];
 
-  lines.push(`# Incident: ${artifact.title}`);
+  lines.push(`# Incident: ${title}`);
   lines.push("");
 
   if (b.weak) {
-    lines.push(`> ⚠ Weak brief — coverage is thin. Full artifact at \`${artifact.artifact.json_path}\`.`);
+    lines.push(`> ⚠ Weak brief — coverage is thin. Full artifact at \`${jsonPath}\`.`);
     lines.push("");
   }
 
   // Root cause — top 3 hypotheses.
   lines.push(`**Root cause (likely)**`);
-  if (b.root_cause_hypotheses.length === 0) {
+  if (hypotheses.length === 0) {
     lines.push(`- _No hypotheses were produced._`);
   } else {
-    for (const h of b.root_cause_hypotheses.slice(0, MAX_HYPOTHESES)) {
-      lines.push(`- [${h.confidence}] ${h.hypothesis}`);
+    for (const h of hypotheses.slice(0, MAX_HYPOTHESES)) {
+      const conf = h?.confidence ?? "low";
+      const text = h?.hypothesis ?? "(no hypothesis text)";
+      lines.push(`- [${conf}] ${text}`);
     }
   }
   lines.push("");
 
   // Affected surfaces.
   lines.push(`**Affected**`);
-  if (b.affected_surfaces.length === 0) {
+  if (surfaces.length === 0) {
     lines.push(`- _None identified._`);
   } else {
-    for (const s of b.affected_surfaces.slice(0, MAX_SURFACES)) {
-      lines.push(`- ${s.surface}`);
+    for (const s of surfaces.slice(0, MAX_SURFACES)) {
+      lines.push(`- ${s?.surface ?? "(unnamed surface)"}`);
     }
   }
   lines.push("");
 
   // Next checks — investigative, numbered.
   lines.push(`**Next checks**`);
-  if (b.next_checks.length === 0) {
+  if (nextChecks.length === 0) {
     lines.push(`- _No next checks proposed._`);
   } else {
-    b.next_checks.slice(0, MAX_CHECKS).forEach((c, i) => {
-      const why = c.why.trim().length > 0 ? ` — _${c.why}_` : "";
-      lines.push(`${i + 1}. ${c.check}${why}`);
+    nextChecks.slice(0, MAX_CHECKS).forEach((c, i) => {
+      const why = typeof c?.why === "string" && c.why.trim().length > 0 ? ` — _${c.why.trim()}_` : "";
+      const check = c?.check ?? "(no check text)";
+      lines.push(`${i + 1}. ${check}${why}`);
     });
   }
   lines.push("");
 
-  lines.push(sourceLine("incident_pack", artifact.slug, artifact.generated_at));
+  lines.push(sourceLine("incident_pack", artifact.slug ?? "(unknown slug)", artifact.generated_at ?? "(unknown time)"));
   return lines.join("\n");
 }
 
@@ -96,34 +104,39 @@ export function renderIncidentNote(artifact: IncidentPackArtifact): string {
  * things to LOOK AT, never prescriptive fixes.
  */
 export function renderOnboardingSection(artifact: RepoPackArtifact): string {
-  const b = artifact.brief;
+  const b = artifact.brief ?? ({} as RepoPackArtifact["brief"]);
   const facts = artifact.extracted_facts;
+  const keySurfaces = Array.isArray(b.key_surfaces) ? b.key_surfaces : [];
+  const readNext = Array.isArray(b.read_next) ? b.read_next : [];
+  const thesis = typeof b.repo_thesis === "string" ? b.repo_thesis.trim() : "";
+  const jsonPath = artifact.artifact?.json_path ?? "(unknown path)";
   const lines: string[] = [];
 
   lines.push(`## What this repo is`);
   lines.push("");
 
-  if (b.repo_thesis.trim().length > 0) {
-    lines.push(b.repo_thesis.trim());
+  if (thesis.length > 0) {
+    lines.push(thesis);
   } else {
     lines.push(`_The brief produced no thesis._`);
   }
 
   if (b.weak) {
     lines.push("");
-    lines.push(`> ⚠ Weak brief — this section reflects thin coverage. Full artifact at \`${artifact.artifact.json_path}\`.`);
+    lines.push(`> ⚠ Weak brief — this section reflects thin coverage. Full artifact at \`${jsonPath}\`.`);
   }
   lines.push("");
 
   // Key surfaces (compact, with why).
   lines.push(`### Key surfaces`);
   lines.push("");
-  if (b.key_surfaces.length === 0) {
+  if (keySurfaces.length === 0) {
     lines.push(`_None identified._`);
   } else {
-    for (const s of b.key_surfaces.slice(0, MAX_KEY_SURFACES)) {
-      const why = s.why.trim().length > 0 ? ` — ${s.why}` : "";
-      lines.push(`- **${s.surface}**${why}`);
+    for (const s of keySurfaces.slice(0, MAX_KEY_SURFACES)) {
+      const surface = s?.surface ?? "(unnamed surface)";
+      const why = typeof s?.why === "string" && s.why.trim().length > 0 ? ` — ${s.why.trim()}` : "";
+      lines.push(`- **${surface}**${why}`);
     }
   }
   lines.push("");
@@ -131,27 +144,29 @@ export function renderOnboardingSection(artifact: RepoPackArtifact): string {
   // Read next — files/sections to look at, never prescriptive.
   lines.push(`### Read next`);
   lines.push("");
-  if (b.read_next.length === 0) {
+  if (readNext.length === 0) {
     lines.push(`_No read-next recommendations._`);
   } else {
-    b.read_next.slice(0, MAX_READ_NEXT).forEach((r, i) => {
-      const why = r.why.trim().length > 0 ? ` — _${r.why}_` : "";
-      lines.push(`${i + 1}. \`${r.file}\`${why}`);
+    readNext.slice(0, MAX_READ_NEXT).forEach((r, i) => {
+      const why = typeof r?.why === "string" && r.why.trim().length > 0 ? ` — _${r.why.trim()}_` : "";
+      const file = r?.file ?? "(unnamed file)";
+      lines.push(`${i + 1}. \`${file}\`${why}`);
     });
   }
   lines.push("");
 
   // Runtime hints from extracted_facts when available — concrete, concise.
-  if (facts && facts.runtime_hints && facts.runtime_hints.length > 0) {
+  const runtimeHints = Array.isArray(facts?.runtime_hints) ? facts?.runtime_hints.filter((h): h is string => typeof h === "string" && h.length > 0) : [];
+  if (runtimeHints && runtimeHints.length > 0) {
     lines.push(`### Runtime`);
     lines.push("");
-    for (const hint of facts.runtime_hints) {
+    for (const hint of runtimeHints) {
       lines.push(`- ${hint}`);
     }
     lines.push("");
   }
 
-  lines.push(sourceLine("repo_pack", artifact.slug, artifact.generated_at));
+  lines.push(sourceLine("repo_pack", artifact.slug ?? "(unknown slug)", artifact.generated_at ?? "(unknown time)"));
   return lines.join("\n");
 }
 
@@ -161,12 +176,15 @@ export function renderOnboardingSection(artifact: RepoPackArtifact): string {
  * no marketing lift, no model re-run.
  */
 export function renderReleaseNote(artifact: ChangePackArtifact): string {
-  const draft = artifact.brief.release_note_draft.trim();
+  const rawDraft = artifact.brief?.release_note_draft;
+  const draft = typeof rawDraft === "string" ? rawDraft.trim() : "";
+  const slug = artifact.slug ?? "(unknown slug)";
+  const when = artifact.generated_at ?? "(unknown time)";
   const lines: string[] = [];
   if (draft.length === 0) {
     lines.push(`_No release note draft was produced for this change._`);
     lines.push("");
-    lines.push(sourceLine("change_pack", artifact.slug, artifact.generated_at));
+    lines.push(sourceLine("change_pack", slug, when));
     return lines.join("\n");
   }
   for (const l of draft.split(/\r?\n/)) {
@@ -175,6 +193,6 @@ export function renderReleaseNote(artifact: ChangePackArtifact): string {
   lines.push("");
   lines.push(`_Draft — the operator reviews before publishing._`);
   lines.push("");
-  lines.push(sourceLine("change_pack", artifact.slug, artifact.generated_at));
+  lines.push(sourceLine("change_pack", slug, when));
   return lines.join("\n");
 }

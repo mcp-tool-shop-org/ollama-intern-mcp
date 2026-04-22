@@ -514,3 +514,39 @@ describe("buildSlug (change_pack)", () => {
     expect(slug).toMatch(/^\d{4}-\d{2}-\d{2}-\d{4}$/);
   });
 });
+
+// ── Progress events (pack_step) ─────────────────────────────
+
+describe("handleChangePack — pack_step progress events", () => {
+  it("emits pack_step events in order when log_text is present", async () => {
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT, EXTRACT_OUT);
+    const ctx = makeCtx(client);
+    await handleChangePack(
+      { diff_text: SIMPLE_DIFF, log_text: "ERROR: x", artifact_dir: tempArtifactDir },
+      ctx,
+    );
+    const steps = ctx.logger.events
+      .filter((e) => e.kind === "pack_step")
+      .map((e) => (e.kind === "pack_step" ? e.step : ""));
+    expect(steps).toEqual(["assemble_evidence", "triage", "brief", "extract", "artifact_write"]);
+  });
+
+  it("skips the triage event when log_text is absent (total_steps stays 5)", async () => {
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT, EXTRACT_OUT);
+    const ctx = makeCtx(client);
+    await handleChangePack(
+      { diff_text: SIMPLE_DIFF, artifact_dir: tempArtifactDir },
+      ctx,
+    );
+    const steps = ctx.logger.events.filter((e) => e.kind === "pack_step");
+    expect(steps.map((e) => (e.kind === "pack_step" ? e.step : ""))).toEqual([
+      "assemble_evidence",
+      "brief",
+      "extract",
+      "artifact_write",
+    ]);
+    for (const e of steps) {
+      if (e.kind === "pack_step") expect(e.total_steps).toBe(5);
+    }
+  });
+});

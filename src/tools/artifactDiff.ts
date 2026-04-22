@@ -56,7 +56,7 @@ export async function handleArtifactDiff(
     throw new InternError(
       "SCHEMA_INVALID",
       `Cross-pack diff refused: a.pack="${input.a.pack}" vs b.pack="${input.b.pack}"`,
-      "artifact_diff compares within a single pack only. Pick two artifacts of the same pack.",
+      "artifact_diff compares within a single pack only — pack payloads stay distinct by design. Run `ollama_artifact_list` to find two artifacts of the same pack (incident ↔ incident, repo ↔ repo, change ↔ change), then retry with matching a.pack and b.pack values.",
       false,
     );
   }

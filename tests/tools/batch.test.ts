@@ -190,6 +190,40 @@ describe("runBatch — shared helper", () => {
     expect(client.generateCalls).toBe(0);
   });
 
+  it("duplicate-id error message lists every colliding id (not just 'some duplicates')", async () => {
+    const client = new TableMock(() => "x");
+    let caught: unknown;
+    try {
+      await runBatch<{ id: string }, string>({
+        tool: "toy",
+        tier: "instant",
+        ctx: makeCtx(client),
+        items: [
+          { id: "alpha" },
+          { id: "beta" },
+          { id: "alpha" },
+          { id: "gamma" },
+          { id: "beta" },
+        ],
+        build: (_i, _t, model) => ({ model, prompt: "p" }),
+        parse: (raw) => raw,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    const msg = (caught as { message: string }).message;
+    const hint = (caught as { hint: string }).hint;
+    // Every distinct duplicated id appears in both message and hint, quoted
+    // for clarity so 'alpha'/'beta' aren't ambiguous with words inside the
+    // surrounding prose.
+    expect(msg).toContain("'alpha'");
+    expect(msg).toContain("'beta'");
+    expect(msg).not.toContain("'gamma'"); // gamma was unique
+    expect(hint).toContain("'alpha'");
+    expect(hint).toContain("'beta'");
+  });
+
   it("pre-validation throwing fails that item only, not the batch", async () => {
     const client = new TableMock(() => "ok");
     const env = await runBatch<{ id: string; text: string }, string>({

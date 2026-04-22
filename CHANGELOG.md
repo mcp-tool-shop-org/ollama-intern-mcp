@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
 ## [2.0.2] - 2026-04-21
 
 ### Changed
@@ -15,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **deps: typescript 5.9.3 → 6.0.3, @types/node 20 → 22.** TS 6 tightened ambient-type handling; `tsconfig.json` now declares `"types": ["node"]` so node globals (`process`, `console`, `Buffer`, `node:` imports) resolve without the implicit fallback TS 5 allowed. Zero source changes. Closes #14.
 
 All 481 tests pass on the new toolchain.
+
+### Migration
+
+No breaking changes — drop-in upgrade from v2.0.1.
 
 ## [2.0.1] - 2026-04-20
 

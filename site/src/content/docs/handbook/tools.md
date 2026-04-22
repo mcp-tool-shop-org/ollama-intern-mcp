@@ -70,3 +70,8 @@ Continuity surface over what packs wrote. No model calls in this tier.
 ## Envelope
 
 Every tool returns the same envelope — see [Envelope & tiers](../envelope-and-tiers/).
+
+## Deeper dives
+
+- [Corpora](../corpora/) — full lifecycle for `corpus_index` / `refresh` / `search` / `answer`
+- [Error codes](../error-codes/) — every structured error a tool can return and what to do

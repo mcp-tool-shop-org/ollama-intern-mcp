@@ -27,6 +27,8 @@ npm run verify     # typecheck + build + tests — what CI runs
 
 You'll also need a local [Ollama](https://ollama.com) with the tier models pulled (see README → Model pulls). Tests that hit the model are gated; the default suite is fast and pure.
 
+**Test shape:** [`tests/tools/classify.test.ts`](./tests/tools/classify.test.ts) is the canonical small example — mock `OllamaClient`, drive `handleClassify`, assert on the envelope. Copy its pattern when adding a tool test.
+
 ## Code style
 
 - **TypeScript strict.** `tsc --noEmit` must be clean.

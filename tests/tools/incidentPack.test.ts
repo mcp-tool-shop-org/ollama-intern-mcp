@@ -401,3 +401,51 @@ describe("handleIncidentPack — artifact_dir", () => {
     expect(env.result.artifact.json_path.startsWith(tempArtifactDir)).toBe(true);
   });
 });
+
+// ── Progress events (pack_step) ─────────────────────────────
+
+describe("handleIncidentPack — pack_step progress events", () => {
+  it("emits pack_step events in order: triage, assemble_evidence, brief, artifact_write", async () => {
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT);
+    const ctx = makeCtx(client);
+    await handleIncidentPack(
+      { log_text: LONG_LOG, title: "T", artifact_dir: tempArtifactDir },
+      ctx,
+    );
+    const stepEvents = ctx.logger.events
+      .filter((e): e is Extract<typeof e, { kind: "pack_step" }> => e.kind === "pack_step")
+      .map((e) => ({ step: e.step, step_index: e.step_index, total_steps: e.total_steps, pack: e.pack }));
+    expect(stepEvents).toEqual([
+      { pack: "incident", step: "triage", step_index: 1, total_steps: 4 },
+      { pack: "incident", step: "assemble_evidence", step_index: 2, total_steps: 4 },
+      { pack: "incident", step: "brief", step_index: 3, total_steps: 4 },
+      { pack: "incident", step: "artifact_write", step_index: 4, total_steps: 4 },
+    ]);
+  });
+
+  it("skips the triage event when log_text is absent, keeps total_steps stable", async () => {
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT);
+    const ctx = makeCtx(client);
+    const srcPath = join(tempArtifactDir, "..", `pack-src-step-${Date.now()}.md`);
+    await writeFile(srcPath, "# notes\nthings broke", "utf8");
+    try {
+      await handleIncidentPack(
+        { source_paths: [srcPath], title: "paths-only", artifact_dir: tempArtifactDir },
+        ctx,
+      );
+    } finally {
+      await rm(srcPath, { force: true });
+    }
+    const steps = ctx.logger.events.filter((e) => e.kind === "pack_step");
+    // triage skipped → 3 events. total_steps remains 4 so UIs see a
+    // stable denominator across triaged and path-only calls.
+    expect(steps.map((e) => (e.kind === "pack_step" ? e.step : ""))).toEqual([
+      "assemble_evidence",
+      "brief",
+      "artifact_write",
+    ]);
+    for (const e of steps) {
+      if (e.kind === "pack_step") expect(e.total_steps).toBe(4);
+    }
+  });
+});

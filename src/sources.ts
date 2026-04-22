@@ -32,7 +32,7 @@ export async function loadSources(
         throw new InternError(
           "SOURCE_PATH_NOT_FOUND",
           `Not a file: ${p}`,
-          "Pass file paths only, not directories.",
+          "Check that the path points at a regular file, not a directory. Tools that accept source_paths (research, summarize_deep, brief/pack tools) never recurse into directories — list each file explicitly, or run `ollama_corpus_index` first if you need to cover a whole tree.",
           false,
         );
       }
