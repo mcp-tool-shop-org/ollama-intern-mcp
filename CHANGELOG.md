@@ -5,40 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.1.0] — 2026-04-22
 
-Feature pass (Phase 7) — extends existing tiers with ops, refactor, corpus, and artifact tools. No new tier class. Atom+brief freeze at 18 stays intact for tools that count against it; new tools sit alongside the existing tier families.
+Feature pass of the dogfood swarm. 28-tool freeze lifted after validating Hermes integration on v2.0.0-v2.0.2. Tool count **28 → 41**. Extends existing tiers with ops, refactor, corpus, and artifact tools. No new tier class.
 
-### Added
+### Migration
 
-- **`ollama_log_tail`** — read the NDJSON call log at `~/.ollama-intern/log.ndjson` from inside an MCP session. Filterable by `lines`, `kind`, `tool`, `since` (ISO-8601). Returns `{ events, truncated, log_path }`. Artifact-tier — no Ollama round-trip.
-- **`ollama_batch_proof_check`** — run `tsc` / `eslint` / `pytest` over a set of paths; one envelope with per-check pass/fail. Executes under cwd validation against `allowed_roots` + per-check timeouts. New process-execution security surface — see SECURITY.md §7 new surfaces.
-- **`ollama_code_map`** — structural map of a code tree (exports, call-graph sketches, TODO scan). Reads files under `allowed_roots`.
-- **`ollama_code_citation`** — given a symbol name, return the defining file + line + surrounding context.
-- **`ollama_corpus_amend`** — additive in-place edits to an existing corpus. Breaks the "corpus is a pure disk snapshot" invariant; subsequent `corpus_answer` calls surface `has_amended_content: true` so audit-grade callers can detect amendment.
-- **`ollama_artifact_prune`** — age-based pack-artifact deletion. Dry-run default; `dry_run: false` must be explicit. Operates only under `~/.ollama-intern/artifacts/<pack>/`.
-- **Handbook — Observability page.** `site/handbook/observability.md`. NDJSON log anatomy, every `kind` value, eight jq recipes, two degradation signatures (`residency.evicted`, `size_vram_bytes < size_bytes`), `ollama_log_tail` usage.
-- **Handbook — Comparison page.** `site/handbook/comparison.md`. Honest matrix vs `houtini-lm`, `mcp-local-llm`, raw Ollama HTTP, Claude-direct. Including rows we're blank on (streaming, vector DB, code sandbox, cloud models).
-- **`examples/` directory.** `simple-client-node.js` and `simple-client-python.py` — minimal MCP clients that spawn the server over stdio, list tools, call `ollama_log_tail`. `curl-example.md` explains why `curl` isn't directly applicable. Not shipped to npm (outside `package.json` → `files`).
-- **Corpus event `corpus_amend`** added to the NDJSON log-event union so operators can see when a corpus drifted from its manifest-hashed origin.
+Drop-in upgrade from v2.0.x. No breaking changes. `summarize_deep` gained a `source_path` alternative to `text` (both shapes supported). `corpus_search` gained optional `filter` and `explain` params (omitting them preserves existing behavior).
 
-### Changed
+### Added — new tools (13)
 
-- **`summarize_deep` accepts `source_path`.** Single-file shape added alongside the existing `source_paths` plural form. Callers stop having to prepack text for single-file digests.
-- **`corpus_answer` surfaces `has_amended_content`** in the result envelope when the backing corpus has been amended via `corpus_amend`. Default `false`; set to `true` when any amendment has been recorded.
-- **Handbook — Tools reference** adds batch workflow examples for `classify`, `extract`, `triage_logs` (10 / 5 / 3 items), plus a concurrency-contention note for the `dev-rtx5080` semaphore=2 default and id-collision behavior.
-- **Handbook — Artifacts** adds walkthroughs for the three snippet tools (`incident_note_snippet`, `onboarding_section_snippet`, `release_note_snippet`) and a safety example for `artifact_prune`.
-- **README** — "New in v2.1.0" block near the top; hardware-minimums callout under the Hermes section; pointer to `examples/` for non-Claude callers.
-- **CONTRIBUTING** — pointer to `examples/` as the minimal-client reference; note on `npm run ship` as pre-publish verify.
+**Ops**
+- **`ollama_doctor`** — first-run prereqs + status snapshot. Ollama reachability, loaded/pulled/required models, profile tiers, allowed_roots, recent errors. One-call health gate.
+- **`ollama_log_tail`** — structured read of `~/.ollama-intern/log.ndjson`. Filterable by `limit`, `filter_kind`, `filter_tool`, `since`. No Ollama round-trip.
+- **`ollama_batch_proof_check`** — run `tsc` / `eslint` / `pytest` / `ruff` / `cargo-check` over a file list; single envelope with per-check pass/fail. Cwd validation + per-check timeouts. New process-execution surface — see SECURITY.md.
+
+**Refactor**
+- **`ollama_code_map`** — fast structural summary (languages, frameworks, entrypoints, build commands).
+- **`ollama_code_citation`** — Deep-tier answer over `source_paths` with every claim grounded at `{file, start_line, end_line}`. Out-of-scope citations stripped server-side.
+- **`ollama_multi_file_refactor_propose`** — Workhorse-tier coordinated cross-file change plan. Risk levels, affected imports, verification steps. No writes.
+- **`ollama_refactor_plan`** — Workhorse-tier phased sequencing (phases, parallelism, tests, rollback). Pairs with `multi_file_refactor_propose`.
+
+**Artifact / Brief**
+- **`ollama_artifact_prune`** — age/pack-type cleanup of `~/.ollama-intern/artifacts/`. `dry_run: true` default; `false` must be explicit.
+- **`ollama_hypothesis_drill`** — Deep-tier focused sub-brief from one `incident_pack` hypothesis. No re-running the pack.
+
+**Corpus**
+- **`ollama_corpus_health`** — per-corpus health superset of `corpus_list`: chunks, staleness, drift, failed_paths, write_complete, amend status.
+- **`ollama_corpus_amend`** — Embed-tier single-file re-embed without full refresh. **Breaks the "corpus is a disk snapshot" invariant**; manifest records `has_amended_content: true`.
+- **`ollama_corpus_amend_history`** — read-only companion. Lists amended paths, timestamps, chunk-count deltas. Use before re-indexing.
+- **`ollama_corpus_rerank`** — post-retrieval re-sort by `recency` / `path_specificity` / `lexical_boost`. No Ollama call.
+
+### Changed — enhancements (4)
+
+- **`corpus_search({filter: {path_glob?, since?}})`** — in-house glob matcher (`**`, `*`, `?`); `since` is ISO-8601. Filters apply before RRF fusion.
+- **`corpus_search({explain: true})`** — per-hit "why matched" reasoning via Instant tier. Top-5 cap; degrades gracefully to an envelope warning if the explain model is unavailable.
+- **`summarize_deep({source_path})`** — closes adoption-memory SEAM #2. Accepts either `text` or `source_path`; the latter loads the file server-side via safePath.
+- **`ollama_embed`** — description + handbook warning about vector-overflow on large batches; runtime envelope warns when serialized payload exceeds ~500KB.
+
+### Dev ops
+
+- **`npm run ship`** — typecheck + build + test + pack check. One-liner pre-publish gate.
+- **`tests/mcpGolden.test.ts`** +3 roundtrip tests (unknown tool, malformed args, structured tool-level error).
+- **`tests/pack.test.ts`** size-regression floor: compressed baseline + 10% tolerance.
+- **`actions/checkout@v6`** and **`actions/setup-node@v6`** SHA-pinned in both CI workflows (supersedes closed Dependabot #2/#3).
+
+### Docs
+
+- NEW `handbook/observability.md` — NDJSON anatomy, jq recipes, degradation signatures.
+- NEW `handbook/comparison.md` — honest matrix vs `houtini-lm`, `mcp-local-llm`, raw Ollama HTTP, Claude-direct.
+- NEW `examples/` — `simple-client-node.js`, `simple-client-python.py`, `curl-example.md`. Not shipped to npm.
+- `handbook/tools.md` — all 13 new tools + 4 enhancements; end-to-end refactor workflow example.
+- `handbook/artifacts.md` — snippet-tool walkthroughs + `artifact_prune` safety example.
+- `README.md` — hardware minimums, examples pointer, "New in v2.1.0" block, tool count 28 → 41.
+- `CONTRIBUTING.md` — examples pointer + `npm run ship` note.
 
 ### Security
 
-- **Filesystem delete in `artifact_prune`** — first tool that deletes. Dry-run default; deletion restricted to `~/.ollama-intern/artifacts/<pack>/` with pack enum; `..` refused.
-- **Process execution in `batch_proof_check`** — new surface. Mitigated by cwd validation against `allowed_roots`, per-check timeouts, tool whitelist (only `tsc` / `eslint` / `pytest`), and structured error shape on failure.
-- **Corpus-snapshot invariant** explicitly named in SECURITY.md §9. `corpus_amend` breaks the "identical input → identical output" invariant earlier versions had; `has_amended_content` flag surfaces state on downstream `corpus_answer` calls.
-- **File-reading surface in `code_map` / `code_citation`** — same `allowed_roots` mitigation as `research` / corpus tools.
+- **Filesystem delete in `artifact_prune`** — first tool that deletes. Dry-run default; deletion scoped to `~/.ollama-intern/artifacts/<pack>/`.
+- **Process execution in `batch_proof_check`** — new surface. Mitigated by cwd validation + per-check timeouts + tool whitelist.
+- **Corpus-snapshot invariant break** in `corpus_amend` — `has_amended_content` flag + `corpus_amend_history` tool surface the drift.
+- **File-reading in `code_map` / `code_citation`** — same `allowed_roots` mitigation as existing `research` / corpus tools.
 
-### Fixed
+### Stats
+
+- Tests **582 → 672** (+90)
+- Tool count **28 → 41** (13 new + 4 enhancements)
+- Tarball 254.9 kB → 336.7 kB compressed (1.3 MB unpacked, 331 files)
+- Shipcheck audit 96% (non-blocking gap: landing-page Phase 2, org-level)
 
 ## [2.0.2] - 2026-04-21
 
