@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-> **The local intern for Claude Code.** 28 job-shaped tools, evidence-first briefs, durable artifacts.
+> **The local intern for Claude Code.** 41 job-shaped tools, evidence-first briefs, durable artifacts.
 
 An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
@@ -104,7 +104,7 @@ Every claim in `answer` cites a chunk id validated server-side. Full walkthrough
 
 ---
 
-## What's in here — four tiers, 28 tools
+## What's in here — four tiers, 41 tools
 
 **Job-shaped** means each tool names a job you'd hand to an intern — classify this, extract that, triage these logs, draft this release note, pack this incident. The tool's input is the job spec; the output is the deliverable. No generic `run_model` / `chat_with_llm` primitive at the top.
 
