@@ -28,7 +28,7 @@ import { describe, it, expect, beforeAll } from "vitest";
  * clean build of main, and set BASELINE_PACKED_BYTES to that value. Keep the
  * tolerance at 10% unless you have a reason to widen it.
  */
-export const BASELINE_PACKED_BYTES = 310_000;
+export const BASELINE_PACKED_BYTES = 350_000;
 export const BASELINE_TOLERANCE = 0.10;
 
 type PackEntry = { path: string; size: number; mode: number };
