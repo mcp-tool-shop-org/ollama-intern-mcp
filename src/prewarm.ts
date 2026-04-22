@@ -21,8 +21,22 @@ import type { RunContext } from "./runContext.js";
 import type { Logger } from "./observability.js";
 import { timestamp } from "./observability.js";
 
-/** Hard cap on per-tier prewarm wait. Long enough for a 14B cold load, short enough not to hang server startup. */
-const PREWARM_TIMEOUT_MS = 60_000;
+/**
+ * Floor on the per-tier prewarm wait. Long enough for a 14B cold load on a
+ * normal rig; slow-tier profiles (big models on CPU, remote Ollama, etc.)
+ * extend via `2 * ctx.timeouts[tier]`. Single constant is wrong: a 4-minute
+ * deep-tier timeout with a 60s prewarm cap aborted every cold load.
+ */
+const PREWARM_TIMEOUT_FLOOR_MS = 60_000;
+
+/** Per-tier prewarm timeout: max(floor, 2× the tier's runtime timeout). */
+function prewarmTimeoutForTier(ctx: RunContext, tier: Tier): number {
+  const tierTimeout = ctx.timeouts[tier] ?? 0;
+  return Math.max(PREWARM_TIMEOUT_FLOOR_MS, tierTimeout * 2);
+}
+
+/** Exported for tests. */
+export { prewarmTimeoutForTier };
 
 /**
  * Module-level flag indicating a prewarm pass is in flight. Flipped true by
@@ -65,7 +79,7 @@ export async function runPrewarm(ctx: RunContext, tiers: Tier[]): Promise<number
     const model = resolveTier(tier, ctx.tiers);
     const startedAt = Date.now();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PREWARM_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), prewarmTimeoutForTier(ctx, tier));
     let success = false;
     let error: string | undefined;
     try {

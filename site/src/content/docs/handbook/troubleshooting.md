@@ -96,5 +96,6 @@ It should print a startup banner and block waiting for stdin. If it exits with a
 
 ## Still stuck
 
+- **Error code reference** — every structured error the server returns is documented on the [Error codes](../error-codes/) page with cause and next action.
 - Every call is logged to `~/.ollama-intern/log.ndjson` — `tail` it while retrying to see what the server actually saw.
 - Open a [GitHub discussion](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/discussions) with the envelope (minus any sensitive content), the profile you're running, and `ollama list` output.

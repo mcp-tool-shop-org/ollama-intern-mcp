@@ -74,7 +74,12 @@ export function findBannedPhrases(
   const lower = text.toLowerCase();
   for (const phrase of list) {
     const lowerPhrase = phrase.toLowerCase();
-    // Escape regex metachars in the phrase, then bound on word chars.
+    // Escape-contract: every JavaScript regex metacharacter outside a
+    // character class is escaped here. The set `.*+?^${}()|[]\` is complete
+    // per MDN — `-`, `/`, `=`, `!`, `:` are not metacharacters in this
+    // position and do not need escaping. A phrase containing any of
+    // `.*+?{}()[]\|^$` therefore becomes a literal match, not a pattern.
+    // See tests/guardrails/bannedPhrases.test.ts for the contract test.
     const escaped = lowerPhrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     // Allow flexible whitespace inside multi-word phrases.
     const pattern = escaped.replace(/\s+/g, "\\s+");

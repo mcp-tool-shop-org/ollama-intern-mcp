@@ -19,18 +19,30 @@ import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
+/**
+ * Cap on a single log blob. 5 MB is well past any reasonable log that fits
+ * in an 8B model's context, but it prevents an unbounded-input DoS where a
+ * caller ships a multi-gigabyte blob and OOMs the server.
+ */
+export const MAX_LOG_TEXT_BYTES = 5_000_000;
+
 export const triageLogsSchema = z.object({
-  log_text: z.string().min(1).optional().describe("Single log output to triage. Use this OR items, not both."),
+  log_text: z
+    .string()
+    .min(1)
+    .max(MAX_LOG_TEXT_BYTES)
+    .optional()
+    .describe("Single log output to triage. Use this OR items, not both. Max 5MB. Oversize inputs are refused with a hint pointing at batch-splitting or pre-filtering for ERROR/WARN lines."),
   items: z
     .array(
       z.object({
         id: z.string().min(1).describe("Caller-provided, unique within the batch."),
-        log_text: z.string().min(1),
+        log_text: z.string().min(1).max(MAX_LOG_TEXT_BYTES),
       }),
     )
     .min(1)
     .optional()
-    .describe("Batch of log blobs, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
+    .describe("Batch of log blobs, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries. Each log_text is capped at 5MB — oversize items refuse with a hint on splitting or pre-filtering."),
   patterns: strictStringArray({ min: 0, minItemLen: 0, fieldName: "patterns" }).optional().describe("Optional regex patterns the triage should bias toward — applied to every item in a batch."),
 });
 
@@ -115,11 +127,45 @@ function assertExactlyOneInput(input: TriageLogsInput): void {
   }
 }
 
+/**
+ * Extra-size safety net. Zod .max() already enforces MAX_LOG_TEXT_BYTES
+ * at the schema boundary, but its default error is a generic "too_big"
+ * without an actionable hint. Catching it here lets us surface a concrete
+ * "split or pre-filter" suggestion the operator can act on. Also handles
+ * the batch-item case where schema-level messages are nested and harder
+ * to interpret.
+ */
+function assertLogSizeWithinCap(input: TriageLogsInput): void {
+  const cap = MAX_LOG_TEXT_BYTES;
+  const tooBigHint = `Split the log into smaller chunks and call items:[{id, log_text}] in batch mode, or pre-filter the log before sending (grep for ERROR/WARN lines, drop stack traces). The 5MB cap is an input-DoS guard — even the Deep tier's context would not hold a single 5MB blob usefully.`;
+  if (input.log_text !== undefined && input.log_text.length > cap) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `log_text exceeds ${cap.toLocaleString()} chars (got ${input.log_text.length.toLocaleString()}).`,
+      tooBigHint,
+      false,
+    );
+  }
+  if (input.items) {
+    for (const item of input.items) {
+      if (item.log_text.length > cap) {
+        throw new InternError(
+          "SCHEMA_INVALID",
+          `items[id="${item.id}"].log_text exceeds ${cap.toLocaleString()} chars (got ${item.log_text.length.toLocaleString()}).`,
+          tooBigHint,
+          false,
+        );
+      }
+    }
+  }
+}
+
 export async function handleTriageLogs(
   input: TriageLogsInput,
   ctx: RunContext,
 ): Promise<Envelope<TriageLogsResult> | Envelope<BatchResult<TriageLogsResult>>> {
   assertExactlyOneInput(input);
+  assertLogSizeWithinCap(input);
   sanitizePatterns(input.patterns);
 
   if (input.items) {

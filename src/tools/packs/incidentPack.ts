@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
-import { callEvent } from "../../observability.js";
+import { callEvent, packStepEvent } from "../../observability.js";
 import type { RunContext } from "../../runContext.js";
 import { InternError } from "../../errors.js";
 import { assembleEvidence } from "../briefs/common.js";
@@ -40,6 +40,7 @@ import {
   type IncidentBriefResult,
 } from "../incidentBrief.js";
 import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
+import { normalizeCorpusQuery } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -268,9 +269,15 @@ export async function handleIncidentPack(
   let tokensIn = 0;
   let tokensOut = 0;
 
+  // Fixed incident-pack pipeline: triage → assemble → brief → write. The
+  // step count is fixed even when triage is skipped — surfacing "step 2
+  // of 4 (assemble)" reads better than having total_steps flicker per call.
+  const TOTAL_STEPS = 4;
+
   // Step 1 — triage_logs (only when log_text is present).
   let triage: TriageLogsResult | null = null;
   if (input.log_text) {
+    await ctx.logger.log(packStepEvent({ pack: "incident", step: "triage", step_index: 1, total_steps: TOTAL_STEPS }));
     const t0 = Date.now();
     try {
       const triageEnv = await handleTriageLogs({ log_text: input.log_text }, ctx);
@@ -298,7 +305,9 @@ export async function handleIncidentPack(
   // Step 2 — assemble evidence. If corpus is requested, this is also
   // where the embed rail fires. We emit a step entry for corpus_search
   // only when a corpus was actually queried.
-  const corpusQuery = input.corpus_query ?? (input.log_text ? input.log_text.slice(0, 400) : "");
+  await ctx.logger.log(packStepEvent({ pack: "incident", step: "assemble_evidence", step_index: 2, total_steps: TOTAL_STEPS }));
+  const sanitizedUserQuery = normalizeCorpusQuery(input.corpus_query);
+  const corpusQuery = sanitizedUserQuery ?? (input.log_text ? input.log_text.slice(0, 400) : "");
   const assembleStart = Date.now();
   const assembled = await assembleEvidence(
     {
@@ -319,6 +328,7 @@ export async function handleIncidentPack(
   }
 
   // Step 3 — incident_brief synthesis, reusing the already-assembled evidence.
+  await ctx.logger.log(packStepEvent({ pack: "incident", step: "brief", step_index: 3, total_steps: TOTAL_STEPS }));
   const briefInput: IncidentBriefInput = {
     log_text: input.log_text,
     source_paths: input.source_paths,
@@ -340,6 +350,7 @@ export async function handleIncidentPack(
   const brief = briefEnv.result;
 
   // Step 4 — artifact write. Deterministic markdown + JSON.
+  await ctx.logger.log(packStepEvent({ pack: "incident", step: "artifact_write", step_index: 4, total_steps: TOTAL_STEPS }));
   const artifactDir = input.artifact_dir ?? defaultArtifactDir();
   const when = new Date();
   const firstHypothesis = brief.root_cause_hypotheses[0]?.hypothesis;

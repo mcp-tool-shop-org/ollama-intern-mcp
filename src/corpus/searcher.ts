@@ -123,8 +123,26 @@ function scoreLex(
   }));
 }
 
+/**
+ * True iff the query is null, empty, or whitespace-only. Every search mode
+ * needs a query with at least one non-whitespace character — BM25 and the
+ * embed tier both return meaningless results for whitespace. Rather than
+ * silently returning 0 hits (which looks indistinguishable from "no
+ * matches"), callers get a fast-path empty result and the tool layer
+ * annotates the envelope so the user sees WHY retrieval was zero.
+ */
+export function isEmptyQuery(query: string | null | undefined): boolean {
+  return query == null || query.trim().length === 0;
+}
+
 export async function searchCorpus(params: SearchParams): Promise<CorpusHit[]> {
   const mode = params.mode ?? DEFAULT_SEARCH_MODE;
+  // Fast-path: empty/whitespace-only query. Skip BOTH the embed round-trip
+  // and the BM25 build — they'd return noise ranked by index order. The
+  // tool layer also checks `isEmptyQuery` and surfaces a `weak: true` /
+  // `reason: "empty query"` envelope so callers can tell this apart from
+  // "no matches found".
+  if (isEmptyQuery(params.query)) return [];
   if (params.corpus.chunks.length === 0) return [];
 
   if (modeRequiresEmbedding(mode) && params.corpus.model_version !== params.model) {

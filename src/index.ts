@@ -15,9 +15,9 @@ import { realpathSync } from "node:fs";
 
 import { VERSION } from "./version.js";
 import { loadProfile } from "./profiles.js";
-import { HttpOllamaClient, setClientLogger } from "./ollama.js";
-import { NdjsonLogger } from "./observability.js";
-import { toErrorShape } from "./errors.js";
+import { HttpOllamaClient, setClientLogger, setClientProfileName, normalizeOllamaHost } from "./ollama.js";
+import { NdjsonLogger, timestamp } from "./observability.js";
+import { InternError, toErrorShape } from "./errors.js";
 import { runPrewarm, notePrewarmInProgressRequest } from "./prewarm.js";
 import { detectEnvOverrides } from "./profiles.js";
 import type { RunContext } from "./runContext.js";
@@ -302,7 +302,21 @@ export function createServer(ctx: RunContext): McpServer {
 }
 
 async function main(): Promise<void> {
-  const profile = loadProfile();
+  // Profile resolution can now throw CONFIG_INVALID (unknown INTERN_PROFILE).
+  // Catch here so the operator sees a human-readable one-liner on stderr
+  // instead of a stack. Hint includes the available names.
+  let profile: ReturnType<typeof loadProfile>;
+  try {
+    profile = loadProfile();
+  } catch (err) {
+    if (err instanceof InternError) {
+      // eslint-disable-next-line no-console
+      console.error(`ollama-intern: ${err.message}\n  hint: ${err.hint}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+
   const ctx: RunContext = {
     client: new HttpOllamaClient(),
     tiers: profile.tiers,
@@ -325,6 +339,31 @@ async function main(): Promise<void> {
   // Wire the HTTP client's side-observability hook (semaphore waits,
   // residency probe failures) to the same NDJSON logger the tools use.
   setClientLogger(ctx.logger);
+  setClientProfileName(profile.name);
+
+  // Startup probe: check Ollama reachability but NEVER crash the server.
+  // MCP clients routinely start this server before Ollama is ready, so a
+  // fail-fast probe would break the common case. Instead we log + warn
+  // once so the failure is visible, then continue into normal startup.
+  // Skippable for tests / CI via INTERN_SKIP_STARTUP_PROBE=1.
+  if (process.env.INTERN_SKIP_STARTUP_PROBE !== "1") {
+    const host = normalizeOllamaHost(process.env.OLLAMA_HOST);
+    const probe = await ctx.client.probe(5_000);
+    if (!probe.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `ollama-intern: Ollama unreachable at OLLAMA_HOST=${host} (${probe.reason ?? "unknown"}). Set OLLAMA_HOST correctly or start Ollama. See https://ollama.com/download.`,
+      );
+      void ctx.logger.log({
+        kind: "guardrail",
+        ts: timestamp(),
+        tool: "startup",
+        rule: "startup_probe",
+        action: "warn",
+        detail: { host, reason: probe.reason ?? "unknown" },
+      });
+    }
+  }
 
   // Profile-policy prewarm: pulls Instant tier into VRAM on dev profiles
   // before connecting transport, so the first real Claude call doesn't eat

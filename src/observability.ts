@@ -19,8 +19,26 @@ const DEFAULT_LOG_PATH = process.env.INTERN_LOG_PATH || join(DEFAULT_LOG_DIR, "l
 
 export type LogEvent =
   | { kind: "call"; ts: string; tool: string; envelope: Envelope<unknown> }
-  | { kind: "timeout"; ts: string; tool: string; tier: Tier; timeout_ms: number }
-  | { kind: "fallback"; ts: string; tool: string; from: Tier; to: Tier; reason: string }
+  | {
+      kind: "timeout";
+      ts: string;
+      tool: string;
+      tier: Tier;
+      timeout_ms: number;
+      /** Concrete model that timed out (pulled from ctx.tiers[tier]). */
+      model?: string;
+      /** Active profile name — lets operators diff timeouts across profiles. */
+      profile_name?: string;
+    }
+  | {
+      kind: "fallback";
+      ts: string;
+      tool: string;
+      from: Tier;
+      to: Tier;
+      reason: string;
+      profile_name?: string;
+    }
   | { kind: "guardrail"; ts: string; tool: string; rule: string; action: string; detail?: unknown }
   | {
       kind: "prewarm";
@@ -50,6 +68,19 @@ export type LogEvent =
       queue_depth: number;
       in_flight: number;
       expected_wait_ms: number;
+      profile_name?: string;
+    }
+  // Emitted BEFORE each step of a pack's fixed pipeline starts. Gives
+  // operators a coarse "what stage is this long-running pack in" signal
+  // without promising mid-step streaming (that needs MCP streaming
+  // support the server doesn't have yet). `step_index` is 1-based.
+  | {
+      kind: "pack_step";
+      ts: string;
+      pack: "incident" | "repo" | "change";
+      step: string;
+      step_index: number;
+      total_steps: number;
     };
 
 export interface Logger {
@@ -117,4 +148,25 @@ export function timestamp(): string {
 /** Build a LogEvent for a completed tool call from its envelope. */
 export function callEvent(tool: string, envelope: Envelope<unknown>): LogEvent {
   return { kind: "call", ts: timestamp(), tool, envelope };
+}
+
+/**
+ * Build a pack_step progress event. Emitted by packs before entering
+ * each deterministic step — coarse-grained progress that costs a single
+ * NDJSON line per step, not mid-step streaming.
+ */
+export function packStepEvent(args: {
+  pack: "incident" | "repo" | "change";
+  step: string;
+  step_index: number;
+  total_steps: number;
+}): LogEvent {
+  return {
+    kind: "pack_step",
+    ts: timestamp(),
+    pack: args.pack,
+    step: args.step,
+    step_index: args.step_index,
+    total_steps: args.total_steps,
+  };
 }

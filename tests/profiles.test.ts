@@ -50,10 +50,29 @@ describe("profiles", () => {
     expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080-qwen3" }).name).toBe("dev-rtx5080-qwen3");
   });
 
-  it("falls back to default for unknown profile names (incl. retired dev-rtx5080-llama)", () => {
-    expect(loadProfile({ INTERN_PROFILE: "not-a-real-profile" }).name).toBe(DEFAULT_PROFILE);
+  it("throws CONFIG_INVALID on unknown profile names (incl. retired dev-rtx5080-llama)", () => {
+    // Stage B+C behavior change: silent fallback to default was masking typos
+    // against the wrong hardware ladder. Unknown profile names now fail fast.
+    expect(() => loadProfile({ INTERN_PROFILE: "not-a-real-profile" })).toThrow(/Unknown profile/);
     // Retired in v2.0.0 — old env settings must not silently match a removed profile.
-    expect(loadProfile({ INTERN_PROFILE: "dev-rtx5080-llama" }).name).toBe(DEFAULT_PROFILE);
+    expect(() => loadProfile({ INTERN_PROFILE: "dev-rtx5080-llama" })).toThrow(/Unknown profile/);
+
+    // Error shape should point operators at the available names.
+    let caught: unknown;
+    try {
+      loadProfile({ INTERN_PROFILE: "not-a-real-profile" });
+    } catch (e) {
+      caught = e;
+    }
+    const err = caught as { code?: string; hint?: string };
+    expect(err.code).toBe("CONFIG_INVALID");
+    expect(err.hint).toContain("dev-rtx5080");
+    expect(err.hint).toContain("m5-max");
+  });
+
+  it("empty or unset INTERN_PROFILE still defaults to dev-rtx5080 (no throw)", () => {
+    expect(loadProfile({}).name).toBe(DEFAULT_PROFILE);
+    expect(loadProfile({ INTERN_PROFILE: "" }).name).toBe(DEFAULT_PROFILE);
   });
 
   it("per-tier env vars override the profile's picks", () => {

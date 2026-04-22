@@ -28,6 +28,7 @@ import {
   readArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
+import { normalizeCorpusQuery } from "./_helpers.js";
 
 export const repoBriefSchema = z.object({
   source_paths: z
@@ -153,7 +154,9 @@ export async function handleRepoBrief(
   input: RepoBriefInput,
   ctx: RunContext,
 ): Promise<Envelope<RepoBriefResult>> {
-  const corpusQuery = input.corpus_query ?? "repo architecture and surfaces";
+  // Cap + sanitize the caller-supplied corpus_query before it flows to embed.
+  const sanitizedUserQuery = normalizeCorpusQuery(input.corpus_query);
+  const corpusQuery = sanitizedUserQuery ?? "repo architecture and surfaces";
   const assembled = await assembleEvidence({
     source_paths: input.source_paths,
     corpus: input.corpus,

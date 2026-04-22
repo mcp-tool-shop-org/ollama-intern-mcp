@@ -89,7 +89,9 @@ export async function handleResearch(
       const parsed = parseCitations(sourcesBlock);
       const { valid, stripped } = validateCitations(parsed, input.source_paths);
       if (stripped.length > 0) {
-        warnings.push(`Stripped ${stripped.length} citation(s) not in source_paths: ${stripped.map((c) => c.path).join(", ")}`);
+        warnings.push(
+          `Stripped ${stripped.length} citation(s) the model emitted that were not in source_paths: ${stripped.map((c) => c.path).join(", ")}. This is BY DESIGN — research refuses to cite anything outside the caller-declared source list, it is not a bug. If those paths matter, re-run with them included in source_paths.`,
+        );
       }
       const base: ResearchResult = { answer, citations: valid };
       // Coverage only meaningful with multiple sources — one-source research

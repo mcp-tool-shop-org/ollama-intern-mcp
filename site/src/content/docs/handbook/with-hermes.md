@@ -7,7 +7,7 @@ sidebar:
 
 This MCP was validated end-to-end with [Hermes Agent](https://github.com/NousResearch/hermes-agent) against `hermes3:8b` on Ollama on 2026-04-19. Hermes is an external agent that *calls into* this MCP's 28-tool frozen primitive surface — it does the planning, the intern does the work.
 
-Pairing works at v2.0.0 because the default model ladder moved from the retired `qwen2.5:*` family to `hermes3:8b`, and `source_paths` schema no longer requires `min: 1` on log-driven `incident_pack` / `change_pack` calls.
+Pairing works because v2.0.0 retired the `qwen2.5:*` family from the default model ladder and moved to `hermes3:8b`, and `source_paths` schema no longer requires `min: 1` on log-driven `incident_pack` / `change_pack` calls. v2.0.2 readers: this is still the current rail.
 
 ## Install
 
@@ -91,7 +91,7 @@ This is not a bug or a limitation of this MCP; it is a property of how 8B-class 
 ## Known caveats
 
 - **Ollama `/v1` streaming + OpenAI SDK.** Ollama's 2026 streaming shape interacts awkwardly with some older OpenAI-SDK versions — if you see empty `tool_calls` in streamed chunks but a clean one when `stream=False`, patch your agent's openai client to send `stream=false` for `:11434` base URLs. The validated Hermes install uses a ~130 LOC shim to do exactly that. Not required for other agents.
-- **Default model cascade.** v2.0.0 dropped `qwen2.5:*-instruct-q4_K_M` from every profile. If you had `INTERN_TIER_*` pinning those tags, you'll get `OLLAMA_MODEL_MISSING` — switch to `hermes3:8b` or a `qwen3:*` variant.
+- **Default model cascade.** v2.0.0 dropped `qwen2.5:*-instruct-q4_K_M` from every profile and v2.x keeps it that way. If you had `INTERN_TIER_*` pinning those tags, you'll get `OLLAMA_MODEL_MISSING` — switch to `hermes3:8b` or a `qwen3:*` variant.
 - **Hermes's own config.yaml.** Hermes may ship its own defaults that conflict with the snippet above. The `model.*` nested block is what passes its ready-check; leave the top-level `providers:` and `mcp_servers:` blocks as shown.
 
 ## What NOT to do

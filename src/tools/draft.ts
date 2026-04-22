@@ -130,7 +130,7 @@ export async function handleDraft(
       throw new InternError(
         "DRAFT_BANNED_PHRASE",
         `draft(style="doc") produced banned marketing phrases after ${attempt} attempts: ${detectedPhraseLog.join(", ")}`,
-        `Rewrite the prompt to demand concrete, falsifiable claims — e.g. "name a specific capability and a measurable outcome; avoid words like 'seamless', 'effortless', 'leverage'". Consider style="concise" if brevity matters more than tone.`,
+        `The model kept reaching for marketing fluff in the listed phrases. Rewrite the prompt to require concrete, falsifiable claims — e.g. replace "write about how this tool empowers users" with "name a specific capability and a measurable outcome; no adjectives like 'seamless', 'effortless', 'leverage', 'robust'". If this IS supposed to be casual prose, try style="concise" instead — concise mode skips the banned-phrase guard and returns the shortest complete answer.`,
         true,
       );
     }

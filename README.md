@@ -63,9 +63,31 @@ That markdown file is the intern's desk output — headings, evidence block with
 
 Every competitor in this category leads with "save tokens." We lead with _here is the file the intern wrote._
 
+### Second example — build a corpus, then ask it
+
+```jsonc
+// 1. Build a persistent, searchable corpus over your project.
+{ "tool": "ollama_corpus_index",
+  "arguments": { "name": "sprite-foundry",
+                 "paths": ["F:/AI/sprite-foundry/src"],
+                 "embed_model": "nomic-embed-text" } }
+// → { chunks_written: 1204, paths_indexed: 312, failed_paths: [] }
+
+// 2. Ask an evidence-bound question against it.
+{ "tool": "ollama_corpus_answer",
+  "arguments": { "name": "sprite-foundry",
+                 "query": "how does the worker handle OOM eviction?",
+                 "top_k": 8 } }
+// → { answer: "...", citations: [{chunk_id, path}...], weak: false }
+```
+
+Every claim in `answer` cites a chunk id validated server-side. Full walkthrough in [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
+
 ---
 
 ## What's in here — four tiers, 28 tools
+
+**Job-shaped** means each tool names a job you'd hand to an intern — classify this, extract that, triage these logs, draft this release note, pack this incident. The tool's input is the job spec; the output is the deliverable. No generic `run_model` / `chat_with_llm` primitive at the top.
 
 | Tier | Count | What lives here |
 |---|---|---|
@@ -81,7 +103,7 @@ Freeze lines:
 - Packs frozen at 3. No new pack types.
 - Artifact tier frozen at 7.
 
-The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
+The full tool reference lives in the [handbook](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 

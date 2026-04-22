@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
-import { callEvent } from "../../observability.js";
+import { callEvent, packStepEvent } from "../../observability.js";
 import type { RunContext } from "../../runContext.js";
 import { InternError } from "../../errors.js";
 import { assembleEvidence } from "../briefs/common.js";
@@ -42,6 +42,7 @@ import {
 } from "../changeBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
 import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
+import { normalizeCorpusQuery } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -345,11 +346,18 @@ export async function handleChangePack(
   let tokensIn = 0;
   let tokensOut = 0;
 
+  // Fixed change-pack pipeline: assemble → triage → brief → extract →
+  // artifact_write. Total remains 5 even when triage is skipped so operator
+  // UIs see a stable denominator across runs.
+  const TOTAL_STEPS = 5;
+
   // Step 1 — assemble evidence (diff + paths + corpus if provided).
+  await ctx.logger.log(packStepEvent({ pack: "change", step: "assemble_evidence", step_index: 1, total_steps: TOTAL_STEPS }));
+  const sanitizedUserQuery = normalizeCorpusQuery(input.corpus_query);
   const fallbackQuery = input.diff_text
     ? input.diff_text.slice(0, 400)
     : (input.source_paths?.[0] ?? "");
-  const corpusQuery = input.corpus_query ?? fallbackQuery;
+  const corpusQuery = sanitizedUserQuery ?? fallbackQuery;
   const assembleStart = Date.now();
   const assembled = await assembleEvidence(
     {
@@ -372,6 +380,7 @@ export async function handleChangePack(
   // Step 2 — triage_logs (only when log_text is provided).
   let triage: TriageLogsResult | null = null;
   if (input.log_text) {
+    await ctx.logger.log(packStepEvent({ pack: "change", step: "triage", step_index: 2, total_steps: TOTAL_STEPS }));
     const t0 = Date.now();
     try {
       const triageEnv = await handleTriageLogs({ log_text: input.log_text }, ctx);
@@ -395,6 +404,7 @@ export async function handleChangePack(
   }
 
   // Step 3 — change_brief synthesis, reusing the evidence.
+  await ctx.logger.log(packStepEvent({ pack: "change", step: "brief", step_index: 3, total_steps: TOTAL_STEPS }));
   const briefInput: ChangeBriefInput = {
     diff_text: input.diff_text,
     source_paths: input.source_paths,
@@ -419,6 +429,7 @@ export async function handleChangePack(
   // Step 4 — targeted extract. Feed source_paths content when present,
   // otherwise the diff. Corpus is NOT passed to extract — corpus is
   // doctrine, not delta material.
+  await ctx.logger.log(packStepEvent({ pack: "change", step: "extract", step_index: 4, total_steps: TOTAL_STEPS }));
   const perFileMax = input.per_file_max_chars ?? 20_000;
   let extractInputText = "";
   if (input.source_paths && input.source_paths.length > 0) {
@@ -464,6 +475,7 @@ export async function handleChangePack(
   }
 
   // Step 5 — artifact write.
+  await ctx.logger.log(packStepEvent({ pack: "change", step: "artifact_write", step_index: 5, total_steps: TOTAL_STEPS }));
   const artifactDir = input.artifact_dir ?? defaultArtifactDir();
   const when = new Date();
   const summaryHead = brief.change_summary.split(/[.\n]/)[0]?.trim();

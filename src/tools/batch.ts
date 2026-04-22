@@ -85,10 +85,12 @@ function assertUniqueIds(items: BatchItem[]): void {
     seen.add(item.id);
   }
   if (dupes.length > 0) {
+    const uniqueDupes = [...new Set(dupes)];
+    const listed = uniqueDupes.map((id) => `'${id}'`).join(", ");
     throw new InternError(
       "SCHEMA_INVALID",
-      `Batch has duplicate item id(s): ${[...new Set(dupes)].join(", ")}`,
-      "Every batch item needs a caller-provided id that is unique within the batch.",
+      `Batch has duplicate item id(s): [${listed}] (${uniqueDupes.length} unique duplicate${uniqueDupes.length === 1 ? "" : "s"} across ${dupes.length} collision${dupes.length === 1 ? "" : "s"})`,
+      `Rename the repeated id(s) so every item in the batch has a unique caller-provided id — duplicates break the join back to source inputs on retry. Collided ids: [${listed}].`,
       false,
     );
   }

@@ -30,6 +30,7 @@ import {
   readArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
+import { normalizeCorpusQuery } from "./_helpers.js";
 
 export const incidentBriefSchema = z.object({
   log_text: z.string().min(1).optional().describe("Raw log blob to reason over. Combine with source_paths and/or corpus for a richer brief."),
@@ -167,8 +168,12 @@ export async function handleIncidentBrief(
 ): Promise<Envelope<IncidentBriefResult>> {
   assertAtLeastOnePrimary(input);
 
+  // Cap + sanitize caller-supplied corpus_query before it flows to the
+  // embed rail. Null/undefined → leave alone so the log-head fallback kicks in.
+  const sanitizedUserQuery = normalizeCorpusQuery(input.corpus_query);
+
   // Default the corpus query to the log head if the caller didn't hand one in.
-  const corpusQuery = input.corpus_query ?? (input.log_text ? input.log_text.slice(0, 400) : "");
+  const corpusQuery = sanitizedUserQuery ?? (input.log_text ? input.log_text.slice(0, 400) : "");
   const assembled = await assembleEvidence({
     log_text: input.log_text,
     source_paths: input.source_paths,

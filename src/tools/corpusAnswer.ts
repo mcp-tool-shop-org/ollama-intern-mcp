@@ -33,6 +33,7 @@ import {
   searchCorpus,
   DEFAULT_SEARCH_MODE,
   SEARCH_MODES,
+  isEmptyQuery,
   type SearchMode,
   type CorpusHit,
 } from "../corpus/searcher.js";
@@ -45,7 +46,14 @@ export const corpusAnswerSchema = z.object({
     .min(1)
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
     .describe("Name of the corpus to answer from (must have been indexed with ollama_corpus_index)."),
-  question: z.string().min(1).describe("The question to answer."),
+  question: z
+    .string()
+    .min(1)
+    // 1000-char cap matches ollama_corpus_search.query — see the comment
+    // there. Beyond 1000 chars the "answer-from-corpus" contract breaks
+    // down and you're asking the model to summarize the question itself.
+    .max(1000, "question must be 1000 characters or fewer")
+    .describe("The question to answer (max 1000 chars)."),
   mode: z
     .enum(SEARCH_MODES as unknown as [SearchMode, ...SearchMode[]])
     .optional()
@@ -202,6 +210,20 @@ export function computeCoverage(
   if (stripped > 0) {
     notes.push(`Stripped ${stripped} invalid citation number(s) from model output.`);
   }
+  // Distinguish the two failure shapes when an answer ends up with zero
+  // valid citations — a caller scanning coverage_notes must be able to
+  // tell "model output had citations but they were all out of range"
+  // (usually a prompt or context-length bug) apart from "model produced
+  // text with no structured citations at all" (JSON contract violation).
+  if (citations.length === 0) {
+    if (stripped > 0) {
+      notes.push(
+        `Stripped ${stripped} out-of-range citation(s) — answer has zero valid citations.`,
+      );
+    } else {
+      notes.push("Model produced answer without structured citations.");
+    }
+  }
   return { covered, omitted, notes };
 }
 
@@ -218,9 +240,40 @@ export async function handleCorpusAnswer(
     throw new InternError(
       "SCHEMA_INVALID",
       `Corpus "${input.corpus}" does not exist`,
-      `Build it first with ollama_corpus_index, or use ollama_corpus_list to see available corpora.`,
+      `Build it first with ollama_corpus_index({ name: "${input.corpus}", paths: [...] }), or call ollama_corpus_list to see available corpora.`,
       false,
     );
+  }
+
+  // Empty / whitespace-only question short-circuit. Zod's .min(1) rejects
+  // the literal empty string, but "   " would otherwise pass through to
+  // retrieval + synthesis. Refuse loudly instead of silently turning the
+  // flagship grounded-answer tool into an open-ended chat request.
+  if (isEmptyQuery(input.question)) {
+    const startedAt = Date.now();
+    const deepModel = resolveTier("deep", ctx.tiers);
+    const result: CorpusAnswerResult = {
+      answer: `Empty question — the corpus_answer tool needs a specific question to ground the retrieval. Re-call with a non-empty question.`,
+      citations: [],
+      covered_sources: [],
+      omitted_sources: [],
+      coverage_notes: ["Empty question; retrieval and synthesis both skipped."],
+      mode: input.mode ?? DEFAULT_SEARCH_MODE,
+      retrieval: { retrieved: 0, total_in_corpus: corpus.chunks.length, top_score: 0, weak: true },
+    };
+    const envelope = buildEnvelope<CorpusAnswerResult>({
+      result,
+      tier: "deep",
+      model: deepModel,
+      hardwareProfile: ctx.hardwareProfile,
+      tokensIn: 0,
+      tokensOut: 0,
+      startedAt,
+      residency: null,
+      warnings: ["corpus_answer: empty question; retrieval and model skipped"],
+    });
+    await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
+    return envelope;
   }
 
   const embedModel = resolveTier("embed", ctx.tiers);
@@ -251,7 +304,7 @@ export async function handleCorpusAnswer(
     const residency = null;
     const result: CorpusAnswerResult = {
       answer:
-        `No matching chunks found in corpus "${input.corpus}" for the question "${input.question}". The model was not invoked — synthesis without retrieved grounding would be unsafe. Try rephrasing, switching mode, or indexing more sources.`,
+        `No matching chunks found in corpus "${input.corpus}" for the question "${input.question}". The model was not invoked — synthesis without retrieved grounding would be unsafe. To unblock: broaden the query (remove specifics, try synonyms), switch retrieval mode (try "lexical" for keyword-exact lookups or "title_path" to skip body matching), or re-index with more sources via ollama_corpus_index — ollama_corpus_list will show which corpora exist.`,
       citations: [],
       covered_sources: [],
       omitted_sources: [],

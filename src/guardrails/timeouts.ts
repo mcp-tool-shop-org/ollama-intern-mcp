@@ -27,8 +27,15 @@ export interface RunWithTimeoutInput<T> {
    * Optional resolver so the terminal TIER_TIMEOUT error can include the
    * concrete model that actually timed out. Left undefined, the error
    * message falls back to just the tier — existing behavior is preserved.
+   * Also used to enrich the timeout log event with the model field.
    */
   modelFor?: (tier: Tier) => string;
+  /**
+   * Optional active profile name. When set, emitted on timeout, fallback,
+   * and TIER_TIMEOUT error hints so operators can diff timeouts across
+   * profile changes.
+   */
+  profileName?: string;
 }
 
 export interface RunWithTimeoutResult<T> {
@@ -63,7 +70,16 @@ export async function runWithTimeoutAndFallback<T>(
       return { value, actualTier: tier, ...(fallbackFrom ? { fallbackFrom } : {}) };
     } catch (err) {
       if (!timedOut) throw err;
-      await input.logger.log({ kind: "timeout", ts: timestamp(), tool: input.tool, tier, timeout_ms: timeoutMs });
+      const model = input.modelFor ? input.modelFor(tier) : undefined;
+      await input.logger.log({
+        kind: "timeout",
+        ts: timestamp(),
+        tool: input.tool,
+        tier,
+        timeout_ms: timeoutMs,
+        ...(model ? { model } : {}),
+        ...(input.profileName ? { profile_name: input.profileName } : {}),
+      });
       const next = allowFallback ? TIER_FALLBACK[tier] : null;
       if (!next) {
         // Include model (if available), elapsed, budget, and whether a
@@ -72,7 +88,6 @@ export async function runWithTimeoutAndFallback<T>(
         // whether this was a cold-load issue, a true runaway call, or a
         // cascade that ran out of runway.
         const elapsedMs = Date.now() - startedAt;
-        const model = input.modelFor ? input.modelFor(tier) : undefined;
         const fallbackAttempted = fallbackFrom !== undefined;
         const parts = [
           `Tool ${input.tool} timed out on tier ${tier}`,
@@ -85,7 +100,7 @@ export async function runWithTimeoutAndFallback<T>(
         throw new InternError(
           "TIER_TIMEOUT",
           parts.join(" "),
-          "Increase the tier's timeout, reduce input size, or ensure the model is resident (check /api/ps).",
+          `Increase the tier's timeout (switch INTERN_PROFILE — dev profiles run Instant at 15s, m5-max at 5s), reduce input size, or ensure the model is resident ('ollama ps' / check /api/ps). Fallback target ${TIER_FALLBACK[tier] ?? "(none — terminal tier)"} ${fallbackFrom ? "was exhausted." : "was not used."}`,
           true,
         );
       }
@@ -96,6 +111,7 @@ export async function runWithTimeoutAndFallback<T>(
         from: tier,
         to: next,
         reason: `timeout after ${timeoutMs}ms`,
+        ...(input.profileName ? { profile_name: input.profileName } : {}),
       });
       return attempt(next, fallbackFrom ?? tier);
     } finally {

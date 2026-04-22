@@ -16,7 +16,8 @@ import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
-import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest } from "./manifest.js";
+import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest, assertSafePath } from "./manifest.js";
+import { withCorpusLock } from "./lock.js";
 import { InternError } from "../errors.js";
 
 const EMBED_BATCH = 64;
@@ -60,11 +61,23 @@ export interface IndexReport {
   elapsed_ms: number;
   /**
    * The tag Ollama resolved the embed model to during this index run (e.g.
-   * "nomic-embed-text:latest"), captured from EmbedResponse.model. Null if
-   * no embed happened this run (pure reuse). Refresh uses this to detect
-   * silent :latest drift.
+   * "nomic-embed-text:latest"), captured from EmbedResponse.model on the
+   * FIRST embed response. Null if no embed happened this run (pure reuse).
+   * Refresh uses this to detect silent :latest drift across runs.
    */
   embed_model_resolved: string | null;
+  /**
+   * Additional resolved tags observed within this single refresh — populated
+   * only when Ollama silently bumped `:latest` partway through a multi-batch
+   * index. Rare but possible if a daemon restarts or the tag is rotated
+   * mid-run. When present, chunks from the first half are embedded by the
+   * original model and chunks from the second half by the new one, which
+   * quietly corrupts the vector space. The index report surfaces this as a
+   * warning and the manifest records it too.
+   *
+   * Empty or absent on the happy path (all batches returned the same tag).
+   */
+  embed_model_resolved_drift_within_refresh?: string[];
   /**
    * Paths that could not be read (size cap, symlink, permission denied,
    * TOCTOU, etc.) during this index run. Indexing continues past these so
@@ -84,20 +97,28 @@ export interface IndexReport {
  * mutated mid-read and the hash doesn't match the returned content.
  */
 async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
-  // Symlink check FIRST — reject before any size/read work so a symlink to
-  // a sensitive file can't leak even partial bytes via error messages.
+  // Symlink check FIRST — reject before any size/read or realpath work so
+  // a symlink can't bypass the size cap (pointing the symlink at a 100GB
+  // file after the stat but before the read) and can't leak even partial
+  // bytes via error messages. Using a dedicated SYMLINK_NOT_ALLOWED code
+  // instead of the generic SOURCE_PATH_NOT_FOUND so callers can tell a
+  // missing file apart from a deliberately-rejected symlink.
   const lst = await lstat(path);
   if (lst.isSymbolicLink()) {
     throw new InternError(
-      "SOURCE_PATH_NOT_FOUND",
+      "SYMLINK_NOT_ALLOWED",
       `Refusing to index symlink: ${path}`,
-      "Pass the real file path, not a symlink. Symlinks are rejected to avoid traversal into unintended targets.",
+      "Pass the real file path, not a symlink. Symlinks are rejected to avoid size-cap bypass and traversal into unintended targets.",
       false,
     );
   }
   // Resolve to a real path as a belt-and-suspenders check against
-  // intermediate symlinked directories.
+  // intermediate symlinked directories. After resolving, re-verify the
+  // real path still lies under an allowed root — closes the TOCTOU gap
+  // where an intermediate symlink was rotated between lstat(path) and
+  // realpath(path) to point at e.g. /etc/shadow.
   const realPath = await realpath(path);
+  assertSafePath(realPath);
   const stBefore = await stat(realPath);
   if (stBefore.size > MAX_FILE_BYTES) {
     throw new InternError(
@@ -122,6 +143,19 @@ async function sha256File(path: string): Promise<{ hash: string; mtime: string; 
 }
 
 export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
+  // Serialize per corpus name. Two concurrent indexCorpus / refreshCorpus
+  // calls targeting the same corpus would otherwise interleave their
+  // corpus.json and manifest.json writes, producing a pair that no
+  // longer describes the same state.
+  return withCorpusLock(params.name, () => indexCorpusUnlocked(params));
+}
+
+/**
+ * Internal: indexCorpus body without the per-corpus lock. Refresh uses
+ * this because it already holds the lock — calling indexCorpus from
+ * inside a held lock would self-deadlock.
+ */
+export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexReport> {
   const t0 = Date.now();
   const opts: ChunkOptions = {
     chunk_chars: params.chunk_chars ?? DEFAULT_CHUNK.chunk_chars,
@@ -237,9 +271,13 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
 
   // Pass 2: embed everything that needs embedding, in batches.
   // Capture the resolved tag (e.g. "nomic-embed-text:latest") from the
-  // first embed response — it's what the manifest uses as the freshness
-  // anchor, catching silent :latest drift on refresh.
+  // FIRST embed response — it's what the manifest uses as the freshness
+  // anchor, catching silent :latest drift on refresh. We also track the
+  // set of ALL resolved tags seen across batches so a mid-refresh bump
+  // (daemon restart, tag rotated while we're running) is surfaced, not
+  // swallowed.
   let embedModelResolved: string | null = null;
+  const seenResolvedTags = new Set<string>();
   if (toEmbedTexts.length > 0) {
     for (let i = 0; i < toEmbedTexts.length; i += EMBED_BATCH) {
       const batch = toEmbedTexts.slice(i, i + EMBED_BATCH);
@@ -249,8 +287,11 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
           `Embed returned ${resp.embeddings.length} vectors for ${batch.length} inputs`,
         );
       }
-      if (embedModelResolved === null && typeof resp.model === "string") {
-        embedModelResolved = resp.model;
+      if (typeof resp.model === "string" && resp.model.length > 0) {
+        seenResolvedTags.add(resp.model);
+        if (embedModelResolved === null) {
+          embedModelResolved = resp.model;
+        }
       }
       for (let j = 0; j < batch.length; j++) {
         const meta = toEmbedMeta[i + j];
@@ -314,6 +355,15 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
 
   await saveCorpus(corpus);
 
+  // Within-refresh drift: more than one distinct resolved tag across the
+  // batches of this single run. Means Ollama silently bumped `:latest`
+  // while we were streaming batches — the resulting vector space is now
+  // internally inhomogeneous, and downstream search will suffer. We still
+  // persist the result, but surface the drift loudly on the report AND
+  // the manifest so the caller can choose to re-index.
+  const withinRefreshDrift =
+    seenResolvedTags.size > 1 ? [...seenResolvedTags].sort() : undefined;
+
   // Write the manifest alongside the corpus. The corpus is "reality";
   // the manifest is "intent" — what the caller declared should be here.
   // Refresh later reconciles the two.
@@ -323,6 +373,9 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   // Preserve the prior resolved tag when nothing was embedded this run.
   // Writing null over a previously-known value would lose the freshness anchor.
   const resolvedForManifest = embedModelResolved ?? prevManifest?.embed_model_resolved ?? null;
+  // Persist failed_paths into the manifest so ollama_corpus_refresh with
+  // retry_failed:true can scan them on the next run. An empty list clears
+  // any stale failures from prior runs.
   const manifest: CorpusManifest = {
     schema_version: MANIFEST_SCHEMA_VERSION,
     name: params.name,
@@ -333,6 +386,14 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     chunk_overlap: opts.chunk_overlap,
     created_at: prevManifest?.created_at ?? now,
     updated_at: now,
+    failed_paths: failedPaths.map((f) => ({ path: f.path, reason: f.reason })),
+    ...(withinRefreshDrift
+      ? { embed_model_resolved_drift_within_refresh: withinRefreshDrift }
+      : {}),
+    // Marker is written LAST — loaders treat a manifest without
+    // `completed_at` as "the previous write was interrupted before the
+    // manifest landed cleanly" and surface a warning in corpus_list.
+    completed_at: now,
   };
   await saveManifest(manifest);
 
@@ -347,6 +408,7 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
     dropped_files: droppedFiles,
     elapsed_ms: Date.now() - t0,
     embed_model_resolved: embedModelResolved,
+    ...(withinRefreshDrift ? { embed_model_resolved_drift_within_refresh: withinRefreshDrift } : {}),
     failed_paths: failedPaths,
   };
 }

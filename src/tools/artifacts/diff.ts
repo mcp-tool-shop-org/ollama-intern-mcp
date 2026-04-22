@@ -406,6 +406,27 @@ export function diffArtifacts(
       false,
     );
   }
+  // Schema-version gate: comparing artifacts written by different pack
+  // schema revisions would silently produce bogus diffs (new fields
+  // rendered as `added`, removed fields as `removed`, etc.). Refuse loud.
+  const aVer = (a as unknown as { schema_version?: unknown }).schema_version;
+  const bVer = (b as unknown as { schema_version?: unknown }).schema_version;
+  if (typeof aVer !== "number" || typeof bVer !== "number") {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `artifact_diff refused: missing schema_version on ${typeof aVer !== "number" ? "a" : "b"} (a=${aVer}, b=${bVer}).`,
+      "Use artifact_read on each artifact to confirm its schema_version. Pre-schema_version artifacts need to be re-produced by the current pack — schema drift would turn the diff into noise.",
+      false,
+    );
+  }
+  if (aVer !== bVer) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `artifact_diff refused: schema_version mismatch (a=${aVer}, b=${bVer}).`,
+      "Use artifact_read on each artifact to inspect their shapes. Cross-schema diffs would render renamed/added fields as false 'added'/'removed' deltas — re-run the pack on the older artifact to bring it up to the current schema before diffing.",
+      false,
+    );
+  }
   const weak = computeWeakFlip(a.brief.weak, b.brief.weak);
   const packName: PackName = a.pack;
   if (packName === "incident_pack") {

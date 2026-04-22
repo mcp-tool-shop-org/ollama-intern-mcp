@@ -79,7 +79,7 @@ Lignes figées :
 - Les paquets sont figés à 3. Aucun nouveau type de paquet.
 - Le niveau d'artefact est figé à 7.
 
-La référence complète des outils se trouve dans le [manuel](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
+La référence complète des outils se trouve dans le [manuel](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 

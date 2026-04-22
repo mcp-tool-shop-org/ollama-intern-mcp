@@ -64,6 +64,7 @@ function toVec(text: string): number[] {
 let tempCorpusDir: string;
 let tempSourceDir: string;
 let origCorpusDir: string | undefined;
+let origAllowedRoots: string | undefined;
 
 const MODEL = "nomic-embed-text";
 
@@ -72,13 +73,18 @@ const MODEL = "nomic-embed-text";
 // correct pre-test value to restore — INTERN_CORPUS_DIR can never leak
 // out of this test file. (F-001)
 const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
+const MODULE_ORIG_ALLOWED_ROOTS = process.env.INTERN_CORPUS_ALLOWED_ROOTS;
 
 beforeEach(async () => {
   // Snapshot per-test too, in case a nested describe mutates it between hooks.
   origCorpusDir = process.env.INTERN_CORPUS_DIR;
+  origAllowedRoots = process.env.INTERN_CORPUS_ALLOWED_ROOTS;
   tempCorpusDir = await mkdtemp(join(tmpdir(), "intern-refresh-corpus-"));
   tempSourceDir = await mkdtemp(join(tmpdir(), "intern-refresh-src-"));
   process.env.INTERN_CORPUS_DIR = tempCorpusDir;
+  // tmpdir() may be outside homedir on Linux/CI — whitelist it so the
+  // realpath safety check in sha256File accepts test fixtures.
+  process.env.INTERN_CORPUS_ALLOWED_ROOTS = tmpdir();
 });
 
 afterEach(async () => {
@@ -87,11 +93,14 @@ afterEach(async () => {
   // directory cleanup can't leave the env pointing at a deleted path.
   try {
     const toRestore = origCorpusDir ?? MODULE_ORIG_CORPUS_DIR;
+    const toRestoreRoots = origAllowedRoots ?? MODULE_ORIG_ALLOWED_ROOTS;
     if (toRestore === undefined) {
       delete process.env.INTERN_CORPUS_DIR;
     } else {
       process.env.INTERN_CORPUS_DIR = toRestore;
     }
+    if (toRestoreRoots === undefined) delete process.env.INTERN_CORPUS_ALLOWED_ROOTS;
+    else process.env.INTERN_CORPUS_ALLOWED_ROOTS = toRestoreRoots;
   } finally {
     if (tempCorpusDir) await rm(tempCorpusDir, { recursive: true, force: true });
     if (tempSourceDir) await rm(tempSourceDir, { recursive: true, force: true });
@@ -419,5 +428,55 @@ describe("refreshCorpus", () => {
     expect(existsSync(path)).toBe(true);
     const raw = await readFile(path, "utf8");
     expect(JSON.parse(raw).name).toBe("located");
+  });
+
+  it("concurrent refreshes on the same corpus serialize (per-corpus lock)", async () => {
+    // Without a lock, two parallel refreshCorpus calls can interleave
+    // their corpus.json and manifest.json writes. Prove serialization by
+    // asserting that one call's embed batch completes before the next
+    // begins — tracked via an "in flight" counter inside the mock.
+    const p = await writeSource("a.md", "alpha original");
+    const client = new CountingEmbedMock();
+    await indexCorpus({ name: "serial", paths: [p], model: MODEL, client });
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    class SerializingMock implements OllamaClient {
+      public embedCalls = 0;
+      async generate(_: GenerateRequest): Promise<GenerateResponse> { throw new Error("n/a"); }
+      async chat(_: ChatRequest): Promise<ChatResponse> { throw new Error("n/a"); }
+      async embed(req: EmbedRequest): Promise<EmbedResponse> {
+        this.embedCalls += 1;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        // Hold the embed open briefly to widen the interleave window —
+        // without the lock, a second concurrent refresh would bump
+        // inFlight to 2 during this await.
+        await new Promise((r) => setTimeout(r, 25));
+        inFlight -= 1;
+        const inputs = Array.isArray(req.input) ? req.input : [req.input];
+        return { model: req.model, embeddings: inputs.map((t) => toVec(t)) };
+      }
+      async residency(_: string): Promise<Residency | null> {
+        return { in_vram: true, size_bytes: 1, size_vram_bytes: 1, evicted: false, expires_at: null };
+      }
+    }
+    const serialMock = new SerializingMock();
+
+    // Two back-to-back refreshes, both after a file edit so each actually
+    // re-embeds. If the lock works, maxInFlight stays at 1.
+    await writeFile(p, "alpha rev-1", "utf8");
+    const r1 = refreshCorpus({ name: "serial", model: MODEL, client: serialMock });
+    // Microtask gap, then stage another mutation and fire the second refresh.
+    await Promise.resolve();
+    await writeFile(p, "alpha rev-2", "utf8");
+    const r2 = refreshCorpus({ name: "serial", model: MODEL, client: serialMock });
+
+    const [report1, report2] = await Promise.all([r1, r2]);
+    expect(report1.no_op).toBe(false);
+    // The second refresh may or may not find work depending on ordering,
+    // but it must run to completion without the lock being violated.
+    expect(report2).toBeDefined();
+    expect(maxInFlight).toBe(1);
   });
 });

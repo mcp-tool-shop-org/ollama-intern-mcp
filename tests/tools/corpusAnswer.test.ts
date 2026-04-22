@@ -346,6 +346,48 @@ describe("handleCorpusAnswer", () => {
     expect(client.generateCalls).toBe(0);
   });
 
+  it("when all citations are stripped, notes distinguish 'out-of-range' from 'no citations at all'", async () => {
+    // Case A: model produced citation numbers but every one was out of
+    // range. The coverage note must call that out specifically so a
+    // caller can't confuse it with "model gave an answer without any
+    // structured citations" (a different failure mode).
+    await writeCorpus("t", EMBED_MODEL, [
+      { id: "c-0", path: "/docs/alpha.md", text: "alpha body about topic" },
+    ]);
+    const modelOut = JSON.stringify({
+      answer: "Out of range answer.",
+      citations: [7, 8, 9], // 0 valid, all stripped
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleCorpusAnswer(
+      { corpus: "t", question: "topic", mode: "lexical" },
+      makeCtx(client),
+    );
+    expect(env.result.citations).toHaveLength(0);
+    const note = env.result.coverage_notes.find((n) =>
+      n.includes("out-of-range") && n.includes("zero valid citations"),
+    );
+    expect(note).toBeDefined();
+  });
+
+  it("when model returns no citations at all, coverage_notes says 'without structured citations'", async () => {
+    // Case B: non-JSON output (or empty citations array). Note must
+    // point at the missing-structure failure, not out-of-range.
+    await writeCorpus("t", EMBED_MODEL, [
+      { id: "c-0", path: "/docs/alpha.md", text: "alpha body about topic" },
+    ]);
+    const client = new ProgrammableClient("plain prose reply, no JSON");
+    const env = await handleCorpusAnswer(
+      { corpus: "t", question: "topic", mode: "lexical" },
+      makeCtx(client),
+    );
+    expect(env.result.citations).toHaveLength(0);
+    const note = env.result.coverage_notes.find((n) =>
+      n.includes("without structured citations"),
+    );
+    expect(note).toBeDefined();
+  });
+
   it("retrieval block carries retrieved / total_in_corpus / top_score / weak", async () => {
     await writeCorpus("t", EMBED_MODEL, [
       { id: "c-0", path: "/docs/a.md", text: "alpha body topic one" },

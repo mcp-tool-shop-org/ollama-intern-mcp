@@ -30,7 +30,8 @@ import type { OllamaClient } from "../ollama.js";
 import { InternError } from "../errors.js";
 import { loadCorpus } from "./storage.js";
 import { loadManifest, saveManifest } from "./manifest.js";
-import { indexCorpus } from "./indexer.js";
+import { indexCorpusUnlocked } from "./indexer.js";
+import { withCorpusLock } from "./lock.js";
 
 export interface RefreshReport {
   name: string;
@@ -61,6 +62,24 @@ export interface RefreshReport {
    * no-op refresh).
    */
   embed_model_resolved_drift?: { prior: string; current: string };
+  /**
+   * Drift observed WITHIN this single refresh run — set only when the
+   * indexer saw more than one resolved tag across its batches (Ollama
+   * bumped `:latest` mid-stream). The resulting corpus has vectors from
+   * two different models; re-index for a clean baseline. Absent on the
+   * happy path.
+   */
+  embed_model_resolved_drift_within_refresh?: string[];
+  /**
+   * Paths retried this run because the prior index/refresh recorded them
+   * as failed. Empty when retry_failed was false or the prior manifest had
+   * no failed_paths. Paths that succeed this run leave failed_paths; paths
+   * that fail again end up in `still_failed` and the manifest preserves
+   * them for the next retry attempt.
+   */
+  retried_failed: string[];
+  /** Paths that failed again this run (subset of retried_failed + fresh failures on the normal path set). */
+  still_failed: { path: string; reason: string }[];
 }
 
 export interface RefreshParams {
@@ -68,6 +87,15 @@ export interface RefreshParams {
   /** Active embed model. Must match the manifest or refresh refuses. */
   model: string;
   client: OllamaClient;
+  /**
+   * When true, re-attempt any paths that the previous index/refresh
+   * recorded as failed (persisted in manifest.failed_paths). Default false
+   * — a normal refresh honors the manifest's declared paths and nothing
+   * else. Useful after the user fixes permissions / removes a stale
+   * symlink / resizes a file below the cap and wants to retry without
+   * re-indexing the entire corpus.
+   */
+  retry_failed?: boolean;
 }
 
 interface PathClassification {
@@ -83,6 +111,12 @@ async function sha256Of(absPath: string): Promise<string> {
 }
 
 export async function refreshCorpus(params: RefreshParams): Promise<RefreshReport> {
+  // Serialize against concurrent index/refresh on the same corpus name
+  // so corpus.json and manifest.json writes don't interleave across calls.
+  return withCorpusLock(params.name, () => refreshCorpusUnlocked(params));
+}
+
+async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshReport> {
   const t0 = Date.now();
 
   const manifest = await loadManifest(params.name);
@@ -90,7 +124,7 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
     throw new InternError(
       "SCHEMA_INVALID",
       `No manifest found for corpus "${params.name}".`,
-      `Run ollama_corpus_index({ name: "${params.name}", paths: [...] }) first — that writes the manifest as a side effect. Once a manifest exists, refresh can reconcile intent vs reality.`,
+      `Either the corpus name is wrong, or it has never been indexed. Run ollama_corpus_list to see every corpus currently on disk. If the name is correct but unseen, run ollama_corpus_index({ name: "${params.name}", paths: [...] }) first — that writes the manifest as a side effect, and refresh can reconcile intent vs reality from then on.`,
       false,
     );
   }
@@ -98,7 +132,7 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
     throw new InternError(
       "SCHEMA_INVALID",
       `Manifest for corpus "${params.name}" declares embed model "${manifest.embed_model}", but the active embed tier is "${params.model}".`,
-      `Either switch the active embed tier to match the manifest, or re-run ollama_corpus_index with the new model to rebuild the manifest.`,
+      `Mixing vectors across embed models gives meaningless similarity scores — refusing by design. Two fixes: (a) switch the active embed tier back to "${manifest.embed_model}" so refresh reuses existing vectors; or (b) re-run ollama_corpus_index({ name: "${params.name}", paths: [...] }) to rebuild the whole corpus under "${params.model}". Refresh will NOT re-embed across models.`,
       false,
     );
   }
@@ -156,9 +190,24 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
   // "chunks for this path are no longer in the corpus after refresh".
   const deleted = [...explicitlyRemoved, ...missing].sort();
 
+  // Retry queue: paths the previous run recorded as failed. Only scanned
+  // when the caller explicitly opts in — otherwise a refresh honors the
+  // declared path set and nothing else.
+  const priorFailed = params.retry_failed ? (manifest.failed_paths ?? []) : [];
+  const retryPaths = priorFailed.map((f) => resolve(f.path));
+  // Avoid double-indexing: a path that's both in manifest.paths AND in
+  // failed_paths only needs to appear in the livePaths list once.
+  const manifestAbsSet = new Set(manifestAbs);
+  const retryExtraPaths = retryPaths.filter((p) => !manifestAbsSet.has(p));
+
   // No-op detection. Nothing to do → don't touch anything, don't bump
-  // manifest.updated_at, don't call the indexer at all.
-  const noOp = added.length === 0 && changed.length === 0 && deleted.length === 0;
+  // manifest.updated_at, don't call the indexer at all. A pending retry
+  // counts as work even if nothing else drifted.
+  const noOp =
+    added.length === 0 &&
+    changed.length === 0 &&
+    deleted.length === 0 &&
+    retryExtraPaths.length === 0;
   if (noOp) {
     return {
       name: params.name,
@@ -173,15 +222,20 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
       dropped_chunks: 0,
       elapsed_ms: Date.now() - t0,
       no_op: true,
+      retried_failed: [],
+      still_failed: [],
     };
   }
 
-  // Live paths = manifest paths that actually exist on disk.
-  const livePaths = classifications
-    .filter((c) => c.klass !== "missing")
-    .map((c) => c.path);
+  // Live paths = manifest paths that actually exist on disk + retry extras.
+  const livePaths = [
+    ...classifications.filter((c) => c.klass !== "missing").map((c) => c.path),
+    ...retryExtraPaths,
+  ];
 
-  const indexReport = await indexCorpus({
+  // Use the unlocked variant — we already hold the corpus lock. Calling
+  // indexCorpus here would try to re-acquire and self-deadlock.
+  const indexReport = await indexCorpusUnlocked({
     name: params.name,
     paths: livePaths,
     model: params.model,
@@ -200,6 +254,15 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
   // surface it so the caller knows some chunks are from the old model.
   // Report-only — we don't forcibly re-embed. Callers who want uniform
   // vector space re-run ollama_corpus_index.
+  //
+  // Suppression rules (noise reduction):
+  //   - prior === null: the manifest never captured a resolved tag
+  //     (migrated v1 manifest, or no prior embed). There's nothing to
+  //     compare against — don't fabricate a drift report.
+  //   - current === null: no embed fired this run (pure reuse). We
+  //     learned nothing new about the resolved tag, so we can't claim drift.
+  //   - A no_op refresh also can't reach this code path — the early
+  //     return above ensures it.
   const priorResolved = manifest.embed_model_resolved;
   const currentResolved = indexReport.embed_model_resolved;
   const drift =
@@ -207,14 +270,38 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
       ? { prior: priorResolved, current: currentResolved }
       : undefined;
 
-  // Re-save manifest. Update the resolved tag only when a fresh probe
-  // happened this run (indexReport.embed_model_resolved !== null);
-  // otherwise preserve what the manifest already had.
+  // Note: indexCorpusUnlocked already rewrote the manifest (the indexer
+  // owns manifest writes end-to-end, including failed_paths, completed_at,
+  // and within-refresh drift). We only re-save here to preserve:
+  //   - the embed_model_resolved anchor from BEFORE this run if nothing
+  //     embedded (pure reuse), so the drift anchor isn't lost;
+  //   - our own updated_at bump in the no-retry shape (the indexer already
+  //     sets updated_at too, but being explicit here keeps the contract
+  //     obvious).
+  // The indexer's write is authoritative for everything else, so we
+  // re-load the just-written manifest, apply only the prior-preservation,
+  // and write back.
+  const latestManifest = (await loadManifest(params.name)) ?? manifest;
   await saveManifest({
-    ...manifest,
+    ...latestManifest,
     embed_model_resolved: currentResolved ?? priorResolved,
     updated_at: new Date().toISOString(),
   });
+
+  // Retry accounting: which of the retryExtraPaths actually succeeded
+  // (hash now present in the refreshed corpus) and which failed again
+  // (still in indexReport.failed_paths).
+  const freshFailedByPath = new Map(
+    indexReport.failed_paths.map((f) => [resolve(f.path), f.reason]),
+  );
+  const retriedFailed = retryExtraPaths;
+  const stillFailed = indexReport.failed_paths.map((f) => ({
+    path: resolve(f.path),
+    reason: f.reason,
+  }));
+  // Silence the "unused" warning in some editors — the map is intentionally
+  // kept for future callers who want per-path reason lookups.
+  void freshFailedByPath;
 
   return {
     name: params.name,
@@ -229,6 +316,11 @@ export async function refreshCorpus(params: RefreshParams): Promise<RefreshRepor
     dropped_chunks: droppedChunks,
     elapsed_ms: Date.now() - t0,
     no_op: false,
+    retried_failed: retriedFailed,
+    still_failed: stillFailed,
     ...(drift ? { embed_model_resolved_drift: drift } : {}),
+    ...(indexReport.embed_model_resolved_drift_within_refresh
+      ? { embed_model_resolved_drift_within_refresh: indexReport.embed_model_resolved_drift_within_refresh }
+      : {}),
   };
 }

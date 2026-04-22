@@ -27,7 +27,13 @@ export const corpusRefreshSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
-    .describe("Corpus to refresh. Must already have a manifest (created by ollama_corpus_index)."),
+    .describe("Corpus to refresh. Must already have a manifest (created by ollama_corpus_index). Call ollama_corpus_list to see which corpora exist."),
+  retry_failed: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, re-attempt any paths recorded as failed in the manifest (e.g. symlink rejects, TOCTOU races, oversized files). Default false — a normal refresh honors only the declared manifest paths. Use after you've fixed the underlying cause (resized the file, replaced the symlink, fixed permissions) to retry without re-indexing the whole corpus.",
+    ),
 });
 
 export type CorpusRefreshInput = z.infer<typeof corpusRefreshSchema>;
@@ -43,6 +49,7 @@ export async function handleCorpusRefresh(
     name: input.name,
     model,
     client: ctx.client,
+    retry_failed: input.retry_failed,
   });
 
   // Probe residency only if the refresh actually touched the embed rail.

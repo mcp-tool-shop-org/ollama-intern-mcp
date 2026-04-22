@@ -72,7 +72,7 @@ function assertExactlyOneEntry(input: ArtifactReadInput): void {
     throw new InternError(
       "SCHEMA_INVALID",
       `artifact_read: provide exactly one of {pack, slug} or {json_path} (given ${count}).`,
-      "The {pack, slug} form is preferred — it keeps reads anchored to job identity. json_path is a secondary escape hatch.",
+      "Pass {pack, slug} (preferred — keeps reads anchored to job identity) OR {json_path} (escape hatch for direct file access), not both and not neither. Run `ollama_artifact_list` to browse available {pack, slug} pairs.",
       false,
     );
   }
@@ -101,7 +101,7 @@ export async function handleArtifactRead(
       throw new InternError(
         "SCHEMA_INVALID",
         `Artifact at ${input.json_path} has an unrecognized shape.`,
-        "Only pack-produced artifacts (incident_pack, repo_pack, change_pack) are readable through this tool.",
+        "Check the file is a pack-produced artifact: incident_pack, repo_pack, or change_pack. Hand-written JSON or artifacts from old schema versions are refused — re-run the pack that produced it to regenerate with the current shape.",
         false,
       );
     }

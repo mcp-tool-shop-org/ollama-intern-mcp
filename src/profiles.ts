@@ -27,6 +27,7 @@
  */
 
 import type { Tier, TierConfig } from "./tiers.js";
+import { InternError } from "./errors.js";
 
 export type ProfileName = "dev-rtx5080" | "dev-rtx5080-qwen3" | "m5-max";
 
@@ -118,14 +119,33 @@ function isProfileName(x: string | undefined): x is ProfileName {
 /**
  * Resolve the active profile from env. Selection order:
  *   1. INTERN_PROFILE env var, if a known name
- *   2. DEFAULT_PROFILE (dev-rtx5080)
+ *   2. DEFAULT_PROFILE (dev-rtx5080) when INTERN_PROFILE is unset/empty
+ *
+ * If INTERN_PROFILE is set to a value that isn't a known profile, throws
+ * CONFIG_INVALID with the available names. Silent fallback (prior behavior
+ * through Stage A) would mask a typo'd profile against the wrong hardware
+ * ladder and bury the signal in late tier-timeout errors.
  *
  * Per-tier env vars (INTERN_TIER_INSTANT, etc.) override the profile's picks.
  * Profile.timeouts are not env-overridable — they are a hardware property,
  * not a one-off tuning knob.
  */
 export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
-  const name: ProfileName = isProfileName(env.INTERN_PROFILE) ? env.INTERN_PROFILE : DEFAULT_PROFILE;
+  const raw = env.INTERN_PROFILE;
+  let name: ProfileName;
+  if (raw === undefined || raw === "") {
+    name = DEFAULT_PROFILE;
+  } else if (isProfileName(raw)) {
+    name = raw;
+  } else {
+    const available = (Object.keys(PROFILES) as ProfileName[]).join(", ");
+    throw new InternError(
+      "CONFIG_INVALID",
+      `Unknown profile '${raw}'`,
+      `INTERN_PROFILE must be one of: ${available}. See README profile section, or unset INTERN_PROFILE to use the default (${DEFAULT_PROFILE}).`,
+      false,
+    );
+  }
   const base = PROFILES[name];
   const tiers: TierConfig = {
     instant: env.INTERN_TIER_INSTANT || base.tiers.instant,

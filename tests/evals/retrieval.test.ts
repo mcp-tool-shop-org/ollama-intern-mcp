@@ -112,7 +112,13 @@ const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
 beforeAll(async () => {
   tempCorpusDir = await mkdtemp(join(tmpdir(), "intern-retrieval-eval-"));
   const origCorpusDir = process.env.INTERN_CORPUS_DIR ?? MODULE_ORIG_CORPUS_DIR;
+  const origAllowedRoots = process.env.INTERN_CORPUS_ALLOWED_ROOTS;
   process.env.INTERN_CORPUS_DIR = tempCorpusDir;
+  // Fixtures live under REPO_ROOT (outside homedir when the repo is not
+  // under ~). Whitelist the repo root + tmpdir so the realpath safety
+  // check accepts these paths.
+  const sep = process.platform === "win32" ? ";" : ":";
+  process.env.INTERN_CORPUS_ALLOWED_ROOTS = `${REPO_ROOT}${sep}${tmpdir()}`;
 
   try {
     const entries = await readdir(FIXTURE_DIR);
@@ -152,6 +158,8 @@ beforeAll(async () => {
   } finally {
     if (origCorpusDir === undefined) delete process.env.INTERN_CORPUS_DIR;
     else process.env.INTERN_CORPUS_DIR = origCorpusDir;
+    if (origAllowedRoots === undefined) delete process.env.INTERN_CORPUS_ALLOWED_ROOTS;
+    else process.env.INTERN_CORPUS_ALLOWED_ROOTS = origAllowedRoots;
   }
 });
 

@@ -31,6 +31,23 @@ export async function handleCorpusList(
   const model = resolveTier("embed", ctx.tiers);
   const corpora = await listCorpora();
 
+  // Surface health warnings at the envelope level so callers can spot
+  // interrupted writes and failed-path backlogs without walking every
+  // summary themselves.
+  const warnings: string[] = [];
+  const incomplete = corpora.filter((c) => c.write_complete === false).map((c) => c.name);
+  const withFailures = corpora.filter((c) => (c.failed_path_count ?? 0) > 0);
+  if (incomplete.length > 0) {
+    warnings.push(
+      `${incomplete.length} corpus/corpora have an interrupted previous write (${incomplete.join(", ")}). Run ollama_corpus_refresh on each to restore inter-file consistency.`,
+    );
+  }
+  if (withFailures.length > 0) {
+    warnings.push(
+      `${withFailures.length} corpus/corpora have unresolved failed_paths. After fixing the underlying cause, call ollama_corpus_refresh({ name, retry_failed: true }) to retry.`,
+    );
+  }
+
   const envelope = buildEnvelope<CorpusListResult>({
     result: {
       corpora,
@@ -43,6 +60,7 @@ export async function handleCorpusList(
     tokensOut: 0,
     startedAt,
     residency: null,
+    warnings: warnings.length > 0 ? warnings : undefined,
   });
 
   await ctx.logger.log(callEvent("ollama_corpus_list", envelope));

@@ -339,7 +339,7 @@ export async function readArtifactAtPath(
     throw new InternError(
       "SOURCE_PATH_NOT_FOUND",
       `Artifact file does not exist: ${absPath}`,
-      "Confirm the path — the file may have been moved or deleted.",
+      "Check the path — the file may have been moved or deleted. Run `ollama_artifact_list` to see current (pack, slug) pairs, or re-run the pack that produced this artifact to regenerate it.",
       false,
     );
   }
