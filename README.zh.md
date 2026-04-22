@@ -17,7 +17,28 @@
 
 一个名为“MCP”的服务器，为“Claude Code”提供了一个“本地实习生”角色，该角色拥有规则、等级、办公桌和文件柜。 “Claude”选择“工具”；“工具”选择“等级”（分为“即时”、“工作马”、“深度”和“嵌入”）；“等级”会生成一个文件，您可以在下周打开查看。
 
+**同时驱动 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 模型，使用 `hermes3:8b` 版本** — 已于 2026-04-19 完整验证。默认模型为 `hermes3:8b`；`qwen3:*` 是备选模型。请参阅下方的 [使用 Hermes](#use-with-hermes) 部分。
+
+**硬件要求：** 使用 `hermes3:8b` 模型时，需要约 6 GB 的显存 (VRAM)，或者使用 CPU 推理时，需要约 16 GB 的内存 (RAM)。 详细信息请参阅 [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums)。
+
+**不使用 Claude？**  `./examples/` 目录下包含一个最小化的 Node.js 和 Python MCP 客户端，可以通过标准输入/输出 (stdio) 进行交互。 另请参阅 [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)。
+
 没有云服务。没有远程数据传输。没有任何“自动”功能。每一次操作都能清楚地看到其工作原理。
+
+---
+
+## 版本 2.1.0 的新增功能
+
+功能增强扩展了现有的层级，没有创建新的层级类别，"atoms+briefs" 的限制仍然保持在 18 个。
+
+- **`ollama_log_tail`** — 从 MCP 会话内部读取 NDJSON 日志。 详细信息请参阅 [handbook/observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/#the-ollama_log_tail-tool)。
+- **`ollama_batch_proof_check`** — 在一组路径上运行 `tsc` / `eslint` / `pytest`，并提供一个包含每个检查结果（通过/失败）的统一输出。 这是一个新的执行接口；请参阅 [SECURITY.md](./SECURITY.md)。
+- **`ollama_code_map`** — 代码树的结构化地图（导出、调用图、TODO 列表）。
+- **`ollama_code_citation`** — 给定一个符号，返回定义该符号的文件、行号以及上下文信息。
+- **`ollama_corpus_amend`** — 对现有语料库进行增量式修改；后续的回答会显示 `has_amended_content: true`。
+- **`ollama_artifact_prune`** — 基于年龄进行删除，默认情况下会进行试运行。 详细信息请参阅 [handbook/artifacts](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/artifacts/#artifact_prune)。
+- **增强功能：** `summarize_deep` 现在可以接受 `source_path` 参数；`corpus_answer` 显示已修改的内容的状态；新的可观察性事件已记录并经过完整验证。
+- **新的手册页面：** [可观察性](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/)（NDJSON 日志 + jq 脚本）和 [比较](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/comparison/)（诚实的模型矩阵与替代方案的比较）。
 
 ---
 
@@ -61,9 +82,31 @@
 
 在这个类别中，所有竞争对手都以“节省令牌”为宣传重点。而我们则强调的是：“这是实习生撰写的文档。”
 
+### 第二个示例：构建一个语料库，然后向其提问
+
+```jsonc
+// 1. Build a persistent, searchable corpus over your project.
+{ "tool": "ollama_corpus_index",
+  "arguments": { "name": "sprite-foundry",
+                 "paths": ["F:/AI/sprite-foundry/src"],
+                 "embed_model": "nomic-embed-text" } }
+// → { chunks_written: 1204, paths_indexed: 312, failed_paths: [] }
+
+// 2. Ask an evidence-bound question against it.
+{ "tool": "ollama_corpus_answer",
+  "arguments": { "name": "sprite-foundry",
+                 "query": "how does the worker handle OOM eviction?",
+                 "top_k": 8 } }
+// → { answer: "...", citations: [{chunk_id, path}...], weak: false }
+```
+
+`answer` 中的每个声明都引用了一个经过服务器端验证的 chunk id。 详细的步骤请参阅 [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/)。
+
 ---
 
 ## 这里包含四层，共28件工具
+
+**任务型 (Job-shaped)** 的含义是，每个工具都定义了一个任务，你可以将其分配给实习生完成，例如：对这进行分类、提取那、对这些日志进行分析、起草这个发布说明、打包这个事件。 工具的输入是任务规范，输出是交付成果。 没有通用的 `run_model` / `chat_with_llm` 基础功能。
 
 | 等级；层级。 | 计数。 | 这里住着什么？ |
 |---|---|---|
@@ -79,19 +122,17 @@
 - 组装包：已冻结在3个。 不会增加新的组装包类型。
 - 遗物等级：已冻结在7级。
 
-完整的工具参考资料请查阅[手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/)。
+完整的工具参考资料请查阅[手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/)。
 
 ---
 
 ## 安装
 
-```bash
-npm install -g ollama-intern-mcp
-```
+需要安装 [Ollama](https://ollama.com) 并运行本地，以及下载指定的模型（请参阅下方的 [模型下载](#model-pulls) 部分）。
 
-需要安装并运行本地的 [Ollama](https://ollama.com) 软件，并且需要下载相应的模型。
+### Claude Code (推荐)
 
-### 克劳德代码
+大多数用户通过将其添加到 Claude Code MCP 服务器的配置文件中来安装此工具，无需全局安装。 Claude Code 通过 `npx` 命令按需运行服务器。
 
 ```json
 {
@@ -111,6 +152,14 @@ npm install -g ollama-intern-mcp
 ### Claude 桌面版
 
 内容相同，将被写入到 `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS 系统) 或 `%APPDATA%\Claude\claude_desktop_config.json` (Windows 系统) 文件中。
+
+### 全局安装 (高级)
+
+只有当您希望在 Claude Code 之外，通过命令行直接使用该二进制文件时，才需要进行全局安装：
+
+```bash
+npm install -g ollama-intern-mcp
+```
 
 ### 与爱马仕产品搭配使用
 
@@ -277,11 +326,11 @@ export INTERN_PROFILE=m5-max
 
 ## 路线图（加强安全，而非扩大范围）
 
-- **第一阶段 — 授权核心：** ✓ 已发布：原子表面，统一接口，分层路由，安全措施。
-- **第二阶段 — 真实性核心：** ✓ 已发布：模式 v2 分块，BM25 + RRF，动态语料库，基于证据的简报，检索评估包。
-- **第三阶段 — 打包和工件核心：** ✓ 已发布：具有持久工件和连续性的固定流水线打包。
-- **第四阶段 — 采用核心：** — 在 RTX 5080 上进行实际使用观察，并完善表面上的问题。
-- **第五阶段 — M5 Max 性能基准测试：** — 在硬件到位后发布可公开的性能数据（约 2026 年 4 月 24 日）。
+- **第一阶段 — 授权核心** 已完成：原子表面、统一封装、分层路由、安全机制。
+- **第二阶段 — 真实性核心** 已完成：模式 v2 分块、BM25 + RRF、动态语料库、基于证据的简报、检索评估工具包。
+- **第三阶段 — 打包与工件核心** 已完成：包含持久工件的固定流水线包，以及连续部署层级。
+- **第四阶段 — 采用核心** 已完成 v2.0.1：三阶段健康检查，增强型语料库（防止时间序列攻击、文件大小限制为 50MB、拒绝符号链接、原子写入、针对每个文件的故障捕获），工具路径遍历，可观察性（信号量等待事件、超时错误上下文、配置环境覆盖日志、预热冷启动信号），测试安全性（跨 10 个文件的模块加载环境快照，`tools/call` 端到端测试）。为操作人员添加了故障排除手册和硬件最低要求。
+- **第五阶段 — M5 Max 性能基准测试** 待发布：硬件到位后，将发布可公开的性能数据（预计 2026 年 4 月 24 日左右）。
 
 按安全加固层进行划分。 原子/打包/工件表面保持不变。
 

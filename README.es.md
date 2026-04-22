@@ -17,7 +17,28 @@
 
 Un servidor MCP que proporciona a Claude Code un **"becario" local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / Potente / Profundo / Incorporado); el nivel escribe un archivo que puedes abrir la semana que viene.
 
+**También ejecuta [Hermes Agent](https://github.com/NousResearch/hermes-agent) en `hermes3:8b`** — validado de extremo a extremo el 19 de abril de 2026. La configuración predeterminada es `hermes3:8b`; `qwen3:*` es la opción alternativa. Consulte [Uso con Hermes](#use-with-hermes) a continuación.
+
+**Requisitos de hardware:** ~6 GB de VRAM para `hermes3:8b`, o ~16 GB de RAM para inferencia en CPU. Consulte [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums) para obtener más detalles.
+
+**¿No está utilizando Claude?** El directorio [`examples/`](./examples/) contiene un cliente mínimo de Node.js y Python para MCP que se puede ejecutar a través de stdio. Consulte también [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
+
 Sin nube. Sin telemetría. Nada de funciones "autónomas". Cada llamada muestra su trabajo.
+
+---
+
+## Novedades en v2.1.0
+
+La extensión de funciones mantiene los niveles existentes; no se crea una nueva clase de nivel, y "atoms+briefs" permanece en 18.
+
+- **`ollama_log_tail`** — lee el registro de llamadas NDJSON dentro de una sesión de MCP. [handbook/observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/#the-ollama_log_tail-tool).
+- **`ollama_batch_proof_check`** — ejecuta `tsc` / `eslint` / `pytest` en un conjunto de rutas; un único paquete con resultados de aprobación/fallo por verificación. Nueva superficie de ejecución; consulte [SECURITY.md](./SECURITY.md).
+- **`ollama_code_map`** — mapa estructural de un árbol de código (exportaciones, esquemas de grafo de llamadas, TODOs).
+- **`ollama_code_citation`** — dado un símbolo, devuelve el archivo de definición + línea + contexto circundante.
+- **`ollama_corpus_amend`** — modificaciones en línea y aditivas a un corpus existente; las respuestas posteriores muestran `has_amended_content: true`.
+- **`ollama_artifact_prune`** — eliminación basada en la edad, con ejecución de prueba predeterminada. [handbook/artifacts](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/artifacts/#artifact_prune).
+- **Mejoras** — `summarize_deep` ahora acepta `source_path`; `corpus_answer` muestra el estado de contenido modificado; se documentan nuevos eventos de observabilidad de extremo a extremo.
+- **Nuevas páginas del manual** — [Observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/) (registro NDJSON + recetas jq) y [Comparison](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/comparison/) (matriz honesta frente a alternativas).
 
 ---
 
@@ -61,9 +82,31 @@ Ese archivo Markdown es el resultado del "becario" en su escritorio: encabezados
 
 Todos los competidores en esta categoría destacan la función de "ahorro de tokens". Nosotros destacamos el hecho de que _aquí está el archivo que el becario escribió_.
 
+### Segundo ejemplo: crea un corpus y luego hazle una pregunta
+
+```jsonc
+// 1. Build a persistent, searchable corpus over your project.
+{ "tool": "ollama_corpus_index",
+  "arguments": { "name": "sprite-foundry",
+                 "paths": ["F:/AI/sprite-foundry/src"],
+                 "embed_model": "nomic-embed-text" } }
+// → { chunks_written: 1204, paths_indexed: 312, failed_paths: [] }
+
+// 2. Ask an evidence-bound question against it.
+{ "tool": "ollama_corpus_answer",
+  "arguments": { "name": "sprite-foundry",
+                 "query": "how does the worker handle OOM eviction?",
+                 "top_k": 8 } }
+// → { answer: "...", citations: [{chunk_id, path}...], weak: false }
+```
+
+Cada afirmación en `answer` cita un ID de fragmento validado en el servidor. Consulte el tutorial completo en [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
+
 ---
 
 ## ¿Qué hay aquí? Cuatro niveles, 28 herramientas
+
+**Diseñado para tareas específicas** significa que cada herramienta nombra una tarea que le asignarías a un becario: clasifica esto, extrae eso, prioriza estos registros, redacta esta nota de lanzamiento, empaqueta este incidente. La entrada de la herramienta es la especificación de la tarea; la salida es el resultado. No hay una función primitiva genérica `run_model` / `chat_with_llm` en la parte superior.
 
 | Nivel | Cantidad | Qué hay aquí |
 |---|---|---|
@@ -79,19 +122,17 @@ Líneas congeladas:
 - Los paquetes están congelados en 3. No hay nuevos tipos de paquete.
 - El nivel de artefacto está congelado en 7.
 
-La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
+La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
 
 ---
 
 ## Instalación
 
-```bash
-npm install -g ollama-intern-mcp
-```
+Requiere [Ollama](https://ollama.com) instalado localmente y los modelos de nivel descargados (consulte [Model pulls](#model-pulls) a continuación).
 
-Requiere [Ollama](https://ollama.com) instalado localmente y los modelos de nivel descargados.
+### Claude Code (recomendado)
 
-### Claude Code
+La mayoría de los usuarios instalan esto agregándolo a la configuración del servidor MCP de Claude Code; no se requiere una instalación global. Claude Code ejecuta el servidor bajo demanda mediante `npx`:
 
 ```json
 {
@@ -112,9 +153,17 @@ Requiere [Ollama](https://ollama.com) instalado localmente y los modelos de nive
 
 El mismo archivo, escrito en `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
 
+### Instalación global (avanzado)
+
+Solo es necesario si desea tener el binario en su `PATH` para uso ad-hoc fuera de Claude Code:
+
+```bash
+npm install -g ollama-intern-mcp
+```
+
 ### Uso con Hermes
 
-Este MCP fue validado de extremo a extremo con el [Agente Hermes](https://github.com/NousResearch/Hermes) contra `hermes3:8b` en Ollama (19 de abril de 2026). Hermes es un agente externo que *llama* a la superficie primitiva de este MCP; él se encarga de la planificación, nosotros realizamos el trabajo.
+Este MCP se validó de extremo a extremo con [Hermes Agent](https://github.com/NousResearch/hermes-agent) contra `hermes3:8b` en Ollama (19 de abril de 2026). Hermes es un agente externo que *llama* a la superficie primitiva congelada de este MCP; se encarga de la planificación, y nosotros nos encargamos del trabajo.
 
 Configuración de referencia ([hermes.config.example.yaml](hermes.config.example.yaml) en este repositorio):
 
@@ -144,7 +193,7 @@ mcp_servers:
       # only needed if you're pinning a different local model.
 ```
 
-**La estructura del prompt es importante.** Los prompts de invocación de herramientas imperativos ("Llama a X con los argumentos…") son la prueba de integración; proporcionan a un modelo local de 8B suficiente estructura para generar llamadas de herramientas limpias (`tool_calls`). Los prompts de tareas múltiples en formato de lista ("haz A, luego B, luego C") son puntos de referencia de capacidad para modelos más grandes; no interpretes un fallo en formato de lista en un modelo de 8B como "el sistema está dañado". Consulta [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) para obtener una guía completa de la integración y las limitaciones de transporte conocidas (transmisión de Ollama `/v1` + shim no transmisivo de openai-SDK).
+**La estructura de las instrucciones es importante.** Las instrucciones imperativas para invocar herramientas ("Llama a X con los argumentos…") son la prueba de integración; proporcionan a un modelo local de 8B la estructura necesaria para generar llamadas a herramientas (`tool_calls`) limpias. Las instrucciones en forma de lista para múltiples tareas ("haz A, luego B, luego C") son puntos de referencia de capacidad para modelos más grandes; no interpretes un fallo en una instrucción en forma de lista en un modelo de 8B como un "problema de conexión". Consulta [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) para obtener la guía completa de integración y las advertencias conocidas sobre la transmisión (Ollama `/v1` + una capa de compatibilidad no de transmisión para el SDK de OpenAI).
 
 ### Descarga de modelos
 
@@ -157,7 +206,7 @@ export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
 ```
 
-**Ruta alternativa de Qwen 3 (mismo hardware, para herramientas de Qwen):**
+**Ruta alternativa de Qwen 3 (mismo hardware, para las herramientas de Qwen):**
 
 ```bash
 ollama pull qwen3:8b
@@ -215,7 +264,7 @@ Cada llamada se registra como una línea en formato NDJSON en `~/.ollama-intern/
 | `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
 | `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**Configuración de desarrollo predeterminada** consolida los tres niveles de trabajo en `hermes3:8b`: la ruta de integración del Agente Hermes validada. El uso del mismo modelo de arriba a abajo significa que solo hay un componente que descargar, un costo de alojamiento y un conjunto de comportamientos que comprender. Los usuarios que prefieren Qwen 3 (con su infraestructura `THINK_BY_SHAPE`) pueden optar por `dev-rtx5080-qwen3`. `m5-max` es la versión de Qwen 3 optimizada para memoria unificada.
+**Configuración predeterminada para desarrollo:** La configuración predeterminada para desarrollo consolida los tres niveles de trabajo en `hermes3:8b`, que es la ruta de integración validada de Hermes Agent. Utilizar el mismo modelo de principio a fin significa que solo hay un componente que mantener, un costo de alojamiento, y un conjunto de comportamientos que comprender. Los usuarios que prefieren Qwen 3 (con su infraestructura `THINK_BY_SHAPE`) pueden optar por `dev-rtx5080-qwen3`. `m5-max` es la versión de Qwen 3 optimizada para memoria unificada.
 
 ---
 
@@ -277,11 +326,11 @@ Construido según los estándares de [Shipcheck](https://github.com/mcp-tool-sho
 
 ## Hoja de ruta (fortalecimiento, no ampliación del alcance)
 
-- **Fase 1: Núcleo de delegación** ✓ Implementado: interfaz de átomos, envoltorio uniforme, enrutamiento por niveles, mecanismos de seguridad.
-- **Fase 2: Núcleo de veracidad** ✓ Implementado: fragmentación de esquemas v2, BM25 + RRF, corpus vivos, resúmenes con respaldo de evidencia, paquete de evaluación de recuperación.
-- **Fase 3: Núcleo de empaquetado y artefactos** ✓ Implementado: paquetes con flujo de trabajo definido y artefactos duraderos + nivel de continuidad.
-- **Fase 4: Núcleo de adopción** — Observación del uso real en la RTX 5080, fortalecimiento de los aspectos problemáticos que surgen.
-- **Fase 5: Pruebas de rendimiento de M5 Max** — Publicación de resultados una vez que el hardware esté disponible (aproximadamente 24 de abril de 2026).
+- **Fase 1: Espina dorsal de delegación** ✓ Implementada: interfaz atómica, envoltorio uniforme, enrutamiento por niveles, mecanismos de seguridad.
+- **Fase 2: Espina dorsal de la verdad** ✓ Implementada: fragmentación de esquema v2, BM25 + RRF, corpus dinámicos, resúmenes con respaldo de evidencia, paquete de evaluación de recuperación.
+- **Fase 3: Espina dorsal de empaquetado y artefactos** ✓ Implementada: paquetes de flujo de trabajo predefinidos con artefactos duraderos + nivel de continuidad.
+- **Fase 4: Espina dorsal de adopción** ✓ v2.0.1: corpus de salud de tres etapas endurecido (protección contra ataques TOCTOU, límite de tamaño de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido de la ruta de las herramientas, observabilidad (eventos de espera de semáforos, contexto de error de tiempo de espera, registro de anulación de entorno, señal de precalentamiento para inicio en frío), pruebas de seguridad (instantánea del entorno de carga de módulos en 10 archivos, prueba E2E de `tools/call`). Se ha añadido un manual de solución de problemas y los requisitos mínimos de hardware para los operadores.
+- **Fase 5: Pruebas de rendimiento de M5 Max** — Se publicarán los resultados una vez que se disponga del hardware (aproximadamente el 24 de abril de 2026).
 
 Fase por capa de fortalecimiento. La interfaz de átomos/paquetes/artefactos permanece inalterada.
 
