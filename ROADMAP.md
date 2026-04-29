@@ -83,16 +83,18 @@ Pull deferred candidates from `memory/ollama-intern-adoption-pass-2026-04-16.md`
 
 5 parallel concern lenses (deps / tests / CI / API surface / docs+security) → synthesized markdown report. Code-driven orchestration produces one `<target>/docs/swarm-report/<sha>.md` per run.
 
-**Background:** `dogfood-lab/swarm-readout` was scaffolded 2026-04-29 as an exploratory build using `@anthropic-ai/claude-agent-sdk`. Pivoted because the SDK route requires Anthropic API spend, which conflicts with the local-first ecosystem `ollama-intern` exists to serve.
+**Design reference:** [`docs/design/swarm-readout-pattern.md`](./docs/design/swarm-readout-pattern.md) — full architectural sketch including the 5 concern prompts (verbatim), orchestrator code shape (Claude SDK reference + Ollama port sketch), CLI surface, and the open questions blocking implementation.
 
-**Question to answer before any code:** does the workflow fit ollama-intern's existing primitives, or warrant a new `ollama_swarm_readout` tool?
+**Background:** scaffolded 2026-04-29 as `dogfood-lab/swarm-readout` using `@anthropic-ai/claude-agent-sdk`, then pivoted because the SDK route requires Anthropic API spend (conflicts with local-first ecosystem). Standalone repo deleted same day; design preserved in this repo.
 
-- Existing primitives: `ollama_repo_pack` already produces a fixed-pipeline repo brief with markdown + JSON artifacts. Could "5 concern lenses → one report" be a configuration of `repo_pack`, or is it structurally different?
-- New tool case: 5 parallel passes with dedicated system prompts per concern is a different shape than `repo_pack`'s single sweeping analysis. Concern-axis chunking is novel.
+**Open questions blocking promotion to "Now"** (full list in the design doc):
+1. Does this fit `ollama_repo_pack`'s shape, or warrant its own MCP tool?
+2. File-scan-and-inject vs local tool-call surface (Hermes `/v1`)?
+3. Parallel-dispatch memory headroom on M5 Max 128GB — answered by the bench run.
+4. Concern axis generality (npm-shape today; Godot/Rust/UE5 need different lenses).
+5. v0 synthesis = deterministic stitching, or LLM-driven prioritization pass?
 
-**Acceptance for promotion to "Now":** a design doc deciding the tool/no-tool question, with the parallel dispatch sketch, before any implementation.
-
-The Claude SDK scaffold at `dogfood-lab/swarm-readout` (5 prompts in `agents/`, orchestrator skeleton in `src/orchestrator.ts`) is the architectural reference; ~80% transfers if we go the new-tool route, just swap `query()` for ollama-intern's local dispatch.
+**Acceptance for promotion to "Now":** the design doc grows from "exploring" to "decided" — Q1-Q5 answered with reasoning, named v0 owner.
 
 ---
 
