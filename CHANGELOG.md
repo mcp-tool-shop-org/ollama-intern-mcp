@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-05-12
+
+Non-breaking additive minor. All v2.3.0 callers continue working unchanged. Per-tier `num_ctx` control on the profile system; current behavior preserved when unset.
+
+Closes the operational gap surfaced by the research-os v0.8.0 Phase 1 diagnostic: hermes3:8b at the default 32K context on RTX 5080 16GB VRAM spills to CPU, causing workhorse-tier `ollama_extract` to time out. v2.4.0 lets profiles declare per-tier context-window size so workhorse/instant can run at smaller `num_ctx` while deep keeps its long-context default.
+
+### Added
+
+- **`TierConfig.num_ctx` (per-tier context-window map).** Optional `{ instant?, workhorse?, deep?, embed? }` map on `TierConfig`. When set for a tier, the MCP server places `options.num_ctx = <value>` on every Ollama generate / chat request routed to that tier — initial attempt and fallback. When unset, the request omits `num_ctx` entirely and Ollama uses the model-loaded default (v2.3.0 behavior preserved).
+- **`envelope.num_ctx_used` field.** Present only when the MCP server actually sent `num_ctx` to Ollama on the final attempt. Absent when no `num_ctx` was sent. Do not infer a default — absent means "Ollama chose."
+- **`dev-rtx5080` profile defaults.** `instant: 4096`, `workhorse: 8192`. Deep + embed left unset. Sized to keep hermes3:8b resident in the RTX 5080's 16GB VRAM budget for fast tools.
+- **`dev-rtx5080-qwen3` profile defaults.** Mirrors `dev-rtx5080` — same VRAM constraint applies to Qwen3 8B as hermes3:8b.
+- **`m5-max` profile defaults.** All tiers UNSET. 128GB unified memory has no spill problem at any reasonable context size.
+
+### Changed
+
+- **Tool runner / batch helpers** (`src/tools/runner.ts`, `src/tools/batch.ts`) resolve per-tier `num_ctx` against the ACTIVE tier — so a workhorse→instant fallback picks up instant's `num_ctx` (or stays unset). Threading happens once in shared infrastructure; atom and composite tools inherit it automatically.
+- **`ollama_chat`** (non-runner path) now also resolves and applies workhorse `num_ctx`.
+- **Prewarm** (`src/prewarm.ts`) carries the active tier's `num_ctx` so the warmed model loads at the same context size the runtime uses — prevents Ollama from reloading the model on first real call.
+- **`corpus_search` explain sub-call** carries the instant tier's `num_ctx` for the same reason.
+
+### Fixed
+
+- **Pack-size baseline** (`tests/pack.test.ts`) — bumped `BASELINE_PACKED_BYTES` from 350_000 to 385_000 to absorb prior legitimate growth that had pushed the pristine v2.3.0 tarball above the 10% tolerance ceiling.
+
+### Semantics (locked)
+
+1. Profile's tier `num_ctx` set → request carries `options.num_ctx`; envelope carries `num_ctx_used`.
+2. Profile's tier `num_ctx` unset → request omits `num_ctx`; envelope omits `num_ctx_used`. Ollama uses its model-loaded default. This is the v2.3.0 contract.
+3. Fallback retries resolve `num_ctx` against the FALLBACK tier, not the initial tier — same posture as `modelOverride` (per-call model override): degradation is per-tier-coherent.
+4. No per-call `num_ctx` input on any tool. Operators tune by selecting / editing the profile.
+
+### Tests
+
+- 792 total (up from 762 in v2.3.0). New: `tests/numCtx.test.ts` (atom-tool coverage for the 8 atom tools × set/unset, batch-mode positive/negative, composite via `change_brief`, diagnostic regression smoke on workhorse hermes3:8b → 8192), plus profile-schema assertions in `tests/profiles.test.ts`, `tests/tiers.test.ts` (`resolveNumCtx` helper), and `tests/envelope.test.ts` (`num_ctx_used` builder field).
+
+### Migration
+
+Drop-in upgrade from v2.3.x. No breaking changes. Existing callers see identical Ollama wire payloads unless they're on `dev-rtx5080` / `dev-rtx5080-qwen3` (where `instant`/`workhorse` calls will start carrying explicit `num_ctx`). The fix is the point — operators on those profiles get the spill-prevention behavior for free.
+
+If you've been pinning a custom model via `INTERN_TIER_*` and need the old 32K behavior on a constrained-VRAM box, switch to `m5-max` or edit the profile's `num_ctx` map directly.
+
+### Out of scope (deliberately)
+
+- No per-tier `num_gpu` / `num_thread` / batch size.
+- No profile inheritance / composition.
+- No runtime `/api/ps` querying for effective-context detection.
+- No per-call `num_ctx` override on tool inputs (only profile-level).
+- No deep-tier `num_ctx` change on shipped profiles (current default preserved; future revision when/if deep-tier spill surfaces).
+- No new tools.
+
 ## [2.3.0] — 2026-05-11
 
 Non-breaking additive minor. All v2.2.0 callers continue working unchanged. Per-call model override on atom tools; tier/profile defaults preserved when `model` omitted.

@@ -27,6 +27,57 @@ No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ---
 
+## New in v2.4.0
+
+Per-tier `num_ctx` (context window) control on the profile system. Additive minor — v2.3.0 callers unchanged. Detailed entries in [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
+
+- **`TierConfig.num_ctx` map (new)** — optional `{ instant?, workhorse?, deep?, embed? }` on the profile. When set for a tier, the MCP server places `options.num_ctx = <value>` on every Ollama generate/chat request routed to that tier (initial + fallback). When unset, the request omits `num_ctx` entirely so Ollama uses its model-loaded default — v2.3.0 behavior preserved exactly.
+- **New envelope field `num_ctx_used?: number`** — present only when the MCP server actually sent `num_ctx`. Absent when the request let Ollama choose. Do not infer a default — the MCP server does not query Ollama for the effective value.
+- **Profile defaults**: `dev-rtx5080` / `dev-rtx5080-qwen3` ship with `instant: 4096`, `workhorse: 8192`, `deep`/`embed` UNSET. Sized to keep `hermes3:8b` resident in the RTX 5080's 16GB VRAM budget for fast tools. `m5-max` leaves every tier UNSET — 128GB unified memory has no spill problem.
+- **Closes the v0.8.0 Phase 1 diagnostic** — `hermes3:8b` at the default 32K context on RTX 5080 spilled to CPU and started timing out workhorse `ollama_extract` calls. v2.4.0 prevents that at the profile layer.
+
+### Per-tier `num_ctx` control (new in v2.4.0)
+
+Profile (excerpt from `src/profiles.ts`):
+
+```ts
+"dev-rtx5080": {
+  tiers: {
+    instant: "hermes3:8b",
+    workhorse: "hermes3:8b",
+    deep: "hermes3:8b",
+    embed: "nomic-embed-text",
+    num_ctx: {
+      instant: 4096,    // fast classify/summarize
+      workhorse: 8192,  // schema-bound extract / batch
+      // deep: UNSET — long-context briefs keep current behavior
+      // embed: UNSET — no context-window pressure on embed
+    },
+  },
+  // ... timeouts, prewarm
+}
+```
+
+Envelope on a workhorse-tier call (e.g. `ollama_extract`):
+
+```jsonc
+{
+  "result": { /* extracted data */ },
+  "tier_used": "workhorse",
+  "model": "hermes3:8b",
+  "num_ctx_used": 8192,        // present because the profile set workhorse=8192
+  // ... rest of envelope unchanged
+}
+```
+
+On `m5-max` (or any profile that leaves a tier unset), `num_ctx_used` is absent from the envelope and the wire request to Ollama does not include the `num_ctx` field — Ollama uses its model-loaded default.
+
+Operators tune by selecting / editing the profile; there is no per-call `num_ctx` input on tool schemas. If a future call surfaces the need, the pattern follows v2.3.0's `model` override.
+
+### Historical — v2.3.0 deliverables
+
+See [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) for the full v2.3.0 entry (per-call model override).
+
 ## New in v2.3.0
 
 Per-call model override across LLM-backed atom tools. Additive minor — v2.2.0 callers unchanged. Detailed entries in [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).

@@ -79,6 +79,18 @@ export const PROFILES: Record<ProfileName, Profile> = {
       workhorse: "hermes3:8b",
       deep: "hermes3:8b",
       embed: "nomic-embed-text",
+      // Per-tier num_ctx (v2.4.0): keep hermes3:8b resident in the 16GB
+      // VRAM budget for fast tools. 32K default would spill to CPU and
+      // turn workhorse extraction into a 5–10× latency event. deep stays
+      // unset so long-context briefs / research keep current behavior;
+      // we'd rather see the spill on the explicit long-context path than
+      // proactively reduce the budget without dogfood evidence.
+      num_ctx: {
+        instant: 4096,
+        workhorse: 8192,
+        // deep: UNSET — preserves model-loaded default for long context.
+        // embed: UNSET — embed model is small, no context-window pressure.
+      },
     },
     timeouts: DEV_RTX5080_TIMEOUTS,
     prewarm: ["instant"],
@@ -92,6 +104,13 @@ export const PROFILES: Record<ProfileName, Profile> = {
       workhorse: "qwen3:8b",
       deep: "qwen3:14b",
       embed: "nomic-embed-text",
+      // Same VRAM constraint as dev-rtx5080 — Qwen3 8B has the same
+      // 16GB-VRAM ceiling at 32K context. Deep stays unset (qwen3:14b
+      // is the long-context tier here; reducing it is a separate call).
+      num_ctx: {
+        instant: 4096,
+        workhorse: 8192,
+      },
     },
     timeouts: DEV_RTX5080_TIMEOUTS,
     prewarm: ["instant"],
@@ -104,6 +123,9 @@ export const PROFILES: Record<ProfileName, Profile> = {
       workhorse: "qwen3:14b",
       deep: "qwen3:32b",
       embed: "nomic-embed-text",
+      // num_ctx UNSET on every tier: 128GB unified memory has no spill
+      // problem at any reasonable context size. Operators tune per-tier
+      // by editing this map if they ever need to.
     },
     timeouts: M5_MAX_TIMEOUTS,
     prewarm: [],
@@ -152,6 +174,10 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
     workhorse: env.INTERN_TIER_WORKHORSE || base.tiers.workhorse,
     deep: env.INTERN_TIER_DEEP || base.tiers.deep,
     embed: env.INTERN_EMBED_MODEL || base.tiers.embed,
+    // num_ctx (v2.4.0) is profile-level only; no env override yet. Carry
+    // the base profile's map through unchanged so per-tier num_ctx values
+    // propagate to ctx.tiers.num_ctx for runner.ts / batch.ts to resolve.
+    ...(base.tiers.num_ctx !== undefined ? { num_ctx: base.tiers.num_ctx } : {}),
   };
   return { name, description: base.description, tiers, timeouts: base.timeouts, prewarm: base.prewarm };
 }

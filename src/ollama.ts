@@ -119,6 +119,16 @@ export interface GenerateRequest {
     temperature?: number;
     num_predict?: number;
     top_p?: number;
+    /**
+     * Ollama context-window size in tokens (added v2.4.0). When omitted,
+     * Ollama uses the model-loaded default (typically 2048-32768 depending
+     * on the model). The MCP server resolves this from the active
+     * profile's per-tier `num_ctx` map and only sets it when the profile
+     * explicitly specifies a value for the calling tier — preserving
+     * v2.3.0 behavior when unset. Smaller `num_ctx` keeps mid-sized
+     * models in constrained VRAM (RTX 5080 16GB workhorse case).
+     */
+    num_ctx?: number;
   };
   /**
    * Thinking-mode toggle (Ollama 2026 API, added for Qwen 3 / DeepSeek R1 / etc.).

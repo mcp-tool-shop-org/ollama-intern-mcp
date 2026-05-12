@@ -16,7 +16,7 @@
  * server still comes up; the user sees the prewarm failure in the log.
  */
 
-import { resolveTier, type Tier } from "./tiers.js";
+import { resolveTier, resolveNumCtx, type Tier } from "./tiers.js";
 import type { RunContext } from "./runContext.js";
 import type { Logger } from "./observability.js";
 import { timestamp } from "./observability.js";
@@ -77,6 +77,11 @@ export async function runPrewarm(ctx: RunContext, tiers: Tier[]): Promise<number
   try {
   for (const tier of tiers) {
     const model = resolveTier(tier, ctx.tiers);
+    // Match the runtime path's num_ctx (v2.4.0). If we prewarm at the
+    // model's default 32K and then runtime calls send 8K, Ollama reloads
+    // the model — defeating the prewarm. When the profile sets num_ctx
+    // for this tier, the warmup carries it too; otherwise stay absent.
+    const numCtx = resolveNumCtx(tier, ctx.tiers);
     const startedAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), prewarmTimeoutForTier(ctx, tier));
@@ -87,7 +92,11 @@ export async function runPrewarm(ctx: RunContext, tiers: Tier[]): Promise<number
         {
           model,
           prompt: "ok",
-          options: { num_predict: 1, temperature: 0 },
+          options: {
+            num_predict: 1,
+            temperature: 0,
+            ...(numCtx !== undefined ? { num_ctx: numCtx } : {}),
+          },
           keep_alive: -1,
         },
         controller.signal,

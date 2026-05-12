@@ -35,6 +35,19 @@ export interface Envelope<T> {
    * model_requested vs model to detect fallback substitution.
    */
   model_requested?: string;
+  /**
+   * The `num_ctx` (Ollama context window, tokens) the MCP server EXPLICITLY
+   * sent on the generate request — added v2.4.0. Present only when the
+   * active profile's tier-level `num_ctx` was set for the calling tier
+   * AND that value was actually placed in `options.num_ctx` on the wire.
+   *
+   * ABSENT means the request omitted `num_ctx` entirely, so Ollama used
+   * its model-loaded default. Do NOT fake a value here — the MCP server
+   * does not query Ollama for the effective context, and synthesizing a
+   * default would silently mis-report what was actually sent. The "absent
+   * when unset" contract is what preserves v2.3.0 backward-compat.
+   */
+  num_ctx_used?: number;
   /** Non-fatal warnings — e.g. "2 citations stripped (paths not in source_paths)". */
   warnings?: string[];
   /** Total items in the batch. Only set on batch-mode calls. */
@@ -61,6 +74,15 @@ export interface EnvelopeBuilderInput<T> {
    * no override was supplied.
    */
   modelRequested?: string;
+  /**
+   * The `num_ctx` value the MCP server actually placed on the Ollama
+   * generate request (v2.4.0). Propagates to `num_ctx_used` on the output
+   * envelope. Omit (do NOT pass `undefined` synthesized to 0) when the
+   * profile didn't specify a per-tier `num_ctx` — the envelope field is
+   * intentionally absent in that case so callers can detect that the
+   * MCP server let Ollama choose the default.
+   */
+  numCtxUsed?: number;
   warnings?: string[];
 }
 
@@ -77,6 +99,7 @@ export function buildEnvelope<T>(input: EnvelopeBuilderInput<T>): Envelope<T> {
   };
   if (input.fallbackFrom) env.fallback_from = input.fallbackFrom;
   if (input.modelRequested) env.model_requested = input.modelRequested;
+  if (input.numCtxUsed !== undefined) env.num_ctx_used = input.numCtxUsed;
   if (input.warnings && input.warnings.length > 0) env.warnings = input.warnings;
   return env;
 }

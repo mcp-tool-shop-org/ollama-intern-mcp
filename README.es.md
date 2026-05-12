@@ -29,13 +29,64 @@ Sin nube. Sin telemetría. Nada de "autonomía". Cada llamada muestra su trabajo
 
 ## Novedades en v2.2.0
 
-Modelo configurable por llamada para las herramientas atomizadas basadas en LLM. Pequeñas mejoras adicionales; los usuarios de la versión v2.2.0 no se ven afectados. Detalles en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+Control individual `num_ctx` (tamaño de la ventana de contexto) por nivel en el sistema de perfiles. Pequeña mejora adicional: los usuarios de la versión v2.3.0 no se ven afectados. Detalles en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
 
-- **Entrada opcional `model: string` en 8 herramientas atomizadas** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. El primer intento en el nivel de la herramienta utiliza el modelo especificado por el usuario; en caso de tiempo de espera, la cascada existente `TIER_FALLBACK` utiliza el modelo propio del nivel más económico (NO la configuración del usuario). Las herramientas compuestas/resumidas/de paquete *deliberadamente* no aceptan el parámetro `model`; las herramientas atomizadas tienen control por llamada, mientras que las herramientas compuestas utilizan los valores predeterminados del nivel.
-- **Nuevo campo de la estructura `model_requested?: string`** — presente solo cuando se proporciona la configuración. Los usuarios que realizan la calibración comparan `model_requested` con `model` para detectar la sustitución: `if (env.model_requested && env.model !== env.model_requested) { /* sustitución */ }`. Las entradas vacías o que contienen solo espacios en blanco generan un error `ZodError` durante el análisis del esquema, en lugar de una sustitución silenciosa.
-- **Corrección de errores — desviación en `src/version.ts`.** La constante de tiempo de ejecución `VERSION` ahora se lee del archivo `package.json` al cargar el módulo; las versiones v2.1.0 y v2.2.0 se enviaron con la cadena de identificación obsoleta `"2.0.0"`. La nueva prueba `tests/version.test.ts` verifica que `VERSION === pkg.version`.
+- **Mapa `TierConfig.num_ctx` (nuevo)**: Opcional `{ instant?, workhorse?, deep?, embed? }` en el perfil. Cuando se establece para un nivel, el servidor MCP coloca `options.num_ctx = <valor>` en cada solicitud de generación/chat de Ollama dirigida a ese nivel (inicial + alternativa). Si no se establece, la solicitud omite completamente `num_ctx`, por lo que Ollama utiliza su valor predeterminado cargado con el modelo; se conserva exactamente el comportamiento de la versión v2.3.0.
+- **Nuevo campo de la envolvente `num_ctx_used?: number`**: Solo está presente cuando el servidor MCP realmente envió `num_ctx`. No está presente cuando la solicitud permitió que Ollama eligiera. No se debe inferir un valor predeterminado: el servidor MCP no consulta a Ollama para obtener el valor efectivo.
+- **Valores predeterminados del perfil**: `dev-rtx5080` / `dev-rtx5080-qwen3` se entregan con `instant: 4096`, `workhorse: 8192`, `deep`/`embed` SIN ESTABLECER. Se dimensionaron para mantener `hermes3:8b` en la memoria VRAM de 16 GB de la RTX 5080 para herramientas rápidas. `m5-max` deja todos los niveles SIN ESTABLECER: la memoria unificada de 128 GB no tiene problemas de desbordamiento.
+- **Cierra la fase 1 de diagnóstico de la versión v0.8.0**: `hermes3:8b` con el contexto predeterminado de 32K en la RTX 5080 se volcaba a la CPU y comenzaba a provocar tiempos de espera en las llamadas `ollama_extract` de "workhorse". La versión v2.4.0 evita esto a nivel de perfil.
 
-### Configuración de modelo por llamada (nueva en la versión v2.3.0)
+### Control individual de `num_ctx` (nuevo en v2.4.0)
+
+Perfil (fragmento de `src/profiles.ts`):
+
+```ts
+"dev-rtx5080": {
+  tiers: {
+    instant: "hermes3:8b",
+    workhorse: "hermes3:8b",
+    deep: "hermes3:8b",
+    embed: "nomic-embed-text",
+    num_ctx: {
+      instant: 4096,    // fast classify/summarize
+      workhorse: 8192,  // schema-bound extract / batch
+      // deep: UNSET — long-context briefs keep current behavior
+      // embed: UNSET — no context-window pressure on embed
+    },
+  },
+  // ... timeouts, prewarm
+}
+```
+
+Envolvente en una llamada de nivel "workhorse" (por ejemplo, `ollama_extract`):
+
+```jsonc
+{
+  "result": { /* extracted data */ },
+  "tier_used": "workhorse",
+  "model": "hermes3:8b",
+  "num_ctx_used": 8192,        // present because the profile set workhorse=8192
+  // ... rest of envelope unchanged
+}
+```
+
+En `m5-max` (o cualquier perfil que deje un nivel sin establecer), `num_ctx_used` no está presente en la envolvente y la solicitud enviada a Ollama no incluye el campo `num_ctx`: Ollama utiliza su valor predeterminado cargado con el modelo.
+
+Los operadores configuran ajustando o editando el perfil; no hay una entrada de `num_ctx` por llamada en los esquemas de las herramientas. Si una llamada futura revela la necesidad, el patrón sigue la sobreescritura de `model` de la versión v2.3.0.
+
+### Histórico — entregables de v2.1.0
+
+Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) para la entrada completa de la versión v2.3.0 (sobreescritura de modelo por llamada).
+
+## Novedades en v2.2.0
+
+Sobreescritura de modelo por llamada en herramientas basadas en LLM. Pequeña mejora adicional: los usuarios de la versión v2.2.0 no se ven afectados. Detalles en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+
+- **Entrada opcional `model: string` en 8 herramientas**: `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. El primer intento en el nivel de la herramienta se ejecuta con el modelo especificado por el llamador; en caso de tiempo de espera, la cascada `TIER_FALLBACK` existente resuelve el modelo propio del nivel más económico (NO la sobreescritura del llamador). Las herramientas compuestas/resumidas/empaquetadas NO aceptan deliberadamente `model`: los átomos tienen control por llamada, las herramientas compuestas utilizan los valores predeterminados del nivel.
+- **Nuevo campo de la envolvente `model_requested?: string`**: Solo está presente cuando se proporcionó la sobreescritura. Los llamadores conscientes de la calibración comparan `model_requested` con `model` para detectar la sustitución de la alternativa: `if (env.model_requested && env.model !== env.model_requested) { /* sustitución */ }`. Las entradas vacías o solo con espacios en blanco generan un error `ZodError` durante el análisis del esquema, no una omisión silenciosa.
+- **Corrección de errores: deriva en `src/version.ts`**. La constante de tiempo de ejecución `VERSION` ahora se lee de `package.json` al cargar el módulo; las versiones v2.1.0 y v2.2.0 enviaron información incorrecta con la cadena de identidad "2.0.0". Se agregó una nueva prueba `tests/version.test.ts` que verifica que `VERSION === pkg.version`.
+
+### Sobreescritura de modelo por llamada (nuevo en v2.3.0)
 
 ```jsonc
 {
@@ -49,7 +100,7 @@ Modelo configurable por llamada para las herramientas atomizadas basadas en LLM.
 }
 ```
 
-Estructura:
+Envolvente:
 
 ```jsonc
 {
@@ -61,11 +112,11 @@ Estructura:
 }
 ```
 
-Si el nivel "workhorse/deep" hubiera alcanzado el tiempo de espera y la llamada se hubiera redirigido al nivel "instant", `env.model` sería el modelo utilizado por el nivel "instant" y `env.fallback_from` sería `"workhorse"`; `env.model_requested` seguiría siendo `"hermes3:8b"`, y `env.model !== env.model_requested` indica la sustitución. La configuración *deliberadamente* no se propaga al nivel más económico; el modelo elegido podría no ser adecuado para el rol de ese nivel.
+Si el servidor principal o la capa de procesamiento intensivo hubiera alcanzado su límite de tiempo y la solicitud se hubiera redirigido a la capa de respuesta rápida, `env.model` sería el modelo asignado por la capa de respuesta rápida, y `env.fallback_from` sería "workhorse" (servidor principal). `env.model_requested` seguiría siendo "hermes3:8b", y la condición `env.model !== env.model_requested` indica que se ha realizado una sustitución. Esta sustitución se realiza deliberadamente y no se aplica a la capa de menor costo, ya que el modelo elegido podría no ser adecuado para el rol de esa capa.
 
 ### Histórico — entregables de v2.1.0
 
-Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para ver la entrada completa de la versión v2.2.0 (relevancia temática y abstención estructurada).
+Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para ver la entrada completa de la versión 2.2.0 (relevancia temática contextual + abstención estructurada).
 
 ## Novedades en v2.2.0
 

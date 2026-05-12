@@ -29,6 +29,57 @@
 
 ## 新功能，版本 2.3.0
 
+在配置文件系统中，可以对每个层级进行 `num_ctx`（上下文窗口）的控制。这是一个小幅的增量更新，v2.3.0 的调用者未发生变化。详细信息请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md)。
+
+- **`TierConfig.num_ctx` 映射 (新)** — 配置文件中的可选参数，包括 `{ instant?, workhorse?, deep?, embed? }`。如果为某个层级设置了该参数，MCP 服务器将在发送到该层级的每个 Ollama 生成/聊天请求中，添加 `options.num_ctx = <value>`。如果未设置，则请求将完全省略 `num_ctx` 字段，Ollama 将使用其模型加载时的默认值。这与 v2.3.0 的行为完全一致。
+- **新的数据包字段 `num_ctx_used?: number`** — 仅在 MCP 服务器实际发送了 `num_ctx` 时才存在。如果请求允许 Ollama 选择，则该字段不存在。不要尝试推断默认值，因为 MCP 服务器不会向 Ollama 查询实际值。
+- **配置文件默认值**: `dev-rtx5080` / `dev-rtx5080-qwen3` 配置文件中，`instant` 设置为 4096，`workhorse` 设置为 8192，`deep`/`embed` 未设置。这些设置是为了确保 `hermes3:8b` 模型能够完全加载到 RTX 5080 的 16GB 显存中，以提高工具的运行速度。`m5-max` 配置中，所有层级都未设置，因为 128GB 的统一内存不会出现内存溢出问题。
+- **解决了 v0.8.0 阶段 1 的诊断问题** — 在 RTX 5080 上，使用默认的 32K 上下文时，`hermes3:8b` 模型的数据会溢出到 CPU，导致 `ollama_extract` 调用超时。v2.4.0 在配置文件层解决了这个问题。
+
+### 每个层级的 `num_ctx` 控制（v2.4.0 的新功能）
+
+配置文件（摘自 `src/profiles.ts`）：
+
+```ts
+"dev-rtx5080": {
+  tiers: {
+    instant: "hermes3:8b",
+    workhorse: "hermes3:8b",
+    deep: "hermes3:8b",
+    embed: "nomic-embed-text",
+    num_ctx: {
+      instant: 4096,    // fast classify/summarize
+      workhorse: 8192,  // schema-bound extract / batch
+      // deep: UNSET — long-context briefs keep current behavior
+      // embed: UNSET — no context-window pressure on embed
+    },
+  },
+  // ... timeouts, prewarm
+}
+```
+
+在 `workhorse` 层级的调用中的数据包（例如 `ollama_extract`）：
+
+```jsonc
+{
+  "result": { /* extracted data */ },
+  "tier_used": "workhorse",
+  "model": "hermes3:8b",
+  "num_ctx_used": 8192,        // present because the profile set workhorse=8192
+  // ... rest of envelope unchanged
+}
+```
+
+在 `m5-max`（或任何未设置层级的配置文件）中，`num_ctx_used` 不会出现在数据包中，并且发送到 Ollama 的请求中不包含 `num_ctx` 字段。Ollama 将使用其模型加载时的默认值。
+
+操作员可以通过选择/编辑配置文件来调整参数。工具模式中没有针对每个调用的 `num_ctx` 输入。如果未来出现需要该功能的情况，可以遵循 v2.3.0 中 `model` 的覆盖方式。
+
+### 历史 — v2.2.0 的功能
+
+请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md)，以获取完整的 v2.3.0 版本信息（关于每个调用的模型覆盖）。
+
+## 新功能，版本 2.3.0
+
 在基于 LLM 的原子工具中，实现了每个调用的模型覆盖。这是一个小版本更新，不会影响 v2.2.0 的调用者。详细信息请参阅 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md)。
 
 - **8 个原子工具的 `model: string` 可选输入** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`。 首次尝试使用工具的层级时，会使用调用者指定的模型；如果超时，则现有的 `TIER_FALLBACK` 机制会解析更低层级的模型（而不是调用者的覆盖）。 组合/简报/打包工具故意不接受 `model` 参数 — 原子工具可以进行每个调用的控制，而组合工具使用默认层级。

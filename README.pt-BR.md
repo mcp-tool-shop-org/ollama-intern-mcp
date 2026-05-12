@@ -29,6 +29,57 @@ Sem nuvem. Sem telemetria. Sem nada "autônomo". Cada chamada mostra seu trabalh
 
 ## Novo no v2.2.0
 
+Controle individualizado de `num_ctx` (janela de contexto) para cada nível no sistema de perfis. Pequena alteração cumulativa — as chamadas não foram modificadas na versão 2.3.0. Detalhes nas seções [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
+
+- **Mapa `TierConfig.num_ctx` (novo)** — opcional `{ instant?, workhorse?, deep?, embed? }` no perfil. Quando definido para um nível, o servidor MCP inclui `options.num_ctx = <valor>` em cada solicitação de geração/chat do Ollama direcionada a esse nível (inicial + fallback). Quando não definido, a solicitação omite completamente o campo `num_ctx`, permitindo que o Ollama use o valor padrão carregado no modelo — o comportamento da versão 2.3.0 é preservado exatamente.
+- **Novo campo do envelope `num_ctx_used?: number`** — presente apenas quando o servidor MCP realmente enviou `num_ctx`. Ausente quando a solicitação permitiu que o Ollama escolhesse. Não tente inferir um valor padrão — o servidor MCP não consulta o Ollama para obter o valor efetivo.
+- **Valores padrão do perfil**: Os perfis `dev-rtx5080` / `dev-rtx5080-qwen3` são enviados com `instant: 4096`, `workhorse: 8192`, `deep`/`embed` NÃO DEFINIDOS. O tamanho foi ajustado para manter o `hermes3:8b` na memória VRAM de 16GB da RTX 5080, permitindo ferramentas rápidas. O `m5-max` deixa todos os níveis NÃO DEFINIDOS — a memória unificada de 128GB não apresenta problemas de estouro.
+- **Corrige o diagnóstico da Fase 1 da versão 0.8.0** — o `hermes3:8b` com o contexto padrão de 32K na RTX 5080 estava sendo transferido para a CPU e causando timeouts nas chamadas `ollama_extract` do tipo `workhorse`. A versão 2.4.0 evita isso na camada de perfil.
+
+### Controle individualizado de `num_ctx` (novo na versão 2.4.0)
+
+Perfil (trecho de `src/profiles.ts`):
+
+```ts
+"dev-rtx5080": {
+  tiers: {
+    instant: "hermes3:8b",
+    workhorse: "hermes3:8b",
+    deep: "hermes3:8b",
+    embed: "nomic-embed-text",
+    num_ctx: {
+      instant: 4096,    // fast classify/summarize
+      workhorse: 8192,  // schema-bound extract / batch
+      // deep: UNSET — long-context briefs keep current behavior
+      // embed: UNSET — no context-window pressure on embed
+    },
+  },
+  // ... timeouts, prewarm
+}
+```
+
+Envelope em uma chamada de nível `workhorse` (por exemplo, `ollama_extract`):
+
+```jsonc
+{
+  "result": { /* extracted data */ },
+  "tier_used": "workhorse",
+  "model": "hermes3:8b",
+  "num_ctx_used": 8192,        // present because the profile set workhorse=8192
+  // ... rest of envelope unchanged
+}
+```
+
+Em `m5-max` (ou qualquer perfil que deixe um nível não definido), `num_ctx_used` está ausente do envelope e a solicitação enviada ao Ollama não inclui o campo `num_ctx` — o Ollama usa o valor padrão carregado no modelo.
+
+Os operadores ajustam as configurações selecionando/editando o perfil; não há entrada de `num_ctx` por chamada nos esquemas das ferramentas. Se uma chamada futura revelar a necessidade, o padrão seguirá a sobreposição de `model` da versão 2.3.0.
+
+### Histórico — entregas da v2.1.0
+
+Consulte [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) para a entrada completa da versão 2.3.0 (sobreposição de modelo por chamada).
+
+## Novo no v2.2.0
+
 Substituição de modelo por chamada em todas as ferramentas "atom" que utilizam LLMs. Pequena alteração cumulativa — os chamadores da versão v2.2.0 permanecem inalterados. Detalhes nas seções [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
 
 - **Entrada opcional `model: string` em 8 ferramentas "atom"** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. A primeira tentativa na camada da ferramenta utiliza o modelo especificado pelo chamador; em caso de timeout, a cascata existente `TIER_FALLBACK` resolve o modelo da própria camada mais econômica (e não a substituição do chamador). As ferramentas compostas/resumidas/de pacote *deliberadamente* não aceitam o parâmetro `model` — as ferramentas "atom" têm controle por chamada, enquanto as ferramentas compostas usam as configurações padrão da camada.

@@ -129,4 +129,64 @@ describe("profiles", () => {
   it("loadProfile carries prewarm through to caller", () => {
     expect(loadProfile({}).prewarm).toEqual(PROFILES[DEFAULT_PROFILE].prewarm);
   });
+
+  // ── Per-tier num_ctx (v2.4.0) ────────────────────────────────────
+  //
+  // Operational driver: hermes3:8b at 32K context on RTX 5080 16GB VRAM
+  // spills to CPU and kills workhorse latency. Profiles now declare
+  // per-tier num_ctx to keep mid-sized models resident.
+
+  it("dev-rtx5080 sets instant=4096 / workhorse=8192 (RTX 5080 VRAM fit)", () => {
+    const p = PROFILES["dev-rtx5080"];
+    expect(p.tiers.num_ctx?.instant).toBe(4096);
+    expect(p.tiers.num_ctx?.workhorse).toBe(8192);
+  });
+
+  it("dev-rtx5080 leaves deep + embed num_ctx UNSET (current behavior preserved)", () => {
+    // Deep stays at the model-loaded default — long-context briefs /
+    // research keep current behavior. Embed has no context-window
+    // pressure. Both must be undefined, not 0.
+    const p = PROFILES["dev-rtx5080"];
+    expect(p.tiers.num_ctx?.deep).toBeUndefined();
+    expect(p.tiers.num_ctx?.embed).toBeUndefined();
+  });
+
+  it("dev-rtx5080-qwen3 mirrors the RTX 5080 instant/workhorse caps", () => {
+    // Same VRAM constraint applies to Qwen3 8B as hermes3:8b.
+    const p = PROFILES["dev-rtx5080-qwen3"];
+    expect(p.tiers.num_ctx?.instant).toBe(4096);
+    expect(p.tiers.num_ctx?.workhorse).toBe(8192);
+    expect(p.tiers.num_ctx?.deep).toBeUndefined();
+    expect(p.tiers.num_ctx?.embed).toBeUndefined();
+  });
+
+  it("m5-max leaves num_ctx UNSET on every tier (128GB unified, no spill problem)", () => {
+    const p = PROFILES["m5-max"];
+    // The whole map is allowed to be undefined OR present with all
+    // tiers absent — both shapes mean "let Ollama use its default".
+    const map = p.tiers.num_ctx;
+    if (map !== undefined) {
+      expect(map.instant).toBeUndefined();
+      expect(map.workhorse).toBeUndefined();
+      expect(map.deep).toBeUndefined();
+      expect(map.embed).toBeUndefined();
+    }
+  });
+
+  it("loadProfile carries num_ctx through to caller (dev-rtx5080)", () => {
+    const p = loadProfile({ INTERN_PROFILE: "dev-rtx5080" });
+    expect(p.tiers.num_ctx?.instant).toBe(4096);
+    expect(p.tiers.num_ctx?.workhorse).toBe(8192);
+    expect(p.tiers.num_ctx?.deep).toBeUndefined();
+  });
+
+  it("loadProfile carries num_ctx through to caller (m5-max — all unset)", () => {
+    // m5-max defines no num_ctx; the loader must not synthesize one.
+    const p = loadProfile({ INTERN_PROFILE: "m5-max" });
+    if (p.tiers.num_ctx !== undefined) {
+      expect(p.tiers.num_ctx.instant).toBeUndefined();
+      expect(p.tiers.num_ctx.workhorse).toBeUndefined();
+      expect(p.tiers.num_ctx.deep).toBeUndefined();
+    }
+  });
 });

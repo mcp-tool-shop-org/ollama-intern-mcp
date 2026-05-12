@@ -13,10 +13,49 @@ export interface TierConfig {
   workhorse: string;
   deep: string;
   embed: string;
+  /**
+   * Per-tier `num_ctx` (Ollama context window) override (added v2.4.0).
+   *
+   * When a tier's `num_ctx` is set, the MCP server explicitly sends
+   * `options.num_ctx = <value>` on every generate call routed to that
+   * tier — both the initial attempt and any fallback. When a tier's
+   * `num_ctx` is unset (or this whole map is undefined), the request
+   * options block omits `num_ctx` entirely and Ollama falls back to its
+   * model-loaded default. The "absent when unset" branch is what
+   * preserves v2.3.0 backward-compat.
+   *
+   * Operational driver: hermes3:8b at 32K context on RTX 5080 16GB VRAM
+   * spills to CPU and kills workhorse tool latency. The dev-rtx5080
+   * profile lowers workhorse/instant to 8192/4096 so the model stays
+   * resident in VRAM; deep remains unset so long-context briefs keep
+   * current behavior. M5 Max has no spill problem (128GB unified) so all
+   * tiers stay unset there.
+   *
+   * Scope guard: this is profile-level only. There is intentionally no
+   * per-call `num_ctx` override on tool inputs in v2.4.0 — operators
+   * tune by switching profiles or pinning a tier via env override.
+   */
+  num_ctx?: {
+    instant?: number;
+    workhorse?: number;
+    deep?: number;
+    embed?: number;
+  };
 }
 
 export function resolveTier(tier: Tier, config: TierConfig): string {
   return config[tier];
+}
+
+/**
+ * Resolve the per-tier `num_ctx` value for the active tier, if the profile
+ * sets one. Returns undefined when the tier is unset — callers MUST then
+ * omit the `num_ctx` field from the Ollama options block entirely, so
+ * Ollama uses its model-loaded default. v2.3.0 backward-compat depends on
+ * the "absent when unset" contract; never substitute a fake default value.
+ */
+export function resolveNumCtx(tier: Tier, config: TierConfig): number | undefined {
+  return config.num_ctx?.[tier];
 }
 
 /**

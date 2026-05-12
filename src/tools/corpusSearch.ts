@@ -25,7 +25,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import { resolveTier, TEMPERATURE_BY_SHAPE } from "../tiers.js";
+import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { loadCorpus, type CorpusFile, type CorpusChunk } from "../corpus/storage.js";
 import { searchCorpus, DEFAULT_SEARCH_MODE, SEARCH_MODES, isEmptyQuery, type CorpusHit, type SearchMode } from "../corpus/searcher.js";
 import { InternError } from "../errors.js";
@@ -302,6 +302,10 @@ export async function handleCorpusSearch(
 
   if (input.explain === true && rawHits.length > 0) {
     const deepModel = resolveTier("instant", ctx.tiers);
+    // explain sub-calls run on the Instant tier — pick up its num_ctx
+    // (v2.4.0) so the explain pass doesn't reload the model at a
+    // different context budget than the prewarm / regular Instant path.
+    const explainNumCtx = resolveNumCtx("instant", ctx.tiers);
     const toExplain = rawHits.slice(0, EXPLAIN_CAP);
     let explainFailures = 0;
     const explanations = await Promise.all(
@@ -314,6 +318,7 @@ export async function handleCorpusSearch(
               temperature: TEMPERATURE_BY_SHAPE.summarize,
               // ~40 tokens is plenty for a single-sentence explanation.
               num_predict: 80,
+              ...(explainNumCtx !== undefined ? { num_ctx: explainNumCtx } : {}),
             },
           });
           const text = (resp.response ?? "").trim();

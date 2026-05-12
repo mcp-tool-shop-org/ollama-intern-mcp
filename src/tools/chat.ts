@@ -12,7 +12,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import type { ChatMessage } from "../ollama.js";
 import { countTokens } from "../ollama.js";
-import { resolveTier, TEMPERATURE_BY_SHAPE } from "../tiers.js";
+import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import type { RunContext } from "../runContext.js";
 
 export const chatSchema = z.object({
@@ -62,10 +62,19 @@ export async function handleChat(
     ? [{ role: "system", content: input.system }, ...input.messages]
     : input.messages;
 
+  // Per-tier num_ctx (v2.4.0). chat runs on workhorse and does not engage
+  // TIER_FALLBACK, so a single resolved value covers the whole call.
+  // Absent when the active profile doesn't set workhorse num_ctx.
+  const numCtx = resolveNumCtx("workhorse", ctx.tiers);
+  const options: { temperature?: number; num_predict?: number; num_ctx?: number } = {
+    temperature: TEMPERATURE_BY_SHAPE.chat,
+    num_predict: 1024,
+    ...(numCtx !== undefined ? { num_ctx: numCtx } : {}),
+  };
   const resp = await ctx.client.chat({
     model,
     messages,
-    options: { temperature: TEMPERATURE_BY_SHAPE.chat, num_predict: 1024 },
+    options,
   });
   const tokens = countTokens(resp);
   const residency = await ctx.client.residency(model);
@@ -80,6 +89,7 @@ export async function handleChat(
     startedAt,
     residency,
     ...(input.model !== undefined ? { modelRequested: input.model } : {}),
+    ...(numCtx !== undefined ? { numCtxUsed: numCtx } : {}),
   });
 
   await ctx.logger.log(callEvent("ollama_chat", envelope));

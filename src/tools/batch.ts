@@ -23,7 +23,7 @@
 
 import type { GenerateRequest } from "../ollama.js";
 import type { Tier } from "../tiers.js";
-import { resolveTier } from "../tiers.js";
+import { resolveTier, resolveNumCtx } from "../tiers.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
@@ -119,6 +119,14 @@ export async function runBatch<I extends BatchItem, R>(
     input.modelOverride !== undefined ? input.modelOverride : resolveTier(input.tier, ctx.tiers);
   let sawFallback: Tier | undefined;
   const initialTier: Tier = input.tier;
+  // Per-tier num_ctx for the batch's primary tier (v2.4.0). All items in a
+  // batch run on the same tier (per-item fallback affects num_ctx for the
+  // INDIVIDUAL fallback attempt, but the envelope's batch-level
+  // num_ctx_used reports the primary tier's value — that's the value
+  // actually sent for ok items that didn't fall back). Resolved once
+  // outside the loop so the envelope reflects the batch's primary
+  // context budget consistently.
+  const batchNumCtx = resolveNumCtx(input.tier, ctx.tiers);
 
   for (const item of input.items) {
     try {
@@ -137,8 +145,16 @@ export async function runBatch<I extends BatchItem, R>(
             input.modelOverride !== undefined && tier === initialTier
               ? input.modelOverride
               : resolveTier(tier, ctx.tiers);
+          // Per-tier num_ctx: resolved per ACTIVE tier so a fallback
+          // attempt uses the fallback tier's value. Same "absent when
+          // unset" contract as runner.ts — never substitute a default.
+          const numCtx = resolveNumCtx(tier, ctx.tiers);
           const built = input.build(item, tier, model);
-          const req = input.think === undefined ? built : { ...built, think: input.think };
+          const withNumCtx: GenerateRequest =
+            numCtx !== undefined
+              ? { ...built, options: { ...(built.options ?? {}), num_ctx: numCtx } }
+              : built;
+          const req = input.think === undefined ? withNumCtx : { ...withNumCtx, think: input.think };
           const resp = await ctx.client.generate(req, signal);
           return { resp, model };
         },
@@ -179,6 +195,7 @@ export async function runBatch<I extends BatchItem, R>(
     residency,
     ...(sawFallback ? { fallbackFrom: sawFallback } : {}),
     ...(input.modelOverride !== undefined ? { modelRequested: input.modelOverride } : {}),
+    ...(batchNumCtx !== undefined ? { numCtxUsed: batchNumCtx } : {}),
   });
   envelope.batch_count = input.items.length;
   envelope.ok_count = okCount;

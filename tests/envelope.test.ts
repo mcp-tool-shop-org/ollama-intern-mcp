@@ -54,6 +54,24 @@ describe("envelope", () => {
     expect(withoutWarn.warnings).toBeUndefined();
   });
 
+  it("carries num_ctx_used when set, omits when undefined (v2.4.0 back-compat shape)", () => {
+    // Mirrors the v2.3.0 model_requested contract: present only when
+    // an explicit value was sent. Absent means the MCP server did NOT
+    // send num_ctx to Ollama; consumers must NOT infer a default.
+    const withCtx = buildEnvelope({
+      result: null, tier: "workhorse", model: "x", hardwareProfile: "dev-rtx5080",
+      tokensIn: 0, tokensOut: 0,
+      startedAt: Date.now(), residency: null, numCtxUsed: 8192,
+    });
+    expect(withCtx.num_ctx_used).toBe(8192);
+    const withoutCtx = buildEnvelope({
+      result: null, tier: "workhorse", model: "x", hardwareProfile: "m5-max",
+      tokensIn: 0, tokensOut: 0,
+      startedAt: Date.now(), residency: null,
+    });
+    expect(withoutCtx.num_ctx_used).toBeUndefined();
+  });
+
   it("preserves hardware_profile verbatim so dev numbers can be filtered in reports", () => {
     const dev = buildEnvelope({
       result: null, tier: "instant", model: "x", hardwareProfile: "dev-rtx5080",

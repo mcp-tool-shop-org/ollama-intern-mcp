@@ -29,6 +29,57 @@ Pas de cloud. Pas de télémétrie. Rien d' "autonome". Chaque appel montre son 
 
 ## Nouveau dans la version 2.2.0
 
+Contrôle de `num_ctx` (fenêtre de contexte) par niveau dans le système de profil. Amélioration mineure additive — les appels inchangés en v2.3.0. Détails dans [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
+
+- **Carte `TierConfig.num_ctx` (nouvelle)** — optionnel `{ instant?, workhorse?, deep?, embed? }` dans le profil. Lorsqu'elle est définie pour un niveau, le serveur MCP ajoute `options.num_ctx = <valeur>` à chaque requête de génération/chat Ollama dirigée vers ce niveau (initiale + solution de repli). Lorsqu'elle n'est pas définie, la requête omet complètement `num_ctx`, ce qui permet à Ollama d'utiliser sa valeur par défaut chargée avec le modèle — le comportement de v2.3.0 est conservé exactement.
+- **Nouveau champ d'enveloppe `num_ctx_used?: number`** — présent uniquement lorsque le serveur MCP a réellement envoyé `num_ctx`. Absent lorsque la requête a permis à Ollama de choisir. Ne pas déduire de valeur par défaut — le serveur MCP ne demande pas à Ollama la valeur effective.
+- **Valeurs par défaut du profil**: `dev-rtx5080` / `dev-rtx5080-qwen3` sont livrés avec `instant: 4096`, `workhorse: 8192`, `deep`/`embed` non définis. Les tailles sont choisies pour maintenir `hermes3:8b` dans la mémoire VRAM de 16 Go de la RTX 5080, ce qui permet d'utiliser rapidement des outils. `m5-max` laisse tous les niveaux non définis — la mémoire unifiée de 128 Go n'a aucun problème de débordement.
+- **Résout le diagnostic de la phase 1 de v0.8.0** — `hermes3:8b` avec le contexte par défaut de 32 Ko sur la RTX 5080 débordait vers le CPU et commençait à provoquer des délais d'attente pour les appels `ollama_extract` du type "workhorse". La version 2.4.0 empêche cela au niveau du profil.
+
+### Contrôle de `num_ctx` par niveau (nouveau dans v2.4.0)
+
+Profil (extrait de `src/profiles.ts`) :
+
+```ts
+"dev-rtx5080": {
+  tiers: {
+    instant: "hermes3:8b",
+    workhorse: "hermes3:8b",
+    deep: "hermes3:8b",
+    embed: "nomic-embed-text",
+    num_ctx: {
+      instant: 4096,    // fast classify/summarize
+      workhorse: 8192,  // schema-bound extract / batch
+      // deep: UNSET — long-context briefs keep current behavior
+      // embed: UNSET — no context-window pressure on embed
+    },
+  },
+  // ... timeouts, prewarm
+}
+```
+
+Enveloppe pour un appel de niveau "workhorse" (par exemple, `ollama_extract`) :
+
+```jsonc
+{
+  "result": { /* extracted data */ },
+  "tier_used": "workhorse",
+  "model": "hermes3:8b",
+  "num_ctx_used": 8192,        // present because the profile set workhorse=8192
+  // ... rest of envelope unchanged
+}
+```
+
+Sur `m5-max` (ou tout profil qui laisse un niveau non défini), `num_ctx_used` est absent de l'enveloppe et la requête envoyée à Ollama ne comprend pas le champ `num_ctx` — Ollama utilise sa valeur par défaut chargée avec le modèle.
+
+Les opérateurs configurent les paramètres en sélectionnant/modifiant le profil ; il n'y a pas de saisie `num_ctx` par appel dans les schémas des outils. Si un appel futur révèle un besoin, le modèle suit le mécanisme de remplacement du modèle de v2.3.0.
+
+### Historique — livrables de la version 2.1.0
+
+Consultez [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) pour l'intégralité de l'entrée v2.3.0 (remplacement du modèle par appel).
+
+## Nouveau dans la version 2.2.0
+
 Modification du modèle par appel pour les outils atomiques basés sur les LLM. Amélioration mineure additive — les appelants de la version v2.2.0 restent inchangés. Détails dans [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
 
 - **Entrée optionnelle `model: string` pour 8 outils atomiques** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. La première tentative sur le niveau de l'outil utilise le modèle spécifié par l'appelant ; en cas de dépassement de délai, la cascade `TIER_FALLBACK` existante utilise le modèle du niveau le moins coûteux (et non le modèle spécifié par l'appelant). Les outils composites/résumés/groupés n'acceptent *délibérément* pas l'argument `model` ; les atomes permettent un contrôle par appel, tandis que les composites utilisent les paramètres par défaut du niveau.

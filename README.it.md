@@ -29,11 +29,62 @@ Nessun cloud. Nessuna telemetria. Niente di "autonomo". Ogni chiamata mostra il 
 
 ## Novità nella versione 2.2.0
 
-Override del modello a livello di chiamata per gli strumenti atomici basati su LLM. Modifiche minori additive — i chiamanti di v2.2.0 rimangono invariati. Dettagli nelle sezioni [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+Controllo di `num_ctx` a livello di tier (nuovo in v2.4.0).
 
-- **Input opzionale `model: string` per 8 strumenti atomici** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. Il primo tentativo di esecuzione dello strumento utilizza il modello specificato dal chiamante; in caso di timeout, la cascata `TIER_FALLBACK` esistente risolve il modello del livello più economico (NON l'override specificato dal chiamante). Gli strumenti compositi/sintetici/pacchetti NON accettano deliberatamente il parametro `model` — gli atomi hanno il controllo a livello di chiamata, mentre i compositi utilizzano le impostazioni predefinite del livello.
-- **Nuovo campo dell'inviluppo `model_requested?: string`** — presente solo quando è stato fornito un override. I chiamanti che tengono conto della calibrazione confrontano `model_requested` con `model` per rilevare la sostituzione: `if (env.model_requested && env.model !== env.model_requested) { /* sostituzione */ }`. Gli input vuoti o contenenti solo spazi generano un errore `ZodError` durante l'analisi dello schema, anziché una sostituzione silenziosa.
-- **Correzione di bug — deriva in `src/version.ts`.** La costante `VERSION` a runtime viene ora letta da `package.json` al caricamento del modulo; le versioni v2.1.0 e v2.2.0 sono state distribuite con la stringa di identificazione obsoleta `"2.0.0"`. Il nuovo file `tests/version.test.ts` verifica che `VERSION === pkg.version`.
+- **`TierConfig.num_ctx` map (nuovo)**: un campo opzionale `{ instant?, workhorse?, deep?, embed? }` nel profilo. Quando impostato per un tier, il server MCP inserisce `options.num_ctx = <valore>` in ogni richiesta di generazione/chat di Ollama indirizzata a quel tier (iniziale + fallback). Se non impostato, la richiesta omette completamente `num_ctx`, quindi Ollama utilizza il valore predefinito del modello caricato; questo comportamento è esattamente quello della versione v2.3.0.
+- **Nuovo campo dell'inviluppo `num_ctx_used?: number`**: presente solo quando il server MCP ha effettivamente inviato `num_ctx`. Assente quando la richiesta ha permesso a Ollama di scegliere. Non si deve dedurre un valore predefinito: il server MCP non interroga Ollama per ottenere il valore effettivo.
+- **Valori predefiniti del profilo**: i profili `dev-rtx5080` e `dev-rtx5080-qwen3` hanno `instant: 4096`, `workhorse: 8192`, `deep`/`embed` non impostati. Le dimensioni sono state scelte per mantenere `hermes3:8b` nella memoria VRAM da 16 GB della RTX 5080, per un funzionamento più rapido. Per `m5-max`, tutti i tier non sono impostati: la memoria unificata da 128 GB non presenta problemi di overflow.
+- **Risolve la diagnostica di Fase 1 della versione v0.8.0**: in `hermes3:8b` con il contesto predefinito di 32K sulla RTX 5080, i dati venivano trasferiti alla CPU e le chiamate `ollama_extract` del tier `workhorse` iniziavano a scadere. La versione v2.4.0 previene questo problema a livello di profilo.
+
+### Controllo di `num_ctx` a livello di tier (nuovo in v2.4.0)
+
+Profilo (estratto da `src/profiles.ts`):
+
+```ts
+"dev-rtx5080": {
+  tiers: {
+    instant: "hermes3:8b",
+    workhorse: "hermes3:8b",
+    deep: "hermes3:8b",
+    embed: "nomic-embed-text",
+    num_ctx: {
+      instant: 4096,    // fast classify/summarize
+      workhorse: 8192,  // schema-bound extract / batch
+      // deep: UNSET — long-context briefs keep current behavior
+      // embed: UNSET — no context-window pressure on embed
+    },
+  },
+  // ... timeouts, prewarm
+}
+```
+
+Invio dati (envelope) per una chiamata al tier `workhorse` (ad esempio, `ollama_extract`):
+
+```jsonc
+{
+  "result": { /* extracted data */ },
+  "tier_used": "workhorse",
+  "model": "hermes3:8b",
+  "num_ctx_used": 8192,        // present because the profile set workhorse=8192
+  // ... rest of envelope unchanged
+}
+```
+
+Su `m5-max` (o qualsiasi profilo in cui un tier non è impostato), `num_ctx_used` è assente dall'inviluppo e la richiesta inviata a Ollama non include il campo `num_ctx`; Ollama utilizza il valore predefinito del modello caricato.
+
+Gli operatori configurano selezionando o modificando il profilo; non esiste un input `num_ctx` a livello di chiamata negli schemi degli strumenti. Se una chiamata futura dovesse richiedere questa funzionalità, il comportamento seguirà l'override del `model` della versione v2.3.0.
+
+### Storico — funzionalità della versione 2.1.0
+
+Consultare [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) per l'elenco completo delle modifiche della versione v2.3.0 (override del modello a livello di chiamata).
+
+## Novità nella versione 2.2.0
+
+Override del modello a livello di chiamata (nuovo in v2.2.0). Modifiche minori — le chiamate della versione v2.2.0 non sono state modificate. Elenco dettagliato delle modifiche in [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+
+- **Input opzionale `model: string` per 8 strumenti atomici**: `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. Il primo tentativo sul tier dello strumento viene eseguito utilizzando il modello specificato dal chiamante; in caso di timeout, la cascata `TIER_FALLBACK` esistente risolve il modello del tier più economico (NON l'override del chiamante). Gli strumenti compositi/sintetici/raggruppati NON accettano deliberatamente il parametro `model`; gli strumenti atomici hanno il controllo a livello di chiamata, mentre gli strumenti compositi utilizzano i valori predefiniti del tier.
+- **Nuovo campo dell'inviluppo `model_requested?: string`**: presente solo quando è stato fornito un override. I chiamanti consapevoli della calibrazione confrontano `model_requested` con `model` per rilevare la sostituzione tramite fallback: `if (env.model_requested && env.model !== env.model_requested) { /* sostituzione */ }`. Gli input vuoti o contenenti solo spazi generano un errore `ZodError` durante l'analisi dello schema, anziché un comportamento silenzioso.
+- **Correzione di bug — deriva di `src/version.ts`**. La costante runtime `VERSION` viene ora letta dal file `package.json` al caricamento del modulo; le versioni v2.1.0 e v2.2.0 riportavano erroneamente la stringa di identificazione obsoleta `"2.0.0"`. Il nuovo file `tests/version.test.ts` verifica che `VERSION === pkg.version`.
 
 ### Override del modello a livello di chiamata (nuovo in v2.3.0)
 
@@ -49,7 +100,7 @@ Override del modello a livello di chiamata per gli strumenti atomici basati su L
 }
 ```
 
-Invio:
+Invio dati (envelope):
 
 ```jsonc
 {
@@ -61,11 +112,11 @@ Invio:
 }
 ```
 
-Se il livello "workhorse/deep" avesse superato il tempo limite e la chiamata fosse passata al livello "instant", `env.model` sarebbe il modello risolto dal livello "instant" e `env.fallback_from` sarebbe `"workhorse"` — `env.model_requested` sarebbe ancora `"hermes3:8b"`, e `env.model !== env.model_requested` indica la sostituzione. L'override NON viene deliberatamente propagato al livello più economico; il modello scelto potrebbe non essere adatto al ruolo di quel livello.
+Se il livello principale/di base avesse raggiunto il timeout e la richiesta fosse stata reindirizzata al livello istantaneo, `env.model` conterrebbe il modello risolto dal livello istantaneo e `env.fallback_from` sarebbe impostato su `"workhorse"`; `env.model_requested` rimarrebbe comunque `"hermes3:8b"`, e la condizione `env.model !== env.model_requested` indica che è avvenuta una sostituzione. L'override non viene applicato intenzionalmente al livello più economico; il modello scelto potrebbe non essere adatto al ruolo di quel livello.
 
 ### Storico — funzionalità della versione 2.1.0
 
-Consultare [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) per l'elenco completo delle modifiche di v2.2.0 (pertinenza contestuale + astensione strutturata).
+Consultare [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) per la versione completa delle note di rilascio della versione 2.2.0 (pertinenza contestuale e astensione strutturata).
 
 ## Novità nella versione 2.2.0
 

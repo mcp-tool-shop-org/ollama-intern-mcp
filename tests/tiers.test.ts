@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   resolveTier,
+  resolveNumCtx,
   TIER_TIMEOUT_MS,
   TIER_FALLBACK,
   TEMPERATURE_BY_SHAPE,
@@ -69,5 +70,34 @@ describe("THINK_BY_SHAPE", () => {
   });
   it("research enables thinking — reasoning benefits outweigh budget cost", () => {
     expect(THINK_BY_SHAPE.research).toBe(true);
+  });
+});
+
+describe("resolveNumCtx (v2.4.0)", () => {
+  it("returns the per-tier value when num_ctx is set", () => {
+    const cfg: TierConfig = {
+      instant: "i", workhorse: "w", deep: "d", embed: "e",
+      num_ctx: { instant: 4096, workhorse: 8192 },
+    };
+    expect(resolveNumCtx("instant", cfg)).toBe(4096);
+    expect(resolveNumCtx("workhorse", cfg)).toBe(8192);
+  });
+  it("returns undefined when the requested tier has no num_ctx set", () => {
+    // Critical: undefined means the MCP server must NOT send num_ctx so
+    // Ollama uses its model-loaded default. Returning a fake 0 / default
+    // would silently mis-report what got sent and break back-compat.
+    const cfg: TierConfig = {
+      instant: "i", workhorse: "w", deep: "d", embed: "e",
+      num_ctx: { instant: 4096, workhorse: 8192 },
+    };
+    expect(resolveNumCtx("deep", cfg)).toBeUndefined();
+    expect(resolveNumCtx("embed", cfg)).toBeUndefined();
+  });
+  it("returns undefined for every tier when num_ctx map is absent (back-compat)", () => {
+    const cfg: TierConfig = { instant: "i", workhorse: "w", deep: "d", embed: "e" };
+    expect(resolveNumCtx("instant", cfg)).toBeUndefined();
+    expect(resolveNumCtx("workhorse", cfg)).toBeUndefined();
+    expect(resolveNumCtx("deep", cfg)).toBeUndefined();
+    expect(resolveNumCtx("embed", cfg)).toBeUndefined();
   });
 });

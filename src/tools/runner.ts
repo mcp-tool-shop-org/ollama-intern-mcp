@@ -8,7 +8,7 @@
 import type { GenerateRequest } from "../ollama.js";
 import { countTokens } from "../ollama.js";
 import type { Tier } from "../tiers.js";
-import { resolveTier } from "../tiers.js";
+import { resolveTier, resolveNumCtx } from "../tiers.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
@@ -49,6 +49,12 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   const startedAt = Date.now();
   const { ctx } = input;
   const initialTier = input.tier;
+  // Track the num_ctx that actually went on the wire for the final
+  // (successful) attempt. Per-tier, so a fallback from workhorse→instant
+  // picks up the instant num_ctx (or undefined if instant has none set).
+  // Important: undefined means "we did NOT send num_ctx" — envelope
+  // surfaces that as num_ctx_used absent, never a fake default.
+  let lastNumCtx: number | undefined;
 
   const { value, actualTier, fallbackFrom } = await runWithTimeoutAndFallback({
     tool: input.tool,
@@ -65,9 +71,23 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
         input.modelOverride !== undefined && tier === initialTier
           ? input.modelOverride
           : resolveTier(tier, ctx.tiers);
+      // Per-tier num_ctx (v2.4.0). Resolved against the ACTIVE tier so a
+      // fallback inherits the fallback tier's num_ctx (or unset). The
+      // model override does not affect num_ctx — it's a model identity
+      // knob, not a context-budget knob.
+      const numCtx = resolveNumCtx(tier, ctx.tiers);
       const built = input.build(tier, model);
-      const req: GenerateRequest = input.think === undefined ? built : { ...built, think: input.think };
+      // Merge num_ctx into the options block when set. CRITICAL: when
+      // numCtx is undefined we must NOT include the key — Ollama then
+      // uses its model-loaded default, which is the v2.3.0 behavior we
+      // need to preserve for back-compat.
+      const withNumCtx: GenerateRequest =
+        numCtx !== undefined
+          ? { ...built, options: { ...(built.options ?? {}), num_ctx: numCtx } }
+          : built;
+      const req: GenerateRequest = input.think === undefined ? withNumCtx : { ...withNumCtx, think: input.think };
       const resp = await ctx.client.generate(req, signal);
+      lastNumCtx = numCtx;
       return { resp, model };
     },
   });
@@ -88,6 +108,7 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     residency,
     ...(fallbackFrom ? { fallbackFrom } : {}),
     ...(input.modelOverride !== undefined ? { modelRequested: input.modelOverride } : {}),
+    ...(lastNumCtx !== undefined ? { numCtxUsed: lastNumCtx } : {}),
     ...(input.warnings ? { warnings: input.warnings } : {}),
   });
 
