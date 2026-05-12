@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleSummarizeDeep } from "../../src/tools/summarizeDeep.js";
+import { handleSummarizeDeep, summarizeDeepSchema } from "../../src/tools/summarizeDeep.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -20,10 +20,12 @@ import type { RunContext } from "../../src/runContext.js";
 class MockClient implements OllamaClient {
   public lastPrompt?: string;
   public lastFormat?: string;
+  public lastModel?: string;
   constructor(private response: string = "digest") {}
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     this.lastPrompt = req.prompt;
     this.lastFormat = req.format;
+    this.lastModel = req.model;
     return { model: req.model, response: this.response, done: true, prompt_eval_count: 100, eval_count: 20 };
   }
   async chat(_req: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
@@ -208,5 +210,37 @@ describe("handleSummarizeDeep — frame contract", () => {
     expect(env.result.frame_addressed).toBeNull();
     expect(env.result.summary).toBe("not valid json at all");
     expect(env.result.unaddressed_sources).toEqual([]);
+  });
+});
+
+describe("handleSummarizeDeep — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying Ollama generate call", async () => {
+    const client = new MockClient("digest");
+    const env = await handleSummarizeDeep(
+      { text: "long text", max_words: 50, model: "qwen3:32b" },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe("qwen3:32b");
+    expect(env.model).toBe("qwen3:32b");
+    expect(env.model_requested).toBe("qwen3:32b");
+  });
+
+  it("input.model omitted falls through to tier-resolved deep model", async () => {
+    const client = new MockClient("digest");
+    const env = await handleSummarizeDeep(
+      { text: "long text", max_words: 50 },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(env.model_requested).toBeUndefined();
+  });
+
+  it('input.model "" throws ZodError at schema parse', () => {
+    expect(() => summarizeDeepSchema.parse({ text: "x", model: "" })).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() => summarizeDeepSchema.parse({ text: "x", model: "   " })).toThrow();
   });
 });

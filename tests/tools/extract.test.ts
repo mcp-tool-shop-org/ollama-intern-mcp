@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleExtract } from "../../src/tools/extract.js";
+import { handleExtract, extractSchema } from "../../src/tools/extract.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -232,5 +232,41 @@ describe("handleExtract — frame contract", () => {
       "evidence chain",
       "inspectability",
     ]);
+  });
+});
+
+describe("handleExtract — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying Ollama generate call", async () => {
+    const client = new MockClient(JSON.stringify({ name: "x" }));
+    const env = await handleExtract(
+      { text: "anything", schema: simpleSchema, model: "hermes3:8b-q5_K_M" },
+      makeCtx(client),
+    );
+    expect(client.lastGenerate?.model).toBe("hermes3:8b-q5_K_M");
+    expect(env.model).toBe("hermes3:8b-q5_K_M");
+    expect(env.model_requested).toBe("hermes3:8b-q5_K_M");
+  });
+
+  it("input.model omitted falls through to tier-resolved workhorse model", async () => {
+    const client = new MockClient(JSON.stringify({ name: "x" }));
+    const env = await handleExtract(
+      { text: "anything", schema: simpleSchema },
+      makeCtx(client),
+    );
+    expect(client.lastGenerate?.model).toBe(PROFILES["dev-rtx5080"].tiers.workhorse);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.workhorse);
+    expect(env.model_requested).toBeUndefined();
+  });
+
+  it('input.model "" (empty) throws ZodError at schema parse', () => {
+    expect(() =>
+      extractSchema.parse({ text: "x", schema: {}, model: "" }),
+    ).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() =>
+      extractSchema.parse({ text: "x", schema: {}, model: "   " }),
+    ).toThrow();
   });
 });

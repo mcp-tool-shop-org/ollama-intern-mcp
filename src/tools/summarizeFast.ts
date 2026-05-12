@@ -16,6 +16,19 @@ export const summarizeFastSchema = z.object({
   text: z.string().min(1).describe("Text to summarize (best under ~4k tokens — use summarize_deep for longer inputs)."),
   max_words: z.number().int().min(10).max(400).optional().describe("Target summary length in words (default 80)."),
   frame: z.string().optional().describe("The question / section purpose / topic this summary is FOR. When supplied, the summarizer first decides whether the text addresses the frame; if not, it refuses to paraphrase off-topic content and surfaces `on_topic: false` in the result."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type SummarizeFastInput = z.infer<typeof summarizeFastSchema>;
@@ -81,6 +94,7 @@ export async function handleSummarizeFast(
     tier: "instant",
     ctx,
     think: false,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input),

@@ -609,3 +609,105 @@ describe("regression: InternError carries code/message/hint/retryable", () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// v2.3.0 per-call model override — research-os calibration pattern
+//
+// The receipts-backed orchestration use case is the load-bearing one:
+// a caller asks for a specific model AND a frame, and needs the envelope
+// to reflect both. The override propagates to model_requested; the actual
+// inference model (resp.model post-fallback) lives in env.model. Fallback
+// must NOT carry the caller's override into the cheaper tier — that's
+// the corruption case calibration receipts care about.
+// ═══════════════════════════════════════════════════════════════
+
+describe("v2.3.0 per-call model override — research-os calibration pattern", () => {
+  it("classify with frame + model together honors both", async () => {
+    const client = new Mock(
+      JSON.stringify({ label: "fix", confidence: 0.9, off_topic: false, off_topic_reason: null }),
+    );
+    const env = await handleClassify(
+      {
+        text: "patch null pointer in auth",
+        labels: ["feat", "fix", "chore"],
+        frame: "what is the change kind?",
+        model: "hermes3:8b",
+      },
+      makeCtx(client),
+    );
+    // Frame contract still works.
+    expect(client.lastGenerate?.prompt ?? "").toContain(
+      "within the frame: what is the change kind?",
+    );
+    // Model override is honored on the wire.
+    expect(client.lastGenerate?.model).toBe("hermes3:8b");
+    // Envelope reflects both the requested and the resolved model.
+    expect(env.model).toBe("hermes3:8b");
+    expect(env.model_requested).toBe("hermes3:8b");
+    // No fallback fired.
+    expect(env.fallback_from).toBeUndefined();
+  });
+
+  it("fallback under input.model timeout uses tier-resolved model, surfaces both in envelope", async () => {
+    // Mock that times out (waits for abort) on workhorse, returns ok on instant.
+    // The first attempt with the override (`deepseek-coder:33b`) on workhorse
+    // is forced to time out by setting the workhorse timeout to a tiny value
+    // and never resolving the generate promise until abort. Fallback to
+    // instant must NOT carry the override.
+    class FallbackMock implements OllamaClient {
+      public attempts: { tier: "workhorse" | "instant"; model: string }[] = [];
+      async generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResponse> {
+        if (req.model === "deepseek-coder:33b") {
+          // First attempt: caller's override. Hang until abort to force timeout.
+          this.attempts.push({ tier: "workhorse", model: req.model });
+          return new Promise<GenerateResponse>((_resolve, reject) => {
+            if (signal?.aborted) return reject(new Error("aborted"));
+            signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          });
+        }
+        // Fallback attempt — must be the tier-resolved instant model.
+        this.attempts.push({ tier: "instant", model: req.model });
+        return {
+          model: req.model,
+          response: JSON.stringify({ name: "x" }),
+          done: true,
+          prompt_eval_count: 5,
+          eval_count: 3,
+        };
+      }
+      async chat(_r: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
+      async embed(_r: EmbedRequest): Promise<EmbedResponse> { throw new Error("not used"); }
+      async residency(_m: string): Promise<Residency | null> {
+        return { in_vram: true, size_bytes: 1, size_vram_bytes: 1, evicted: false, expires_at: null };
+      }
+    }
+    const client = new FallbackMock();
+    // Tier override: workhorse times out at 20ms; instant has plenty of budget.
+    const ctx: RunContext = {
+      client,
+      tiers: PROFILES["dev-rtx5080"].tiers,
+      timeouts: { ...PROFILES["dev-rtx5080"].timeouts, workhorse: 20 },
+      hardwareProfile: "dev-rtx5080",
+      logger: new NullLogger(),
+    };
+    const env = await handleExtract(
+      {
+        text: "anything",
+        schema: { type: "object", properties: { name: { type: "string" } } },
+        model: "deepseek-coder:33b",
+      },
+      ctx,
+    );
+    // Two attempts: override on workhorse, tier-resolved on instant fallback.
+    expect(client.attempts.length).toBeGreaterThanOrEqual(2);
+    expect(client.attempts[0].model).toBe("deepseek-coder:33b");
+    const fallbackAttempt = client.attempts[client.attempts.length - 1];
+    expect(fallbackAttempt.model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    // Envelope: requested vs actual must differ — the calibration signal.
+    expect(env.model_requested).toBe("deepseek-coder:33b");
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    expect(env.model).not.toBe(env.model_requested);
+    expect(env.fallback_from).toBe("workhorse");
+    expect(env.tier_used).toBe("instant");
+  });
+});

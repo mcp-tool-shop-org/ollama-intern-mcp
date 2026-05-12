@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] — 2026-05-11
+
+Non-breaking additive minor. All v2.2.0 callers continue working unchanged. Per-call model override on atom tools; tier/profile defaults preserved when `model` omitted.
+
+The motivating use case: receipt-backed orchestration (research-os reviewer profiles, calibration evidence, model-comparison proofs) needs to specify an exact model per call while still inheriting the tier's timeout + fallback discipline. Composite/brief tools continue to use tier defaults — orchestrators that need per-call control should call atom tools directly.
+
+### Added
+
+- **Per-call `model: string` input on 8 atom tools.** `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, and `ollama_code_citation` accept an optional `model` field. When provided, the first attempt on the tool's tier runs against that model instead of the tier-resolved default. Empty / whitespace-only inputs throw `ZodError` at schema parse (loud schema failure beats silent fallthrough).
+- **`envelope.model_requested` field.** Present only when `input.model` was supplied. Calibration-aware callers detect fallback substitution by comparing `model_requested` vs `model`: `if (env.model_requested && env.model !== env.model_requested) { /* substitution */ }`.
+- **Operator contract — atoms vs composites.** Atom tools accept `model`; composite/brief/pack tools (`change_brief`, `incident_brief`, `repo_brief`, `repo_pack`, `change_pack`, `incident_pack`, `hypothesis_drill`, `triage_logs`) do NOT. Their internal extract/classify calls continue to use tier defaults. Orchestrators that need per-call model identity should call atoms directly. This is a load-bearing design choice — composites bundle multiple LLM calls and per-call control across them would be a leaky abstraction.
+
+### Changed
+
+- **Tool descriptions for the 8 atom tools** in the MCP schema surface the new optional `model` input and explicitly document the override-then-fallback semantics (override applies only to the initial attempt; fallback uses the tier-resolved model, NOT the caller's override).
+
+### Fixed
+
+- **`src/version.ts` drift.** The runtime `VERSION` constant was hardcoded "2.0.0" and silently drifted across v2.1.0 and v2.2.0. Replaced with a JSON import from `package.json` (`with { type: "json" }`); a new `tests/version.test.ts` locks `VERSION === pkg.version` so future bumps stay in sync automatically. tsconfig already had `resolveJsonModule: true` and `module: NodeNext`, so no config change was needed.
+
+### Semantics (locked)
+
+1. `input.model` provided → first attempt uses that model, the tier's `TIER_TIMEOUT_MS` still applies.
+2. On timeout → fallback to the tier-resolved fallback model (per the existing `TIER_FALLBACK` chain). The fallback retry does NOT use `input.model`.
+3. `input.model` omitted → existing tier/profile resolution unchanged; `model_requested` absent from the envelope.
+4. Empty / whitespace-only `input.model` → `ZodError` at schema parse, NOT silent fallthrough.
+
+### Tests
+
+- 762 total (up from 725 in v2.2.0). New: per-tool model-override coverage on all 8 atom tools (override threading, tier-default fallthrough, ZodError on `""` and `"   "`), an integration test for the research-os calibration pattern (`frame + model` together), the load-bearing fallback-semantics test (override times out on workhorse → instant fallback uses tier-resolved model, envelope surfaces both `model` and `model_requested`), and `tests/version.test.ts` (`VERSION === pkg.version`).
+
+### Migration
+
+Drop-in upgrade from v2.2.x. No breaking changes. Existing callers that do not pass `model` see identical behavior. New callers can begin specifying `model` per call where needed.
+
+### Out of scope (deliberately)
+
+- No new tier types, no new profile fields, no new env vars.
+- No changes to the `TIER_FALLBACK` chain.
+- No `model` override on composite/brief/pack tools — atom tools only.
+- No `timeout_ms` or `temperature` per-call overrides — separate proposal if/when needed.
+- No widening into non-atom tools (`corpus_search`, `corpus_index`, `embed`, `embed_search`, `doctor`, `log_tail`, `code_map`, `batch_proof_check`, `artifact_*`, etc.).
+- No new top-level tools.
+
 ## [2.2.0] — 2026-05-11
 
 Non-breaking additive minor. All v2.1.0 callers continue working unchanged. New behavior unlocks when new optional inputs are supplied.

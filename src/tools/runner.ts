@@ -33,11 +33,22 @@ export interface RunToolInput<T> {
    * models (hermes3:8b) ignore the field.
    */
   think?: boolean;
+  /**
+   * Optional per-call model override (atom tools only — added v2.3.0). When
+   * set, the FIRST attempt on the requested tier runs against this model
+   * instead of the tier-resolved default. On timeout, fallback retries
+   * resolve their model from the fallback tier — NOT this override. The
+   * caller-asked model is propagated to `envelope.model_requested` so
+   * receipt-backed orchestrators can detect substitution by comparing
+   * `model_requested` vs `model`.
+   */
+  modelOverride?: string;
 }
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   const startedAt = Date.now();
   const { ctx } = input;
+  const initialTier = input.tier;
 
   const { value, actualTier, fallbackFrom } = await runWithTimeoutAndFallback({
     tool: input.tool,
@@ -46,7 +57,14 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     allowFallback: input.allowFallback,
     timeoutOverrideMs: ctx.timeouts,
     run: async (tier, signal) => {
-      const model = resolveTier(tier, ctx.tiers);
+      // Per-call model override applies ONLY to the initial attempt. Any
+      // fallback retry resolves its model from the fallback tier so the
+      // degraded path remains predictable (caller's chosen model may not
+      // even fit the cheaper tier's role).
+      const model =
+        input.modelOverride !== undefined && tier === initialTier
+          ? input.modelOverride
+          : resolveTier(tier, ctx.tiers);
       const built = input.build(tier, model);
       const req: GenerateRequest = input.think === undefined ? built : { ...built, think: input.think };
       const resp = await ctx.client.generate(req, signal);
@@ -69,6 +87,7 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     startedAt,
     residency,
     ...(fallbackFrom ? { fallbackFrom } : {}),
+    ...(input.modelOverride !== undefined ? { modelRequested: input.modelOverride } : {}),
     ...(input.warnings ? { warnings: input.warnings } : {}),
   });
 

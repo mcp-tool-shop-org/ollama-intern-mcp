@@ -29,6 +29,12 @@ export interface Envelope<T> {
   residency: Residency | null;
   /** Set when a timeout fired and the server fell back to a cheaper tier. */
   fallback_from?: Tier;
+  /**
+   * The model the CALLER asked for via input.model override. Present only
+   * when override was supplied. Calibration-aware callers compare
+   * model_requested vs model to detect fallback substitution.
+   */
+  model_requested?: string;
   /** Non-fatal warnings — e.g. "2 citations stripped (paths not in source_paths)". */
   warnings?: string[];
   /** Total items in the batch. Only set on batch-mode calls. */
@@ -49,6 +55,12 @@ export interface EnvelopeBuilderInput<T> {
   startedAt: number;
   residency: Residency | null;
   fallbackFrom?: Tier;
+  /**
+   * The model the caller asked for via the per-call `model` override.
+   * Propagates to `model_requested` on the output envelope. Omit when
+   * no override was supplied.
+   */
+  modelRequested?: string;
   warnings?: string[];
 }
 
@@ -64,6 +76,7 @@ export function buildEnvelope<T>(input: EnvelopeBuilderInput<T>): Envelope<T> {
     residency: input.residency,
   };
   if (input.fallbackFrom) env.fallback_from = input.fallbackFrom;
+  if (input.modelRequested) env.model_requested = input.modelRequested;
   if (input.warnings && input.warnings.length > 0) env.warnings = input.warnings;
   return env;
 }

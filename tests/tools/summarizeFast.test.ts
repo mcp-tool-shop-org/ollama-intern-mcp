@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { handleSummarizeFast } from "../../src/tools/summarizeFast.js";
+import { handleSummarizeFast, summarizeFastSchema } from "../../src/tools/summarizeFast.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -17,10 +17,12 @@ import type { RunContext } from "../../src/runContext.js";
 class MockClient implements OllamaClient {
   public lastPrompt?: string;
   public lastFormat?: string;
+  public lastModel?: string;
   constructor(private response: string = "short summary") {}
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     this.lastPrompt = req.prompt;
     this.lastFormat = req.format;
+    this.lastModel = req.model;
     return { model: req.model, response: this.response, done: true, prompt_eval_count: 50, eval_count: 10 };
   }
   async chat(_req: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
@@ -115,5 +117,34 @@ describe("handleSummarizeFast — frame contract", () => {
     );
     expect(env.result.on_topic).toBeNull();
     expect(env.result.summary).toBe("garbage that does not parse and is not the sentinel");
+  });
+});
+
+describe("handleSummarizeFast — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying Ollama generate call", async () => {
+    const client = new MockClient("a summary");
+    const env = await handleSummarizeFast(
+      { text: "body", model: "qwen3:14b" },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe("qwen3:14b");
+    expect(env.model).toBe("qwen3:14b");
+    expect(env.model_requested).toBe("qwen3:14b");
+  });
+
+  it("input.model omitted falls through to tier-resolved instant model", async () => {
+    const client = new MockClient("a summary");
+    const env = await handleSummarizeFast({ text: "body" }, makeCtx(client));
+    expect(client.lastModel).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    expect(env.model_requested).toBeUndefined();
+  });
+
+  it('input.model "" throws ZodError at schema parse', () => {
+    expect(() => summarizeFastSchema.parse({ text: "x", model: "" })).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() => summarizeFastSchema.parse({ text: "x", model: "   " })).toThrow();
   });
 });

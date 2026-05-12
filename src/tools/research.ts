@@ -31,6 +31,19 @@ export const researchSchema = z.object({
   source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).describe("Files the answer must be grounded in. Nothing outside this list is allowed as a source."),
   max_words: z.number().int().min(20).max(1500).optional().describe("Target answer length in words (default 300)."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read per file (default 40k)."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type ResearchInput = z.infer<typeof researchSchema>;
@@ -119,6 +132,7 @@ export async function handleResearch(
     tier: "deep",
     ctx,
     think: true,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, sources),

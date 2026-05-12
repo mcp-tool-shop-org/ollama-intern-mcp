@@ -29,6 +29,46 @@ Claude Codeに、ルール、階層、デスク、そして書類整理棚を備
 
 ## v2.2.0で追加
 
+LLMを活用したツールにおいて、1回の呼び出しごとにモデルを指定できる機能を追加しました。マイナーバージョンアップであり、v2.2.0からの変更点は最小限です。詳細については、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) をご確認ください。
+
+- **8つのツールで、オプションの `model: string` 入力パラメータを追加**：`ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`。ツールの初回実行時に、呼び出し元で指定されたモデルが使用されます。タイムアウトが発生した場合、既存の `TIER_FALLBACK` メカニズムによって、より低コストなティアのデフォルトモデルが選択されます（呼び出し元で指定されたモデルのオーバーライドは適用されません）。複合ツールや簡易ツールは、意図的に `model` パラメータを受け付けません。アトムツールは1回の呼び出しごとにモデルを制御できますが、複合ツールはティアのデフォルト設定を使用します。
+- **新しいフィールド `model_requested?: string` を追加**：オーバーライドが指定された場合にのみ表示されます。呼び出し元は、`model_requested` と `model` を比較することで、フォールバックが発生したかどうかを検出できます。`if (env.model_requested && env.model !== env.model_requested) { /* 置換が発生 */ }`。空の値または空白のみの値が入力された場合、スキーマの解析時に `ZodError` が発生し、黙ってデフォルト値に置き換えられることはありません。
+- **バグ修正：`src/version.ts` の値のずれ**。ランタイムの `VERSION` 定数は、モジュール読み込み時に `package.json` から読み込まれるようになりました。v2.1.0 および v2.2.0 では、古い `"2.0.0"` という文字列が誤ってレポートされていました。新しい `tests/version.test.ts` ファイルで、`VERSION === pkg.version` が検証されるようになりました。
+
+### v2.3.0で新しく追加された、1回の呼び出しごとのモデルのオーバーライド機能
+
+```jsonc
+{
+  "tool": "ollama_classify",
+  "arguments": {
+    "text": "patch null pointer in auth",
+    "labels": ["feat", "fix", "chore"],
+    "frame": "what is the change kind?",
+    "model": "hermes3:8b"
+  }
+}
+```
+
+Envelope:
+
+```jsonc
+{
+  "result": { "label": "fix", "confidence": 0.9, "off_topic": false, ... },
+  "tier_used": "instant",
+  "model": "hermes3:8b",
+  "model_requested": "hermes3:8b",       // present because override was supplied
+  // ... rest of envelope unchanged
+}
+```
+
+もし、高性能/詳細なティアでタイムアウトが発生し、呼び出しがより高速なティアにフォールバックした場合、`env.model` は高速ティアで解決されたモデルとなり、`env.fallback_from` は `"workhorse"` となります。`env.model_requested` は依然として `"hermes3:8b"` のままとなり、`env.model !== env.model_requested` がフォールバックが発生したことを示すシグナルとなります。オーバーライドは、意図的に低コストなティアには引き継がれません。選択されたモデルが、そのティアの役割に適合しない場合もあります。
+
+### 過去のバージョン - v2.1.0の機能
+
+v2.2.0 の詳細については、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) をご確認ください（フレームに依存しないトピックと、構造化された拒否）。
+
+## v2.2.0で追加
+
 ローカルの証拠収集機能に関する契約：主題に特化した内容と、構造化された拒否。マイナーな変更であり、v2.1.0からの呼び出し元は変更ありません。詳細は、[CHANGELOG.md](./CHANGELOG.md)と[docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md)を参照してください。
 
 - `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`における**主題に特化した抽出**：オプションで`frame: string`を入力し、構造化された`frame_alignment` / `on_topic` / `frame_addressed`の出力を行います。関連性の低いソースは、スキーマに変換するのではなく、フラグが立てられます。

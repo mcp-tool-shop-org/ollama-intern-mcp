@@ -18,7 +18,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { handleCorpusAnswer } from "../../src/tools/corpusAnswer.js";
+import { handleCorpusAnswer, corpusAnswerSchema } from "../../src/tools/corpusAnswer.js";
 import { saveCorpus, CORPUS_SCHEMA_VERSION, type CorpusFile } from "../../src/corpus/storage.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
@@ -38,6 +38,7 @@ import type { RunContext } from "../../src/runContext.js";
 
 class ProgrammableClient implements OllamaClient {
   public lastPrompt?: string;
+  public lastModel?: string;
   public generateCalls = 0;
   public embedCalls = 0;
   constructor(
@@ -47,6 +48,7 @@ class ProgrammableClient implements OllamaClient {
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     this.generateCalls += 1;
     this.lastPrompt = req.prompt;
+    this.lastModel = req.model;
     return { model: req.model, response: this.generateResponse, done: true, prompt_eval_count: 50, eval_count: 20 };
   }
   async chat(_: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
@@ -493,5 +495,51 @@ describe("handleCorpusAnswer", () => {
     expect(env.result.retrieval.total_in_corpus).toBe(4);
     expect(env.result.retrieval.top_score).toBeGreaterThan(0);
     expect(env.result.retrieval.weak).toBe(false);
+  });
+});
+
+describe("handleCorpusAnswer — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying synthesis generate call", async () => {
+    await writeCorpus("t", EMBED_MODEL, [
+      { id: "c-0", path: "/a.md", chunk_index: 0, text: "alpha topic body" },
+    ]);
+    const client = new ProgrammableClient(
+      JSON.stringify({ answer: "A.", citations: [1] }),
+    );
+    const env = await handleCorpusAnswer(
+      { corpus: "t", question: "topic", mode: "lexical", model: "qwen3:32b" },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe("qwen3:32b");
+    expect(env.model).toBe("qwen3:32b");
+    expect(env.model_requested).toBe("qwen3:32b");
+  });
+
+  it("input.model omitted falls through to tier-resolved deep model", async () => {
+    await writeCorpus("t", EMBED_MODEL, [
+      { id: "c-0", path: "/a.md", chunk_index: 0, text: "alpha topic body" },
+    ]);
+    const client = new ProgrammableClient(
+      JSON.stringify({ answer: "A.", citations: [1] }),
+    );
+    const env = await handleCorpusAnswer(
+      { corpus: "t", question: "topic", mode: "lexical" },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(env.model_requested).toBeUndefined();
+  });
+
+  it('input.model "" throws ZodError at schema parse', () => {
+    expect(() =>
+      corpusAnswerSchema.parse({ corpus: "t", question: "q", model: "" }),
+    ).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() =>
+      corpusAnswerSchema.parse({ corpus: "t", question: "q", model: "   " }),
+    ).toThrow();
   });
 });

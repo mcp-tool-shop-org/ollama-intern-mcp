@@ -29,6 +29,46 @@ Sem nuvem. Sem telemetria. Sem nada "autônomo". Cada chamada mostra seu trabalh
 
 ## Novo no v2.2.0
 
+Substituição de modelo por chamada em todas as ferramentas "atom" que utilizam LLMs. Pequena alteração cumulativa — os chamadores da versão v2.2.0 permanecem inalterados. Detalhes nas seções [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+
+- **Entrada opcional `model: string` em 8 ferramentas "atom"** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. A primeira tentativa na camada da ferramenta utiliza o modelo especificado pelo chamador; em caso de timeout, a cascata existente `TIER_FALLBACK` resolve o modelo da própria camada mais econômica (e não a substituição do chamador). As ferramentas compostas/resumidas/de pacote *deliberadamente* não aceitam o parâmetro `model` — as ferramentas "atom" têm controle por chamada, enquanto as ferramentas compostas usam as configurações padrão da camada.
+- **Novo campo do "envelope" `model_requested?: string`** — presente apenas quando a substituição foi fornecida. Os chamadores que consideram a calibração comparam `model_requested` com `model` para detectar a substituição: `if (env.model_requested && env.model !== env.model_requested) { /* substituição */ }`. Entradas vazias ou contendo apenas espaços em branco geram um erro `ZodError` durante a análise do esquema, e não uma falha silenciosa.
+- **Correção de bug — desvio em `src/version.ts`.** A constante de tempo de execução `VERSION` agora é lida do arquivo `package.json` durante o carregamento do módulo; as versões v2.1.0 e v2.2.0 foram distribuídas com a string de identificação desatualizada `"2.0.0"`. Um novo arquivo `tests/version.test.ts` garante que `VERSION === pkg.version`.
+
+### Substituição de modelo por chamada (nova na v2.3.0)
+
+```jsonc
+{
+  "tool": "ollama_classify",
+  "arguments": {
+    "text": "patch null pointer in auth",
+    "labels": ["feat", "fix", "chore"],
+    "frame": "what is the change kind?",
+    "model": "hermes3:8b"
+  }
+}
+```
+
+Envelope:
+
+```jsonc
+{
+  "result": { "label": "fix", "confidence": 0.9, "off_topic": false, ... },
+  "tier_used": "instant",
+  "model": "hermes3:8b",
+  "model_requested": "hermes3:8b",       // present because override was supplied
+  // ... rest of envelope unchanged
+}
+```
+
+Se a camada "workhorse"/profunda tivesse atingido o tempo limite e a chamada tivesse sido direcionada para a camada instantânea, `env.model` seria o modelo resolvido da camada instantânea e `env.fallback_from` seria `"workhorse"` — `env.model_requested` ainda seria `"hermes3:8b"`, e `env.model !== env.model_requested` é o sinal de substituição. A substituição *deliberadamente* não é propagada para a camada mais econômica; o modelo escolhido pode não ser adequado para o papel dessa camada.
+
+### Histórico — entregas da v2.1.0
+
+Consulte [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para a entrada completa da versão v2.2.0 (relevância contextual + abstenção estruturada).
+
+## Novo no v2.2.0
+
 Contrato de função local de processamento de evidências: relevância temática e abstenção estruturada. Pequena adição — as chamadas na v2.1.0 permanecem inalteradas. Detalhes em [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md).
 
 - **Extração com base em contexto** em `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` — entrada opcional `frame: string` + saídas estruturadas `frame_alignment` / `on_topic` / `frame_addressed`. Fontes irrelevantes são sinalizadas em vez de serem parafraseadas no esquema.

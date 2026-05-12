@@ -45,6 +45,19 @@ export const codeCitationSchema = z.object({
     .max(500_000)
     .optional()
     .describe("Chars to read per file (default 100_000). Bigger than research because citations need the lines to exist."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type CodeCitationInput = z.infer<typeof codeCitationSchema>;
@@ -145,6 +158,7 @@ export async function handleCodeCitation(
     tier: "deep",
     ctx,
     think: true,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, sources),

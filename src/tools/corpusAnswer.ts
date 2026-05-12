@@ -78,6 +78,22 @@ export const corpusAnswerSchema = z.object({
     .max(1)
     .optional()
     .describe("Topicality floor — if the top retrieval score is below this value, the tool short-circuits with `abstained: true` and `retrieval.weak: true` instead of invoking the model. Use this when low-relevance hits would otherwise drive ungrounded synthesis (e.g. 0.21 cosine on a 0.5 threshold). Absent → no floor; existing 0-hit short-circuit still fires."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override for the SYNTHESIS step (deep tier). " +
+        "Retrieval still runs on the embed tier's model. When provided, " +
+        "overrides the deep-tier model for synthesis. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles). Short-circuit branches (empty " +
+        "question, zero hits, below min_top_score) do NOT invoke any " +
+        "model; the envelope still surfaces `model_requested` when set.",
+    ),
 });
 
 export type CorpusAnswerInput = z.infer<typeof corpusAnswerSchema>;
@@ -291,6 +307,7 @@ export async function handleCorpusAnswer(
       startedAt,
       residency: null,
       warnings: ["corpus_answer: empty question; retrieval and model skipped"],
+      ...(input.model !== undefined ? { modelRequested: input.model } : {}),
     });
     await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
     return envelope;
@@ -345,6 +362,7 @@ export async function handleCorpusAnswer(
       startedAt,
       residency,
       warnings: ["corpus_answer: zero retrieval hits; model not invoked"],
+      ...(input.model !== undefined ? { modelRequested: input.model } : {}),
     });
     await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
     return envelope;
@@ -381,6 +399,7 @@ export async function handleCorpusAnswer(
       startedAt,
       residency,
       warnings: [`corpus_answer: top score ${topScore.toFixed(3)} below min_top_score ${input.min_top_score}; model not invoked`],
+      ...(input.model !== undefined ? { modelRequested: input.model } : {}),
     });
     await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
     return envelope;
@@ -396,6 +415,7 @@ export async function handleCorpusAnswer(
     tier: "deep",
     ctx,
     think: true,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input.question, hits, maxWords),

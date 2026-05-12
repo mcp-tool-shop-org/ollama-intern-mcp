@@ -47,6 +47,19 @@ export const summarizeDeepSchema = z.object({
     .max(200_000)
     .optional()
     .describe("Chars to read per file when source_paths is used (default 40k)."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type SummarizeDeepInput = z.infer<typeof summarizeDeepSchema>;
@@ -158,6 +171,7 @@ export async function handleSummarizeDeep(
     tier: "deep",
     ctx,
     think: false,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, body),

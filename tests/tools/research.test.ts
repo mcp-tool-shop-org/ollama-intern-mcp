@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 
-import { handleResearch } from "../../src/tools/research.js";
+import { handleResearch, researchSchema } from "../../src/tools/research.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -38,9 +38,11 @@ import type { RunContext } from "../../src/runContext.js";
 
 class ProgrammableClient implements OllamaClient {
   public lastPrompt?: string;
+  public lastModel?: string;
   constructor(private readonly response: string) {}
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     this.lastPrompt = req.prompt;
+    this.lastModel = req.model;
     return { model: req.model, response: this.response, done: true, prompt_eval_count: 50, eval_count: 20 };
   }
   async chat(_: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
@@ -205,5 +207,47 @@ describe("handleResearch — line_range bounds check", () => {
     );
     expect(env.result.citations[0].line_range).toBe("2-4");
     expect(env.warnings?.some((w) => w.includes("past EOF"))).toBeFalsy();
+  });
+});
+
+describe("handleResearch — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying Ollama generate call", async () => {
+    const f = await writeRelFile("doc.md", "alpha\nbravo\n");
+    const client = new ProgrammableClient(
+      `Answer.\n\nSources:\n${f}\n`,
+    );
+    const env = await handleResearch(
+      { question: "q", source_paths: [f], model: "qwen3:32b" },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe("qwen3:32b");
+    expect(env.model).toBe("qwen3:32b");
+    expect(env.model_requested).toBe("qwen3:32b");
+  });
+
+  it("input.model omitted falls through to tier-resolved deep model", async () => {
+    const f = await writeRelFile("doc.md", "alpha\n");
+    const client = new ProgrammableClient(
+      `Answer.\n\nSources:\n${f}\n`,
+    );
+    const env = await handleResearch(
+      { question: "q", source_paths: [f] },
+      makeCtx(client),
+    );
+    expect(client.lastModel).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    expect(env.model_requested).toBeUndefined();
+  });
+
+  it('input.model "" throws ZodError at schema parse', () => {
+    expect(() =>
+      researchSchema.parse({ question: "q", source_paths: ["x"], model: "" }),
+    ).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() =>
+      researchSchema.parse({ question: "q", source_paths: ["x"], model: "   " }),
+    ).toThrow();
   });
 });

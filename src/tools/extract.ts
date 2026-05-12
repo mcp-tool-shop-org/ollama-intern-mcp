@@ -39,6 +39,19 @@ export const extractSchema = z.object({
   hint: z.string().optional().describe("Optional field-by-field hint."),
   frame: z.string().optional().describe("The question / section purpose / topic this extraction is FOR. When supplied, the model first determines on/off-topic, then extracts only fields the source addresses for that frame."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type ExtractInput = z.infer<typeof extractSchema>;
@@ -158,6 +171,7 @@ export async function handleExtract(
       ctx,
       think: false,
       items: input.items,
+      modelOverride: input.model,
       build: (item, _tier, model) => ({
         model,
         prompt: buildPromptFor(item.text, input.schema, input.hint, input.frame),
@@ -183,6 +197,7 @@ export async function handleExtract(
     tier: "workhorse",
     ctx,
     think: false,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPromptFor(text, input.schema, input.hint, input.frame),

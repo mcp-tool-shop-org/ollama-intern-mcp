@@ -70,6 +70,13 @@ export interface RunBatchInput<I extends BatchItem, R> {
   allowFallback?: boolean;
   /** Override thinking mode on every per-item generate call. See RunToolInput.think. */
   think?: boolean;
+  /**
+   * Optional per-call model override (atom tools only — added v2.3.0).
+   * Applies to the initial-tier attempt for EVERY item in the batch.
+   * Fallback retries still resolve their model from the fallback tier.
+   * Propagates to `envelope.model_requested` on the batch envelope.
+   */
+  modelOverride?: string;
 }
 
 /**
@@ -108,8 +115,10 @@ export async function runBatch<I extends BatchItem, R>(
   let tokensOut = 0;
   let okCount = 0;
   let errorCount = 0;
-  let lastModel: string = resolveTier(input.tier, ctx.tiers);
+  let lastModel: string =
+    input.modelOverride !== undefined ? input.modelOverride : resolveTier(input.tier, ctx.tiers);
   let sawFallback: Tier | undefined;
+  const initialTier: Tier = input.tier;
 
   for (const item of input.items) {
     try {
@@ -121,7 +130,13 @@ export async function runBatch<I extends BatchItem, R>(
         allowFallback: input.allowFallback,
         timeoutOverrideMs: ctx.timeouts,
         run: async (tier, signal) => {
-          const model = resolveTier(tier, ctx.tiers);
+          // Per-call model override: same rule as the single-call runner —
+          // override applies only on the initial tier; fallback resolves
+          // from the fallback tier so the degradation contract is stable.
+          const model =
+            input.modelOverride !== undefined && tier === initialTier
+              ? input.modelOverride
+              : resolveTier(tier, ctx.tiers);
           const built = input.build(item, tier, model);
           const req = input.think === undefined ? built : { ...built, think: input.think };
           const resp = await ctx.client.generate(req, signal);
@@ -163,6 +178,7 @@ export async function runBatch<I extends BatchItem, R>(
     startedAt,
     residency,
     ...(sawFallback ? { fallbackFrom: sawFallback } : {}),
+    ...(input.modelOverride !== undefined ? { modelRequested: input.modelOverride } : {}),
   });
   envelope.batch_count = input.items.length;
   envelope.ok_count = okCount;

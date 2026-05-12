@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleClassify } from "../../src/tools/classify.js";
+import { handleClassify, classifySchema } from "../../src/tools/classify.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -226,5 +226,41 @@ describe("handleClassify — frame contract", () => {
     expect(env.result.label).toBeNull();
     expect(env.result.off_topic).toBe(true);
     expect(env.result.below_threshold).toBe(false); // confidence 0.99 > 0.7
+  });
+});
+
+describe("handleClassify — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying Ollama generate call", async () => {
+    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const env = await handleClassify(
+      { text: "x", labels: ["feat", "fix"], model: "hermes3:8b" },
+      makeCtx(client),
+    );
+    expect(client.lastGenerate?.model).toBe("hermes3:8b");
+    expect(env.model).toBe("hermes3:8b");
+    expect(env.model_requested).toBe("hermes3:8b");
+  });
+
+  it("input.model omitted falls through to tier-resolved instant model", async () => {
+    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const env = await handleClassify(
+      { text: "x", labels: ["feat", "fix"] },
+      makeCtx(client),
+    );
+    expect(client.lastGenerate?.model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
+    expect(env.model_requested).toBeUndefined();
+  });
+
+  it('input.model "" throws ZodError at schema parse', () => {
+    expect(() =>
+      classifySchema.parse({ text: "x", labels: ["a", "b"], model: "" }),
+    ).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() =>
+      classifySchema.parse({ text: "x", labels: ["a", "b"], model: "   " }),
+    ).toThrow();
   });
 });

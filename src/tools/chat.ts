@@ -26,6 +26,19 @@ export const chatSchema = z.object({
     .min(1)
     .describe("Chat messages. Last-resort shape — prefer a specialty tool when one fits."),
   system: z.string().optional().describe("Optional system preface; merged with any existing system message."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type ChatInput = z.infer<typeof chatSchema>;
@@ -40,7 +53,10 @@ export async function handleChat(
   ctx: RunContext,
 ): Promise<Envelope<ChatResult>> {
   const startedAt = Date.now();
-  const model = resolveTier("workhorse", ctx.tiers);
+  // Per-call model override (v2.3.0). Falls back to tier-resolved model
+  // when omitted. chat does not currently engage TIER_FALLBACK, so the
+  // override is the only model used for the single attempt.
+  const model = input.model ?? resolveTier("workhorse", ctx.tiers);
 
   const messages: ChatMessage[] = input.system
     ? [{ role: "system", content: input.system }, ...input.messages]
@@ -63,6 +79,7 @@ export async function handleChat(
     tokensOut: tokens.out,
     startedAt,
     residency,
+    ...(input.model !== undefined ? { modelRequested: input.model } : {}),
   });
 
   await ctx.logger.log(callEvent("ollama_chat", envelope));

@@ -41,6 +41,19 @@ export const classifySchema = z.object({
   threshold: z.number().min(0).max(1).optional().describe("Confidence floor (default 0.7)."),
   frame: z.string().optional().describe("The question / section purpose / topic this classification is FOR. When supplied, the model first determines on/off-topic for the frame, then picks a label only within that frame. Off-topic inputs return label=null with off_topic=true regardless of label fit."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional per-call model override. When provided, overrides the " +
+        "tool's tier-resolved model for this call. The tier's timeout " +
+        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
+        "tier-resolved model, NOT the override. Use for receipt-backed " +
+        "orchestration that requires explicit model identity (e.g., " +
+        "research-os reviewer profiles).",
+    ),
 });
 
 export type ClassifyInput = z.infer<typeof classifySchema>;
@@ -153,6 +166,7 @@ export async function handleClassify(
       ctx,
       think: false,
       items: input.items,
+      modelOverride: input.model,
       build: (item, _tier, model) => ({
         model,
         prompt: buildPromptFor(item.text, input),
@@ -176,6 +190,7 @@ export async function handleClassify(
     tier: "instant",
     ctx,
     think: false,
+    modelOverride: input.model,
     build: (_tier, model) => ({
       model,
       prompt: buildPromptFor(text, input),

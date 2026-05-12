@@ -27,6 +27,46 @@ No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ---
 
+## New in v2.3.0
+
+Per-call model override across LLM-backed atom tools. Additive minor — v2.2.0 callers unchanged. Detailed entries in [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+
+- **Optional `model: string` input on 8 atom tools** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. The first attempt on the tool's tier runs against the caller-specified model; on timeout, the existing `TIER_FALLBACK` cascade resolves the cheaper tier's own model (NOT the caller's override). Composite/brief/pack tools deliberately do NOT accept `model` — atoms get per-call control, composites use tier defaults.
+- **New envelope field `model_requested?: string`** — present only when the override was supplied. Calibration-aware callers compare `model_requested` vs `model` to detect fallback substitution: `if (env.model_requested && env.model !== env.model_requested) { /* substitution */ }`. Empty / whitespace-only inputs throw `ZodError` at schema parse, not silent fallthrough.
+- **Bug fix — `src/version.ts` drift.** The runtime `VERSION` constant is now read from `package.json` at module load; v2.1.0 and v2.2.0 had shipped reporting the stale `"2.0.0"` identity string. New `tests/version.test.ts` locks `VERSION === pkg.version`.
+
+### Per-call model override (new in v2.3.0)
+
+```jsonc
+{
+  "tool": "ollama_classify",
+  "arguments": {
+    "text": "patch null pointer in auth",
+    "labels": ["feat", "fix", "chore"],
+    "frame": "what is the change kind?",
+    "model": "hermes3:8b"
+  }
+}
+```
+
+Envelope:
+
+```jsonc
+{
+  "result": { "label": "fix", "confidence": 0.9, "off_topic": false, ... },
+  "tier_used": "instant",
+  "model": "hermes3:8b",
+  "model_requested": "hermes3:8b",       // present because override was supplied
+  // ... rest of envelope unchanged
+}
+```
+
+If the workhorse/deep tier had timed out and the call had cascaded to the instant tier, `env.model` would be the instant tier's resolved model and `env.fallback_from` would be `"workhorse"` — `env.model_requested` would still be `"hermes3:8b"`, and `env.model !== env.model_requested` is the substitution signal. The override is deliberately NOT carried into the cheaper tier; the chosen model may not fit that tier's role at all.
+
+### Historical — v2.2.0 deliverables
+
+See [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) for the full v2.2.0 entry (frame-bound topicality + structured abstention).
+
 ## New in v2.2.0
 
 Local evidence-worker role contract: frame-bound topicality and structured abstention. Additive minor — v2.1.0 callers unchanged. Detailed entries in [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md).

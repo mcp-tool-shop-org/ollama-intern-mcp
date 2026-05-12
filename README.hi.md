@@ -29,6 +29,46 @@
 
 ## v2.2.0 में नया
 
+प्रत्येक कॉल के लिए मॉडल को बदलने की सुविधा, जो LLM-आधारित एटम टूल में उपलब्ध है। मामूली बदलाव किए गए हैं, v2.2.0 में कॉल करने वालों में कोई बदलाव नहीं हुआ। विस्तृत जानकारी [CHANGELOG.md](./CHANGELOG.md) और [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) में उपलब्ध है।
+
+- **8 एटम टूल में वैकल्पिक `model: string` इनपुट:** `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. टूल के पहले प्रयास में, कॉल करने वाले द्वारा निर्दिष्ट मॉडल का उपयोग किया जाता है; यदि समय समाप्त हो जाता है, तो मौजूदा `TIER_FALLBACK` प्रणाली, कम खर्चीले स्तर के अपने मॉडल का उपयोग करती है (कॉल करने वाले द्वारा किए गए बदलाव का नहीं)। कंपोजिट/संक्षिप्त/पैकेज टूल जानबूझकर `model` को स्वीकार नहीं करते हैं - एटम में प्रति-कॉल नियंत्रण होता है, जबकि कंपोजिट डिफ़ॉल्ट स्तर का उपयोग करते हैं।
+- **नया एनवेलप फ़ील्ड `model_requested?: string`:** यह केवल तभी मौजूद होता है जब मॉडल को बदला गया हो। कैलिब्रेशन-सक्षम कॉल करने वाले `model_requested` की तुलना `model` से करते हैं ताकि यह पता चल सके कि क्या कोई बदलाव किया गया है: `if (env.model_requested && env.model !== env.model_requested) { /* बदलाव */ }`. खाली या केवल रिक्त स्थान वाले इनपुट `ZodError` उत्पन्न करते हैं, स्कीमा पार्सिंग के दौरान, और यह चुपचाप नहीं होता है।
+- **बग ठीक किया गया — `src/version.ts` में त्रुटि।** रनटाइम `VERSION` स्थिरांक अब मॉड्यूल लोड होने पर `package.json` से पढ़ा जाता है; v2.1.0 और v2.2.0 में पुरानी `"2.0.0"` पहचान स्ट्रिंग रिपोर्ट की गई थी। नया `tests/version.test.ts` `VERSION === pkg.version` को सुनिश्चित करता है।
+
+### प्रत्येक कॉल के लिए मॉडल को बदलने की सुविधा (v2.3.0 में नई)।
+
+```jsonc
+{
+  "tool": "ollama_classify",
+  "arguments": {
+    "text": "patch null pointer in auth",
+    "labels": ["feat", "fix", "chore"],
+    "frame": "what is the change kind?",
+    "model": "hermes3:8b"
+  }
+}
+```
+
+एनवेलप:
+
+```jsonc
+{
+  "result": { "label": "fix", "confidence": 0.9, "off_topic": false, ... },
+  "tier_used": "instant",
+  "model": "hermes3:8b",
+  "model_requested": "hermes3:8b",       // present because override was supplied
+  // ... rest of envelope unchanged
+}
+```
+
+यदि 'वर्कहॉर्स/डीप' स्तर में समय समाप्त हो गया था और कॉल 'इंस्टेंट' स्तर पर चला गया था, तो `env.model` 'इंस्टेंट' स्तर के चुने हुए मॉडल को दर्शाता है, और `env.fallback_from` `"workhorse"` होगा - `env.model_requested` अभी भी `"hermes3:8b"` होगा, और `env.model !== env.model_requested` बदलाव का संकेत है। जानबूझकर, मॉडल को कम खर्चीले स्तर में नहीं ले जाया जाता है; चुना गया मॉडल उस स्तर की भूमिका के लिए उपयुक्त नहीं हो सकता है।
+
+### ऐतिहासिक - v2.1.0 डिलीवरी
+
+v2.2.0 के पूर्ण विवरण (विषय-आधारित और संरचित अस्वीकृति) के लिए [CHANGELOG.md](./CHANGELOG.md) और [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) देखें।
+
+## v2.2.0 में नया
+
 स्थानीय प्रमाण-कार्यकर्ता भूमिका अनुबंध: फ्रेम-बाउंड प्रासंगिकता और संरचित अस्वीकृति। मामूली अतिरिक्त - v2.1.0 कॉलर्स अपरिवर्तित। [CHANGELOG.md](./CHANGELOG.md) और [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) में विस्तृत प्रविष्टियाँ।
 
 - `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` पर **फ्रेम-बाउंड निष्कर्षण** - वैकल्पिक `frame: string` इनपुट + संरचित `frame_alignment` / `on_topic` / `frame_addressed` आउटपुट। अप्रासंगिक स्रोतों को स्कीमा में पुन: वाक्यांश करने के बजाय चिह्नित किया जाता है।

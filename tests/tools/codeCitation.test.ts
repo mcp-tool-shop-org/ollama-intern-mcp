@@ -13,7 +13,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { handleCodeCitation } from "../../src/tools/codeCitation.js";
+import { handleCodeCitation, codeCitationSchema } from "../../src/tools/codeCitation.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -30,9 +30,11 @@ import type { RunContext } from "../../src/runContext.js";
 
 class MockClient implements OllamaClient {
   public lastPrompt?: string;
+  public lastModel?: string;
   constructor(private raw: string) {}
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     this.lastPrompt = req.prompt;
+    this.lastModel = req.model;
     return { model: req.model, response: this.raw, done: true, prompt_eval_count: 100, eval_count: 40 };
   }
   async chat(_r: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
@@ -171,5 +173,74 @@ describe("ollama_code_citation — weak detection", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("ollama_code_citation — per-call model override (v2.3.0)", () => {
+  it("input.model is passed to the underlying Ollama generate call", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cc-model-"));
+    try {
+      const a = join(dir, "a.ts");
+      await writeFile(a, "export const x = 1;\n", "utf8");
+      const client = new MockClient(
+        JSON.stringify({ answer: "A.", citations: [], uncited_fragments: ["A."] }),
+      );
+      const env = await handleCodeCitation(
+        {
+          question: "What does this file define exactly?",
+          source_paths: [a],
+          model: "qwen3:32b",
+        },
+        makeCtx(client),
+      );
+      expect(client.lastModel).toBe("qwen3:32b");
+      expect(env.model).toBe("qwen3:32b");
+      expect(env.model_requested).toBe("qwen3:32b");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("input.model omitted falls through to tier-resolved deep model", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cc-model-default-"));
+    try {
+      const a = join(dir, "a.ts");
+      await writeFile(a, "export const x = 1;\n", "utf8");
+      const client = new MockClient(
+        JSON.stringify({ answer: "A.", citations: [], uncited_fragments: ["A."] }),
+      );
+      const env = await handleCodeCitation(
+        {
+          question: "What does this file define exactly?",
+          source_paths: [a],
+        },
+        makeCtx(client),
+      );
+      expect(client.lastModel).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+      expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+      expect(env.model_requested).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('input.model "" throws ZodError at schema parse', () => {
+    expect(() =>
+      codeCitationSchema.parse({
+        question: "What does this do exactly?",
+        source_paths: ["x"],
+        model: "",
+      }),
+    ).toThrow();
+  });
+
+  it('input.model "   " (whitespace) throws ZodError at schema parse', () => {
+    expect(() =>
+      codeCitationSchema.parse({
+        question: "What does this do exactly?",
+        source_paths: ["x"],
+        model: "   ",
+      }),
+    ).toThrow();
   });
 });
