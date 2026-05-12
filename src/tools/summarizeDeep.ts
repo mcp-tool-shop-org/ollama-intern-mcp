@@ -38,6 +38,7 @@ export const summarizeDeepSchema = z.object({
     .optional()
     .describe("File paths to read + chunk server-side. Use this instead of `text` to save Claude context — the tool reads the files, Claude never sees the raw content."),
   focus: z.string().optional().describe("Optional aspect to emphasize (e.g. 'combat doctrine', 'auth flow')."),
+  frame: z.string().optional().describe("The question / section purpose / topic this digest is FOR — distinct from `focus`, which is emphasis within an in-frame source. When supplied, sources that don't address the frame are dropped from the digest and listed under `unaddressed_sources` instead. If NO source addresses the frame, summary is empty."),
   max_words: z.number().int().min(20).max(1500).optional().describe("Target digest length in words (default 250)."),
   per_file_max_chars: z
     .number()
@@ -68,16 +69,23 @@ function assertExactlyOneSource(input: SummarizeDeepInput): void {
 function buildPrompt(input: SummarizeDeepInput, body: string): string {
   const maxWords = input.max_words ?? 250;
   const focus = input.focus ? `Emphasize this aspect above all others: ${input.focus}` : `Cover the whole document.`;
-  return [
+  const lines = [
     `You are a deep reader. Produce a faithful digest of the text below.`,
-    `Return only the digest — no preamble, no meta-commentary.`,
     `Length: at most ${maxWords} words.`,
     focus,
     `Preserve specific names, numbers, and decisions. Drop filler.`,
-    ``,
-    `Text:`,
-    body,
-  ].join("\n");
+  ];
+  if (input.frame !== undefined) {
+    lines.push(
+      `Frame: ${input.frame}`,
+      `If a source does not address the frame, do NOT include its content in the digest; instead list it under unaddressed_sources with one sentence on what the source IS about. If NO sources address the frame, return summary = "" and unaddressed_sources covering all of them.`,
+      `Return JSON only in this exact shape: {"frame_addressed": true|false, "summary": "...", "unaddressed_sources": ["source_label: one-sentence reason", ...]}`,
+    );
+  } else {
+    lines.push(`Return only the digest — no preamble, no meta-commentary.`);
+  }
+  lines.push(``, `Text:`, body);
+  return lines.join("\n");
 }
 
 /** Result of summarize_deep — extended with coverage when source_paths was used. */
@@ -85,6 +93,35 @@ export interface SummarizeDeepResult extends SummarizeResult {
   covered_sources?: string[];
   omitted_sources?: string[];
   coverage_notes?: string[];
+  /** Present only when `frame` was supplied. Null when the model output couldn't be parsed for the frame decision. */
+  frame_addressed?: boolean | null;
+  /** Present only when `frame` was supplied. Each entry typically names a source and briefly notes what it's actually about. */
+  unaddressed_sources?: string[];
+}
+
+interface ParsedFrameDigest {
+  frame_addressed: boolean | null;
+  summary: string;
+  unaddressed_sources: string[];
+}
+
+function parseFrameDigest(raw: string): ParsedFrameDigest {
+  const trimmed = raw.trim();
+  try {
+    const obj = JSON.parse(trimmed);
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      const summary = typeof obj.summary === "string" ? obj.summary : "";
+      const frameAddressed = typeof obj.frame_addressed === "boolean" ? obj.frame_addressed : null;
+      const unaddressedRaw = obj.unaddressed_sources;
+      const unaddressed = Array.isArray(unaddressedRaw)
+        ? (unaddressedRaw.filter((x) => typeof x === "string") as string[])
+        : [];
+      return { frame_addressed: frameAddressed, summary, unaddressed_sources: unaddressed };
+    }
+  } catch {
+    // fall through
+  }
+  return { frame_addressed: null, summary: trimmed, unaddressed_sources: [] };
 }
 
 export async function handleSummarizeDeep(
@@ -115,6 +152,7 @@ export async function handleSummarizeDeep(
     sourceChars = body.length;
   }
 
+  const frameSupplied = input.frame !== undefined;
   return runTool<SummarizeDeepResult>({
     tool: "ollama_summarize_deep",
     tier: "deep",
@@ -123,15 +161,30 @@ export async function handleSummarizeDeep(
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt(input, body),
+      ...(frameSupplied ? { format: "json" as const } : {}),
       options: { temperature: TEMPERATURE_BY_SHAPE.summarize, num_predict: Math.ceil(maxWords * 2.5) },
     }),
     parse: (raw): SummarizeDeepResult => {
-      const summary = raw.trim();
+      let summary: string;
+      let frameAddressed: boolean | null | undefined;
+      let unaddressedSources: string[] | undefined;
+      if (frameSupplied) {
+        const parsed = parseFrameDigest(raw);
+        summary = parsed.summary;
+        frameAddressed = parsed.frame_addressed;
+        unaddressedSources = parsed.unaddressed_sources;
+      } else {
+        summary = raw.trim();
+      }
       const base: SummarizeDeepResult = {
         summary,
         source_preview: sourcePreview,
         source_chars: sourceChars,
       };
+      if (frameSupplied) {
+        base.frame_addressed = frameAddressed ?? null;
+        base.unaddressed_sources = unaddressedSources ?? [];
+      }
       // Coverage only makes sense for multi-source path-based calls.
       // Single source or raw-text input: skip — no omission risk to surface.
       if (sources && sources.length >= 2) {

@@ -13,20 +13,20 @@ Job-shaped primitives. Pick the tool that names the job; the tier follows.
 
 | Tool | Tier | Purpose |
 |---|---|---|
-| `ollama_research` | Deep | Takes **file paths**, not raw text. Chunks locally, answers with citations validated against `source_paths`. |
+| `ollama_research` | Deep | Takes **file paths**, not raw text. Chunks locally, answers with citations validated against `source_paths`. _v2.2.0+ surfaces structured `weak` / `abstained` / `sources_address_question` fields — see [README §Abstention contract](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#abstention-contract-new-in-v220)._ |
 | `ollama_corpus_search` | Embed | Persistent corpus concept search (BM25 + RRF fusion). |
-| `ollama_corpus_answer` | Deep | Chunk-grounded synthesis over a corpus. Every claim cites a chunk id. |
+| `ollama_corpus_answer` | Deep | Chunk-grounded synthesis over a corpus. Every claim cites a chunk id. _v2.2.0+ accepts optional `min_top_score` topicality threshold and surfaces per-citation retrieval scores — see [README §Abstention contract](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#abstention-contract-new-in-v220)._ |
 | `ollama_corpus_index` | Embed | Build or update a corpus from a root directory. |
 | `ollama_corpus_refresh` | Embed | Incremental refresh using the corpus manifest. |
 | `ollama_corpus_list` | — | List known corpora. |
 | `ollama_embed_search` | Embed | Ad-hoc vector search. |
 | `ollama_embed` | Embed | Batch-aware embeddings. |
-| `ollama_classify` | Instant | Single-label classification with confidence. Batch-capable. |
+| `ollama_classify` | Instant | Single-label classification with confidence. Batch-capable. _v2.2.0+ accepts optional `frame` and surfaces `frame_alignment` topicality output — see [README §Frame-bound extraction](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#frame-bound-extraction-new-in-v220)._ |
 | `ollama_triage_logs` | Instant | Stable-shape log digest: errors, warnings, suspected root cause. Batch-capable. |
-| `ollama_summarize_fast` | Instant | Gist of short input (~4k tokens). |
-| `ollama_summarize_deep` | Deep | Digest of long input (~32k tokens) with optional focus. |
+| `ollama_summarize_fast` | Instant | Gist of short input (~4k tokens). _v2.2.0+ accepts optional `frame` and surfaces `frame_alignment` topicality output — see [README §Frame-bound extraction](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#frame-bound-extraction-new-in-v220)._ |
+| `ollama_summarize_deep` | Deep | Digest of long input (~32k tokens) with optional focus. _v2.2.0+ accepts optional `frame` and surfaces `frame_alignment` topicality output — see [README §Frame-bound extraction](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#frame-bound-extraction-new-in-v220)._ |
 | `ollama_draft` | Workhorse | DRAFT code/prose stubs. Runs compile check when `language` is known. Never autonomous. |
-| `ollama_extract` | Workhorse | Schema-constrained JSON extraction. Batch-capable. |
+| `ollama_extract` | Workhorse | Schema-constrained JSON extraction. Batch-capable. _v2.2.0+ accepts optional `frame` and surfaces `frame_alignment` topicality output — see [README §Frame-bound extraction](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#frame-bound-extraction-new-in-v220)._ |
 | `ollama_chat` | Workhorse | Ad-hoc chat. **Last resort.** If you reach for this often, a specialty tool is missing. |
 
 Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{ id, text }]` and return one envelope per batch. Duplicate ids refused.
@@ -37,9 +37,9 @@ Evidence-backed structured operator briefs. Every claim cites an evidence id. Un
 
 | Tool | Purpose |
 |---|---|
-| `ollama_incident_brief` | "What just happened" — symptoms, timeline, suspected cause, investigative next checks. |
-| `ollama_repo_brief` | Operator map of a repo — what it is, how it's laid out, where to start reading. |
-| `ollama_change_brief` | Change impact brief with DRAFT release note. |
+| `ollama_incident_brief` | "What just happened" — symptoms, timeline, suspected cause, investigative next checks. _v2.2.0+ propagates corpus retrieval scores into evidence items when sourced from a corpus — see [README §Abstention contract](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#abstention-contract-new-in-v220)._ |
+| `ollama_repo_brief` | Operator map of a repo — what it is, how it's laid out, where to start reading. _v2.2.0+ propagates corpus retrieval scores into evidence items when sourced from a corpus — see [README §Abstention contract](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#abstention-contract-new-in-v220)._ |
+| `ollama_change_brief` | Change impact brief with DRAFT release note. _v2.2.0+ propagates corpus retrieval scores into evidence items when sourced from a corpus — see [README §Abstention contract](https://github.com/mcp-tool-shop-org/ollama-intern-mcp#abstention-contract-new-in-v220)._ |
 
 ## Packs (3, frozen)
 

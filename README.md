@@ -78,7 +78,9 @@ Returns an envelope pointing at a file on disk:
 }
 ```
 
-That markdown file is the intern's desk output — headings, evidence block with cited ids, investigative `next_checks`, `weak: true` banner if evidence is thin. It's deterministic: the renderer is code, not a prompt. Open it tomorrow, diff it next week, export it into a handbook with `ollama_artifact_export_to_path`.
+→ `weak: false` means ≥2 evidence items were assembled; it does NOT mean the hypotheses are vetted. See [Evidence laws](#evidence-laws) below.
+
+That markdown file is the intern's desk output — headings, evidence block with cited ids, investigative `next_checks`, `weak: true` banner if evidence is thin. It's deterministic: the renderer is code, not a prompt. (The renderer is deterministic; the *content* of hypotheses and surfaces is generative — read them as draft, not verified.) Open it tomorrow, diff it next week, export it into a handbook with `ollama_artifact_export_to_path`.
 
 Every competitor in this category leads with "save tokens." We lead with _here is the file the intern wrote._
 
@@ -97,10 +99,38 @@ Every competitor in this category leads with "save tokens." We lead with _here i
   "arguments": { "name": "sprite-foundry",
                  "query": "how does the worker handle OOM eviction?",
                  "top_k": 8 } }
-// → { answer: "...", citations: [{chunk_id, path}...], weak: false }
+// → { answer: "...", citations: [{chunk_index, path}...], weak: false }
 ```
 
-Every claim in `answer` cites a chunk id validated server-side. Full walkthrough in [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
+The server validates citation identity and that each `chunk_index` is in range of the retrieved hits. It does NOT prove that every generated claim is semantically supported by the cited chunk content — that's the model's responsibility, and weak retrieval can still produce citation-shaped answers. Full walkthrough in [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
+
+---
+
+## Frame-bound extraction (new in v2.2.0)
+
+`ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, and `ollama_summarize_deep` accept an optional `frame: string` input. The frame names the question the source is being asked to answer; the model is instructed to abstain rather than emit true-but-off-topic content when the source doesn't address the frame.
+
+```jsonc
+{
+  "tool": "ollama_extract",
+  "arguments": {
+    "text": "<long source document>",
+    "schema": { /* your fields */ },
+    "frame": "section purpose here — e.g. 'OOM eviction behavior in the sprite worker'"
+  }
+}
+// → result includes frame_alignment: { on_topic: boolean, reason: string, unaddressed_aspects: string[] }
+```
+
+If `frame` is omitted, behavior is unchanged from v2.1.0. When supplied, `frame_alignment.on_topic = false` signals that extracted fields may be true-of-the-source but not relevant to the frame — treat that as the same shape as a `weak: true` brief: useful, but spot-check before promoting into downstream evidence.
+
+---
+
+## Abstention contract (new in v2.2.0)
+
+`ollama_research` returns structured abstention fields: `weak: boolean`, `abstained: boolean`, `sources_address_question: boolean | null`. An empty `citations[]` with a non-empty `answer` is no longer silent — `abstained: true` says the model declined to synthesize because the caller-supplied paths did not address the question. Treat abstention as a success, not a failure: it is the tool refusing to launder weak retrieval into authoritative output.
+
+`ollama_corpus_answer` accepts an optional `min_top_score: number` topicality threshold (0.0–1.0). When the top retrieval score for a query falls below `min_top_score`, the tool short-circuits with `abstained: true` and skips synthesis — preventing the "5 off-topic chunks at score 0.21 still drive a full answer" failure mode that the v2.1.0 `weak: true` rule did not catch (`weak: true` only fired on `hits.length < 2`). Pair this with the per-citation `score` field newly surfaced on each citation to audit retrieval quality directly from the envelope.
 
 ---
 
@@ -274,6 +304,7 @@ These are enforced in the server, not the prompt:
 
 - **Citations required.** Every brief claim cites an evidence id.
 - **Unknowns stripped server-side.** Models that cite ids not in the evidence bundle have those ids dropped with a warning before the result returns.
+- **ID-validated, not content-validated.** Server checks that every cited `evidence_ref` points to a real evidence id in the assembled set. It does NOT verify that the claim text is derivable from the cited evidence — that is the model's job, and weak briefs sometimes contain unsupported claims with valid refs. Use `weak: true` + coverage_notes + the included `excerpt` field to spot-check.
 - **Weak is weak.** Thin evidence flags `weak: true` with coverage notes. Never smoothed into fake narrative.
 - **Investigative, not prescriptive.** `next_checks` / `read_next` / `likely_breakpoints` only. Prompts forbid "apply this fix."
 - **Deterministic renderers.** Artifact markdown shape is code, not a prompt. `draft` stays reserved for prose where model wording matters.

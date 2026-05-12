@@ -93,7 +93,7 @@ export function createServer(ctx: RunContext): McpServer {
   // FLAGSHIP — ollama_research
   server.tool(
     "ollama_research",
-    "FLAGSHIP. Answer a question grounded in specific files. Takes FILE PATHS (not raw text) — reads and chunks locally, returns a digest with validated citations. Use this to understand a repo/doc without burning Claude context on the full content. Citations outside source_paths are stripped server-side.",
+    "FLAGSHIP. Answer a question grounded in specific files. Takes FILE PATHS (not raw text) — reads and chunks locally, returns a digest with validated citations. Use this to understand a repo/doc without burning Claude context on the full content. Citations outside source_paths are stripped server-side; cited line_ranges that point past EOF have the range dropped (path is kept) with a warning. Returns honest grounding signals: `weak: true` when an answer has zero validated citations (likely ungrounded); `abstained: true` when the model explicitly refused (citations cleared); `sources_address_question` is tri-state (null when unknown).",
     researchSchema.shape,
     (args) => wrap(handleResearch(args, ctx)),
   );
@@ -109,7 +109,7 @@ export function createServer(ctx: RunContext): McpServer {
   // FLAGSHIP — ollama_corpus_answer (grounded synthesis over a named corpus)
   server.tool(
     "ollama_corpus_answer",
-    "FLAGSHIP. Answer a question from a NAMED CORPUS with chunk-grounded citations. Retrieves via corpus_search, synthesizes with the Deep tier from the retrieved chunks ONLY, and returns `{answer, citations:[{path, chunk_index, heading_path, title}], covered_sources, omitted_sources, coverage_notes, retrieval:{retrieved, top_score, weak}}`. Distinct from ollama_research: research takes source paths you explicitly hand in; corpus_answer pulls from an already-indexed corpus. Weak retrieval degrades honestly — 0 hits short-circuits without invoking the model; thin retrieval flags `weak: true`.",
+    "FLAGSHIP. Answer a question from a NAMED CORPUS with chunk-grounded citations. Retrieves via corpus_search, synthesizes with the Deep tier from the retrieved chunks ONLY, and returns `{answer, citations:[{path, chunk_index, heading_path, title, score}], covered_sources, omitted_sources, coverage_notes, retrieval:{retrieved, top_score, weak}, abstained}`. Per-citation `score` carries the retrieval relevance through. Distinct from ollama_research: research takes source paths you explicitly hand in; corpus_answer pulls from an already-indexed corpus. Weak retrieval degrades honestly — 0 hits short-circuits without invoking the model. New `min_top_score` floor: when supplied, top hits below the threshold also short-circuit with `abstained: true` instead of driving ungrounded synthesis (e.g. 5 hits @ 0.21 cosine on a 0.5 floor).",
     corpusAnswerSchema.shape,
     (args) => wrap(handleCorpusAnswer(args, ctx)),
   );
@@ -117,7 +117,7 @@ export function createServer(ctx: RunContext): McpServer {
   // FLAGSHIP — ollama_incident_brief (structured operator brief)
   server.tool(
     "ollama_incident_brief",
-    "FLAGSHIP compound job. Produces a STRUCTURED OPERATOR BRIEF from log_text and/or source_paths, optionally blended with a named corpus for background context. Returns `{root_cause_hypotheses, affected_surfaces, timeline_clues, next_checks, evidence, weak, coverage_notes, corpus_used}`. Every hypothesis/surface/clue carries evidence_refs into the evidence array — refs to unknown ids are stripped server-side. Distinct from ollama_triage_logs (symptoms in one blob) and ollama_research (answer a specific question). Thin evidence degrades to weak=true with coverage_notes — never a smooth fake narrative. next_checks are INVESTIGATIVE, not remediations.",
+    "FLAGSHIP compound job. Produces a STRUCTURED OPERATOR BRIEF from log_text and/or source_paths, optionally blended with a named corpus for background context. Returns `{root_cause_hypotheses, affected_surfaces, timeline_clues, next_checks, evidence, weak, coverage_notes, corpus_used}`. Every hypothesis/surface/clue carries evidence_refs into the evidence array — refs to unknown ids are stripped server-side. Corpus-sourced evidence items carry retrieval `score` (and optionally `why_matched`). Optional `corpus_min_evidence_score` drops corpus chunks below the relevance floor before the model sees them, with a counted note in coverage_notes. Distinct from ollama_triage_logs (symptoms in one blob) and ollama_research (answer a specific question). Thin evidence degrades to weak=true with coverage_notes — never a smooth fake narrative. next_checks are INVESTIGATIVE, not remediations. If you pre-extracted claims via ollama_extract with a frame argument, drop off-topic items before assembling source_paths for this brief — there's no in-brief topicality gate for path/log inputs.",
     incidentBriefSchema.shape,
     (args) => wrap(handleIncidentBrief(args, ctx)),
   );
@@ -125,7 +125,7 @@ export function createServer(ctx: RunContext): McpServer {
   // FLAGSHIP — ollama_repo_brief (operator map of a repo)
   server.tool(
     "ollama_repo_brief",
-    "FLAGSHIP compound job. Produces an OPERATOR MAP of a repo: `{repo_thesis, key_surfaces, architecture_shape, risk_areas, read_next, evidence, weak, coverage_notes, corpus_used}`. Takes source_paths (typically README + key src entries + manifests + docs) and optionally a corpus for cross-cutting context. Not a research clone — research answers a specific question; repo_brief synthesizes orientation. Every key_surface and risk_area cites evidence. read_next is INVESTIGATIVE (files or sections to look at), never prescriptive fixes or refactors. Thin evidence → weak=true with coverage notes.",
+    "FLAGSHIP compound job. Produces an OPERATOR MAP of a repo: `{repo_thesis, key_surfaces, architecture_shape, risk_areas, read_next, evidence, weak, coverage_notes, corpus_used}`. Takes source_paths (typically README + key src entries + manifests + docs) and optionally a corpus for cross-cutting context. Corpus-sourced evidence items carry retrieval `score`. Optional `corpus_min_evidence_score` drops corpus chunks below the relevance floor before the model sees them. Not a research clone — research answers a specific question; repo_brief synthesizes orientation. Every key_surface and risk_area cites evidence. read_next is INVESTIGATIVE (files or sections to look at), never prescriptive fixes or refactors. Thin evidence → weak=true with coverage notes. If you pre-extracted claims via ollama_extract with a frame argument, drop off-topic items before assembling source_paths — there's no in-brief topicality gate for path inputs.",
     repoBriefSchema.shape,
     (args) => wrap(handleRepoBrief(args, ctx)),
   );
@@ -133,7 +133,7 @@ export function createServer(ctx: RunContext): McpServer {
   // FLAGSHIP — ollama_change_brief (structured impact brief for a change)
   server.tool(
     "ollama_change_brief",
-    "FLAGSHIP compound job. Produces a CHANGE IMPACT BRIEF: `{change_summary, affected_surfaces, why_it_matters, likely_breakpoints, validation_checks, release_note_draft, evidence, weak, coverage_notes, corpus_used}`. Accepts diff_text (split per file on `diff --git` markers) and/or source_paths (changed files), with an optional corpus for architecture context. Not a git chat bot — structured and reviewable. likely_breakpoints are INVESTIGATIVE reasoning about what could break; validation_checks are what to verify after the change. Never remedial (no 'apply this fix'). release_note_draft is a draft the operator reviews.",
+    "FLAGSHIP compound job. Produces a CHANGE IMPACT BRIEF: `{change_summary, affected_surfaces, why_it_matters, likely_breakpoints, validation_checks, release_note_draft, evidence, weak, coverage_notes, corpus_used}`. Accepts diff_text (split per file on `diff --git` markers) and/or source_paths (changed files), with an optional corpus for architecture context. Corpus-sourced evidence items carry retrieval `score`. Optional `corpus_min_evidence_score` drops corpus chunks below the relevance floor before the model sees them. Not a git chat bot — structured and reviewable. likely_breakpoints are INVESTIGATIVE reasoning about what could break; validation_checks are what to verify after the change. Never remedial (no 'apply this fix'). release_note_draft is a draft the operator reviews. If you pre-extracted claims via ollama_extract with a frame argument, drop off-topic items before assembling source_paths/diff_text — there's no in-brief topicality gate for diff/path inputs.",
     changeBriefSchema.shape,
     (args) => wrap(handleChangeBrief(args, ctx)),
   );
@@ -293,7 +293,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — classify (batch-capable)
   server.tool(
     "ollama_classify",
-    "Single-label classification with confidence. Single: pass `text`. BATCH: pass `items:[{id,text}]` — returns ONE envelope with `result.items[]` of `{id, ok, result|error}` plus `batch_count/ok_count/error_count`. Use the batch shape to chew through bulk labeling (commit types, PR titles, log severities) in one handoff instead of N round-trips. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7).",
+    "Single-label classification with confidence. Single: pass `text`. BATCH: pass `items:[{id,text}]` — returns ONE envelope with `result.items[]` of `{id, ok, result|error}` plus `batch_count/ok_count/error_count`. Use the batch shape to chew through bulk labeling (commit types, PR titles, log severities) in one handoff instead of N round-trips. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7). FRAME CONTRACT (optional): pass `frame` (the question / section purpose this label set is FOR) and the model first decides whether the input is on-topic. Off-topic inputs return label=null with `off_topic: true` + `off_topic_reason` regardless of label fit — distinct from below_threshold (weak fit within the right frame). Omitting `frame` preserves the legacy result shape.",
     classifySchema.shape,
     (args) => wrap(handleClassify(args, ctx)),
   );
@@ -309,7 +309,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — summarize_fast
   server.tool(
     "ollama_summarize_fast",
-    "Gist of short input (best under ~4k tokens). Use as a decision gate: 'is this file worth reading in full?' Summary carries source_preview so you can spot-check fabrication.",
+    "Gist of short input (best under ~4k tokens). Use as a decision gate: 'is this file worth reading in full?' Summary carries source_preview so you can spot-check fabrication. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this summary is FOR) and the model first decides whether the input addresses it. Off-topic inputs return summary='(off-topic for frame: ...)' with `on_topic: false` instead of paraphrasing unrelated content. Omitting `frame` preserves the legacy result shape.",
     summarizeFastSchema.shape,
     (args) => wrap(handleSummarizeFast(args, ctx)),
   );
@@ -317,7 +317,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — summarize_deep
   server.tool(
     "ollama_summarize_deep",
-    "Digest of long input with optional focus. Pass EXACTLY ONE of: `text` (raw content in hand), `source_path` (single file — server reads + chunks, Claude never pre-reads), or `source_paths[]` (multiple files). The path-based shapes save Claude context — the whole point of delegating summarization. Carries source_preview for fabrication spot-checks.",
+    "Digest of long input with optional focus. Pass EXACTLY ONE of: `text` (raw content in hand), `source_path` (single file — server reads + chunks, Claude never pre-reads), or `source_paths[]` (multiple files). The path-based shapes save Claude context — the whole point of delegating summarization. Carries source_preview for fabrication spot-checks. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this digest is FOR — distinct from `focus`, which is emphasis WITHIN an in-frame source). Sources that don't address the frame are dropped from the digest and listed under `unaddressed_sources`; if NO source addresses it, summary='' and `frame_addressed: false`. Omitting `frame` preserves the legacy result shape.",
     summarizeDeepSchema.shape,
     (args) => wrap(handleSummarizeDeep(args, ctx)),
   );
@@ -333,7 +333,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — extract (batch-capable)
   server.tool(
     "ollama_extract",
-    "Schema-constrained JSON extraction using Ollama's JSON mode. Single: pass `text`, returns `{ok: true, data}` or `{ok: false, error: 'unparseable'}` — never partial. BATCH: pass `items:[{id,text}]` with a shared schema — returns one envelope with per-item `{id, ok, result|error}`. Use the batch shape for any 10+-similar-inputs workload (frontmatter, package.json, release metadata) so you hand over the whole job, not N calls.",
+    "Schema-constrained JSON extraction using Ollama's JSON mode. Single: pass `text`, returns `{ok: true, data}` or `{ok: false, error: 'unparseable'}` — never partial. BATCH: pass `items:[{id,text}]` with a shared schema — returns one envelope with per-item `{id, ok, result|error}`. Use the batch shape for any 10+-similar-inputs workload (frontmatter, package.json, release metadata) so you hand over the whole job, not N calls. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this extraction is FOR). The model first judges on-topic vs off-topic; result lifts a top-level `frame_alignment: { on_topic, reason, unaddressed_aspects? }`. Off-topic sources return an empty data shape rather than paraphrasing unrelated content into the schema. Omitting `frame` preserves the legacy result shape.",
     extractSchema.shape,
     (args) => wrap(handleExtract(args, ctx)),
   );

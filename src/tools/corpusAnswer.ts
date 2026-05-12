@@ -72,6 +72,12 @@ export const corpusAnswerSchema = z.object({
     .max(1000)
     .optional()
     .describe("Target answer length in words (default 200)."),
+  min_top_score: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe("Topicality floor — if the top retrieval score is below this value, the tool short-circuits with `abstained: true` and `retrieval.weak: true` instead of invoking the model. Use this when low-relevance hits would otherwise drive ungrounded synthesis (e.g. 0.21 cosine on a 0.5 threshold). Absent → no floor; existing 0-hit short-circuit still fires."),
 });
 
 export type CorpusAnswerInput = z.infer<typeof corpusAnswerSchema>;
@@ -81,6 +87,8 @@ export interface CorpusAnswerCitation {
   chunk_index: number;
   heading_path: string[];
   title: string | null;
+  /** Retrieval relevance score for this chunk, propagated from the hit. */
+  score: number;
 }
 
 export interface RetrievalStat {
@@ -98,6 +106,13 @@ export interface CorpusAnswerResult {
   coverage_notes: string[];
   mode: SearchMode;
   retrieval: RetrievalStat;
+  /**
+   * True when the tool refused to invoke the model because retrieval did
+   * not clear a relevance bar — empty corpus, 0 hits, or top score below
+   * the caller-supplied `min_top_score` floor. Distinct from `weak`: weak
+   * means thin grounding (e.g. 1 hit); abstained means no synthesis at all.
+   */
+  abstained: boolean;
 }
 
 /** A single-hit retrieval is "weak" — narrow coverage, risk of over-confident synthesis. */
@@ -181,6 +196,10 @@ export function validateAndMapCitations(
       chunk_index: h.chunk_index,
       heading_path: h.heading_path,
       title: h.title,
+      // Per-citation provenance — the retrieval score is real signal the
+      // caller can use to weight or filter downstream. Previously the
+      // citation shape dropped it.
+      score: h.score,
     });
   }
   return { valid, stripped };
@@ -260,6 +279,7 @@ export async function handleCorpusAnswer(
       coverage_notes: ["Empty question; retrieval and synthesis both skipped."],
       mode: input.mode ?? DEFAULT_SEARCH_MODE,
       retrieval: { retrieved: 0, total_in_corpus: corpus.chunks.length, top_score: 0, weak: true },
+      abstained: true,
     };
     const envelope = buildEnvelope<CorpusAnswerResult>({
       result,
@@ -313,6 +333,7 @@ export async function handleCorpusAnswer(
       ],
       mode,
       retrieval: { retrieved: 0, total_in_corpus: totalInCorpus, top_score: 0, weak: true },
+      abstained: true,
     };
     const envelope = buildEnvelope<CorpusAnswerResult>({
       result,
@@ -324,6 +345,42 @@ export async function handleCorpusAnswer(
       startedAt,
       residency,
       warnings: ["corpus_answer: zero retrieval hits; model not invoked"],
+    });
+    await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
+    return envelope;
+  }
+
+  // Topicality threshold short-circuit. If the caller supplied a
+  // `min_top_score` and the top hit's score doesn't clear it, treat this
+  // as the 0-hit case — synthesis with off-topic chunks is the failure
+  // mode the dogfood surfaced (5 hits @ 0.21 cosine driving full briefs).
+  if (typeof input.min_top_score === "number" && topScore < input.min_top_score) {
+    const startedAt = Date.now();
+    const deepModel = resolveTier("deep", ctx.tiers);
+    const residency = null;
+    const result: CorpusAnswerResult = {
+      answer:
+        `Top retrieval score ${topScore.toFixed(3)} below threshold ${input.min_top_score} for corpus "${input.corpus}" and question "${input.question}". The model was not invoked — the corpus may not contain content addressing this question. To unblock: lower min_top_score, rephrase the query (synonyms, broader framing), switch retrieval mode (e.g. "lexical" or "title_path"), or index more sources.`,
+      citations: [],
+      covered_sources: [],
+      omitted_sources: [],
+      coverage_notes: [
+        `Top retrieval score ${topScore.toFixed(3)} below caller-supplied min_top_score=${input.min_top_score}. Synthesis skipped on purpose.`,
+      ],
+      mode,
+      retrieval: { retrieved: hits.length, total_in_corpus: totalInCorpus, top_score: topScore, weak: true },
+      abstained: true,
+    };
+    const envelope = buildEnvelope<CorpusAnswerResult>({
+      result,
+      tier: "deep",
+      model: deepModel,
+      hardwareProfile: ctx.hardwareProfile,
+      tokensIn: Math.ceil(input.question.length / 4),
+      tokensOut: 0,
+      startedAt,
+      residency,
+      warnings: [`corpus_answer: top score ${topScore.toFixed(3)} below min_top_score ${input.min_top_score}; model not invoked`],
     });
     await ctx.logger.log(callEvent("ollama_corpus_answer", envelope));
     return envelope;
@@ -378,6 +435,9 @@ export async function handleCorpusAnswer(
           top_score: topScore,
           weak,
         },
+        // Normal synthesis path — model was invoked. abstained=true is
+        // reserved for the explicit short-circuit branches above.
+        abstained: false,
       };
     },
   });

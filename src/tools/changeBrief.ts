@@ -54,6 +54,12 @@ export const changeBriefSchema = z.object({
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_breakpoints: z.number().int().min(1).max(12).optional().describe("Cap on likely_breakpoints (default 6)."),
   max_validation_checks: z.number().int().min(1).max(15).optional().describe("Cap on validation_checks (default 8)."),
+  corpus_min_evidence_score: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe("Minimum retrieval score (0–1) for a corpus chunk to enter evidence. Hits below the floor are dropped before the model sees them, with a counted note in coverage_notes. Absent → no relevance filter."),
 });
 
 export type ChangeBriefInput = z.infer<typeof changeBriefSchema>;
@@ -191,6 +197,7 @@ export async function handleChangeBrief(
     corpus: input.corpus,
     corpus_query: corpusQuery,
     per_file_max_chars: input.per_file_max_chars,
+    corpus_min_evidence_score: input.corpus_min_evidence_score,
   }, ctx);
   return synthesizeChangeBrief(input, ctx, assembled);
 }
@@ -210,7 +217,7 @@ export async function synthesizeChangeBrief(
     breakpoints: input.max_breakpoints ?? 6,
     checks: input.max_validation_checks ?? 8,
   };
-  const { evidence, corpus_used } = assembled;
+  const { evidence, corpus_used, assembly_notes } = assembled;
   const validIds = new Set(evidence.map((e) => e.id));
 
   const parseWarnings: string[] = [];
@@ -291,7 +298,9 @@ export async function synthesizeChangeBrief(
         release_note_draft,
         evidence,
         weak: coverage.weak,
-        coverage_notes: coverage.notes,
+        // Prepend assembly-time notes so the operator sees relevance-floor
+        // drops alongside synthesis-time gaps.
+        coverage_notes: [...assembly_notes, ...coverage.notes],
         corpus_used,
       };
     },

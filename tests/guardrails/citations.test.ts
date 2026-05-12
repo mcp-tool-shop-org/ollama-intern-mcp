@@ -33,6 +33,65 @@ describe("validateCitations", () => {
     const r = validateCitations([{ path: "src/foo.ts", line_range: "10-20" }], ["src/foo.ts"]);
     expect(r.valid[0].line_range).toBe("10-20");
   });
+
+  // ── line_range bounds check (abstention slice) ─────────────
+
+  it("drops line_range when range end exceeds file line count; path is kept", () => {
+    const lines = new Map<string, number>([["src/foo.ts", 50]]);
+    const r = validateCitations(
+      [{ path: "src/foo.ts", line_range: "1-99" }],
+      ["src/foo.ts"],
+      lines,
+    );
+    expect(r.valid).toEqual([{ path: "src/foo.ts" }]);
+    expect(r.out_of_bounds_ranges).toEqual([
+      { path: "src/foo.ts", line_range: "1-99", file_lines: 50 },
+    ]);
+  });
+
+  it("keeps line_range when range is within file line count", () => {
+    const lines = new Map<string, number>([["src/foo.ts", 50]]);
+    const r = validateCitations(
+      [{ path: "src/foo.ts", line_range: "10-20" }],
+      ["src/foo.ts"],
+      lines,
+    );
+    expect(r.valid[0].line_range).toBe("10-20");
+    expect(r.out_of_bounds_ranges).toEqual([]);
+  });
+
+  it("single-number range past EOF is dropped", () => {
+    const lines = new Map<string, number>([["src/foo.ts", 5]]);
+    const r = validateCitations(
+      [{ path: "src/foo.ts", line_range: "100" }],
+      ["src/foo.ts"],
+      lines,
+    );
+    expect(r.valid[0].line_range).toBeUndefined();
+    expect(r.out_of_bounds_ranges).toHaveLength(1);
+  });
+
+  it("unparseable line_range falls through unchanged (permissive)", () => {
+    // Free-form strings the parser can't handle aren't dropped — they
+    // surface as-is. Bounds check only fires on numeric "N" or "N-M".
+    const lines = new Map<string, number>([["src/foo.ts", 50]]);
+    const r = validateCitations(
+      [{ path: "src/foo.ts", line_range: "around line 10" }],
+      ["src/foo.ts"],
+      lines,
+    );
+    expect(r.valid[0].line_range).toBe("around line 10");
+    expect(r.out_of_bounds_ranges).toEqual([]);
+  });
+
+  it("no linesByPath → backwards compatible (no bounds check fires)", () => {
+    const r = validateCitations(
+      [{ path: "src/foo.ts", line_range: "1-99999" }],
+      ["src/foo.ts"],
+    );
+    expect(r.valid[0].line_range).toBe("1-99999");
+    expect(r.out_of_bounds_ranges).toEqual([]);
+  });
 });
 
 describe("parseCitations", () => {

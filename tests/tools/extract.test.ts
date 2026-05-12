@@ -146,3 +146,91 @@ describe("handleExtract — source_path mode", () => {
     }
   });
 });
+
+describe("handleExtract — frame contract", () => {
+  it("back-compat: no frame input → no frame_alignment in result", async () => {
+    const client = new MockClient(JSON.stringify({ name: "foo", count: 1 }));
+    const env = await handleExtract(
+      { text: "foo happened once", schema: simpleSchema },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect(env.result.data).toEqual({ name: "foo", count: 1 });
+    expect((env.result as { frame_alignment?: unknown }).frame_alignment).toBeUndefined();
+    // Prompt should NOT mention frame either.
+    expect(client.lastGenerate?.prompt ?? "").not.toContain("Frame:");
+  });
+
+  it("frame supplied + model says on_topic:true → result lifts frame_alignment", async () => {
+    const modelOut = JSON.stringify({
+      name: "foo",
+      count: 4,
+      _frame_alignment: { on_topic: true, reason: "the text addresses the asked-about question" },
+    });
+    const client = new MockClient(modelOut);
+    const env = await handleExtract(
+      { text: "foo happened 4 times", schema: simpleSchema, frame: "how often does foo happen?" },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect(env.result.data).toEqual({ name: "foo", count: 4 });
+    expect(env.result.frame_alignment).toEqual({
+      on_topic: true,
+      reason: "the text addresses the asked-about question",
+    });
+    expect(client.lastGenerate?.prompt ?? "").toContain("Frame: how often does foo happen?");
+  });
+
+  it("frame supplied + model says on_topic:false → frame_alignment.on_topic is false", async () => {
+    const modelOut = JSON.stringify({
+      _frame_alignment: { on_topic: false, reason: "source is about a different topic entirely" },
+    });
+    const client = new MockClient(modelOut);
+    const env = await handleExtract(
+      { text: "unrelated material", schema: simpleSchema, frame: "what is the deadline?" },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect(env.result.frame_alignment?.on_topic).toBe(false);
+    expect(env.result.frame_alignment?.reason).toContain("different topic");
+    // The lifted _frame_alignment key should NOT remain on data.
+    expect("_frame_alignment" in env.result.data).toBe(false);
+  });
+
+  it("frame supplied + malformed _frame_alignment → frame_alignment undefined + warning", async () => {
+    const modelOut = JSON.stringify({
+      name: "foo",
+      _frame_alignment: "this is a string not an object",
+    });
+    const client = new MockClient(modelOut);
+    const env = await handleExtract(
+      { text: "anything", schema: simpleSchema, frame: "some frame" },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect(env.result.frame_alignment).toBeUndefined();
+    expect(env.warnings?.some((w) => w.includes("_frame_alignment"))).toBe(true);
+    // The malformed key is dropped from data.
+    expect("_frame_alignment" in env.result.data).toBe(false);
+  });
+
+  it("frame supplied + unaddressed_aspects array → passes through to frame_alignment", async () => {
+    const modelOut = JSON.stringify({
+      _frame_alignment: {
+        on_topic: false,
+        reason: "off-topic",
+        unaddressed_aspects: ["evidence chain", "inspectability"],
+      },
+    });
+    const client = new MockClient(modelOut);
+    const env = await handleExtract(
+      { text: "x", schema: simpleSchema, frame: "evidence custody question" },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect(env.result.frame_alignment?.unaddressed_aspects).toEqual([
+      "evidence chain",
+      "inspectability",
+    ]);
+  });
+});

@@ -19,9 +19,12 @@ import type { RunContext } from "../../src/runContext.js";
 
 class MockClient implements OllamaClient {
   public lastPrompt?: string;
+  public lastFormat?: string;
+  constructor(private response: string = "digest") {}
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     this.lastPrompt = req.prompt;
-    return { model: req.model, response: "digest", done: true, prompt_eval_count: 100, eval_count: 20 };
+    this.lastFormat = req.format;
+    return { model: req.model, response: this.response, done: true, prompt_eval_count: 100, eval_count: 20 };
   }
   async chat(_req: ChatRequest): Promise<ChatResponse> { throw new Error("not used"); }
   async embed(_req: EmbedRequest): Promise<EmbedResponse> { throw new Error("not used"); }
@@ -143,5 +146,67 @@ describe("handleSummarizeDeep", () => {
         makeCtx(client),
       ),
     ).rejects.toMatchObject({ code: "SOURCE_PATH_NOT_FOUND" });
+  });
+});
+
+describe("handleSummarizeDeep — frame contract", () => {
+  it("back-compat: no frame input → no frame_addressed / unaddressed_sources in result", async () => {
+    const client = new MockClient("plain digest");
+    const env = await handleSummarizeDeep(
+      { text: "some long text content here", max_words: 40 },
+      makeCtx(client),
+    );
+    expect(env.result.summary).toBe("plain digest");
+    expect((env.result as { frame_addressed?: boolean | null }).frame_addressed).toBeUndefined();
+    expect((env.result as { unaddressed_sources?: string[] }).unaddressed_sources).toBeUndefined();
+    expect(client.lastFormat).toBeUndefined();
+    expect(client.lastPrompt ?? "").not.toContain("Frame:");
+  });
+
+  it("frame supplied + model says frame_addressed:true → result lifts fields", async () => {
+    const modelOut = JSON.stringify({
+      frame_addressed: true,
+      summary: "digest text addressing the frame",
+      unaddressed_sources: [],
+    });
+    const client = new MockClient(modelOut);
+    const env = await handleSummarizeDeep(
+      { text: "doc body", frame: "what does the doc say about X?", max_words: 50 },
+      makeCtx(client),
+    );
+    expect(env.result.summary).toBe("digest text addressing the frame");
+    expect(env.result.frame_addressed).toBe(true);
+    expect(env.result.unaddressed_sources).toEqual([]);
+    expect(client.lastFormat).toBe("json");
+    expect(client.lastPrompt ?? "").toContain("Frame:");
+  });
+
+  it("frame supplied + model says frame_addressed:false → empty summary + unaddressed_sources list", async () => {
+    const modelOut = JSON.stringify({
+      frame_addressed: false,
+      summary: "",
+      unaddressed_sources: ["doc-1: source is about an unrelated cosmology topic"],
+    });
+    const client = new MockClient(modelOut);
+    const env = await handleSummarizeDeep(
+      { text: "off-topic body", frame: "what is the deadline?", max_words: 50 },
+      makeCtx(client),
+    );
+    expect(env.result.summary).toBe("");
+    expect(env.result.frame_addressed).toBe(false);
+    expect(env.result.unaddressed_sources).toEqual([
+      "doc-1: source is about an unrelated cosmology topic",
+    ]);
+  });
+
+  it("frame supplied + malformed JSON → frame_addressed null, summary falls back to raw text", async () => {
+    const client = new MockClient("not valid json at all");
+    const env = await handleSummarizeDeep(
+      { text: "body", frame: "frame", max_words: 50 },
+      makeCtx(client),
+    );
+    expect(env.result.frame_addressed).toBeNull();
+    expect(env.result.summary).toBe("not valid json at all");
+    expect(env.result.unaddressed_sources).toEqual([]);
   });
 });

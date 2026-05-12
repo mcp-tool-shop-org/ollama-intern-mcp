@@ -18,7 +18,9 @@ import { handleDraft } from "../src/tools/draft.js";
 import { handleResearch } from "../src/tools/research.js";
 import { handleEmbedSearch } from "../src/tools/embedSearch.js";
 import { handleSummarizeDeep } from "../src/tools/summarizeDeep.js";
+import { handleSummarizeFast } from "../src/tools/summarizeFast.js";
 import { handleClassify } from "../src/tools/classify.js";
+import { handleExtract } from "../src/tools/extract.js";
 import { normalizeOllamaHost } from "../src/ollama.js";
 import { buildEnvelope } from "../src/envelope.js";
 import { InternError } from "../src/errors.js";
@@ -343,6 +345,252 @@ describe("regression: Envelope shape invariants", () => {
 // Regression: InternError structured shape
 // (shipcheck hard gate B: no raw stacks)
 // ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// Seed regression — fresh-pack cosmology / evidence-custody
+//
+// Closed by the frame-contract slice (Agent A, swarm 2026-05-11).
+// Original failure: research-os section 01 (evidence-custody frame)
+// extracted 15 cosmology claims from arxiv 2112.10422 with no signal
+// the source was off-topic. The four extract/classify/summarize tools
+// now accept a `frame` input and surface frame_alignment / off_topic /
+// frame_addressed / on_topic respectively. These tests are CONTRACT
+// tests — the LLM is mocked, the assertion is on schema-and-prompt
+// wiring, not on actual model behavior.
+// ═══════════════════════════════════════════════════════════════
+
+const FRESH_PACK_FRAME = `What does evidence custody mean in local-first vs cloud LLM deep-research workflows, and which produces a more inspectable evidence chain?`;
+
+const FRESH_PACK_COSMOLOGY_TEXT = `[2112.10422] Cosmological Standard Timers from Unstable Primordial Relics
+
+Astrophysics > Cosmology and Nongalactic Astrophysics
+
+Abstract: In this article, we propose a hypothetical possibility of using unstable primordial relics as standard timers to track the evolution of our Universe. We discuss observing time-varying properties of these relics at different redshifts to establish a redshift-time relation of cosmic history. We consider primordial black hole bubbles as an example and analyze their mass function through the inverse problem of Hawking radiation.
+
+Subjects: Cosmology and Nongalactic Astrophysics (astro-ph.CO); General Relativity and Quantum Cosmology (gr-qc)`;
+
+const SIMPLE_SCHEMA = {
+  type: "object",
+  properties: { claim: { type: "string" }, count: { type: "number" } },
+};
+
+describe("seed regression — fresh-pack cosmology / evidence-custody (frame contract)", () => {
+  // ── extract ──────────────────────────────────────────────
+
+  it("extract surfaces frame_alignment.on_topic=false on off-topic source", async () => {
+    const modelOut = JSON.stringify({
+      _frame_alignment: {
+        on_topic: false,
+        reason: "source is about cosmology; frame asks about evidence custody in research workflows",
+      },
+    });
+    const client = new Mock(modelOut);
+    const env = await handleExtract(
+      { text: FRESH_PACK_COSMOLOGY_TEXT, schema: SIMPLE_SCHEMA, frame: FRESH_PACK_FRAME },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect(env.result.frame_alignment?.on_topic).toBe(false);
+    expect(env.result.frame_alignment?.reason).toMatch(/cosmology|evidence custody/i);
+    // Frame must have been threaded into the prompt.
+    expect(client.lastGenerate?.prompt ?? "").toContain("Frame:");
+  });
+
+  it("extract back-compat: same call without `frame` returns legacy shape (no frame_alignment)", async () => {
+    const client = new Mock(JSON.stringify({ claim: "anything", count: 0 }));
+    const env = await handleExtract(
+      { text: FRESH_PACK_COSMOLOGY_TEXT, schema: SIMPLE_SCHEMA },
+      makeCtx(client),
+    );
+    if (!("data" in env.result)) throw new Error("expected success shape");
+    expect((env.result as { frame_alignment?: unknown }).frame_alignment).toBeUndefined();
+    expect(client.lastGenerate?.prompt ?? "").not.toContain("Frame:");
+  });
+
+  // ── classify ─────────────────────────────────────────────
+
+  it("classify surfaces off_topic=true on off-topic source", async () => {
+    const client = new Mock(
+      JSON.stringify({
+        label: "evidence-chain",
+        confidence: 0.85,
+        off_topic: true,
+        off_topic_reason: "source is a cosmology preprint, not an evidence-custody discussion",
+      }),
+    );
+    const env = await handleClassify(
+      {
+        text: FRESH_PACK_COSMOLOGY_TEXT,
+        labels: ["evidence-chain", "audit-trail", "inspectability"],
+        frame: FRESH_PACK_FRAME,
+      },
+      makeCtx(client),
+    );
+    expect(env.result.off_topic).toBe(true);
+    expect(env.result.label).toBeNull();
+    expect(env.result.off_topic_reason).toMatch(/cosmology|evidence/i);
+  });
+
+  it("classify back-compat: no frame → no off_topic field", async () => {
+    const client = new Mock(JSON.stringify({ label: "evidence-chain", confidence: 0.85 }));
+    const env = await handleClassify(
+      {
+        text: FRESH_PACK_COSMOLOGY_TEXT,
+        labels: ["evidence-chain", "audit-trail", "inspectability"],
+      },
+      makeCtx(client),
+    );
+    expect((env.result as { off_topic?: boolean }).off_topic).toBeUndefined();
+  });
+
+  // ── summarize_fast ───────────────────────────────────────
+
+  it("summarize_fast surfaces on_topic=false on off-topic source", async () => {
+    const client = new Mock(
+      JSON.stringify({
+        on_topic: false,
+        summary: "(off-topic for frame: cosmology preprint, not about evidence custody)",
+      }),
+    );
+    const env = await handleSummarizeFast(
+      { text: FRESH_PACK_COSMOLOGY_TEXT, frame: FRESH_PACK_FRAME },
+      makeCtx(client),
+    );
+    expect(env.result.on_topic).toBe(false);
+    expect(env.result.summary).toContain("off-topic");
+  });
+
+  it("summarize_fast back-compat: no frame → no on_topic field", async () => {
+    const client = new Mock("a short factual digest");
+    const env = await handleSummarizeFast(
+      { text: FRESH_PACK_COSMOLOGY_TEXT },
+      makeCtx(client),
+    );
+    expect((env.result as { on_topic?: boolean | null }).on_topic).toBeUndefined();
+    expect(env.result.summary).toBe("a short factual digest");
+  });
+
+  // ── summarize_deep ───────────────────────────────────────
+
+  it("summarize_deep surfaces frame_addressed=false + unaddressed_sources on off-topic source", async () => {
+    const modelOut = JSON.stringify({
+      frame_addressed: false,
+      summary: "",
+      unaddressed_sources: ["2112.10422: a cosmology preprint about primordial relics as standard timers"],
+    });
+    const client = new Mock(modelOut);
+    const env = await handleSummarizeDeep(
+      { text: FRESH_PACK_COSMOLOGY_TEXT, frame: FRESH_PACK_FRAME },
+      makeCtx(client),
+    );
+    expect(env.result.frame_addressed).toBe(false);
+    expect(env.result.summary).toBe("");
+    expect(env.result.unaddressed_sources?.[0]).toMatch(/cosmology|primordial/i);
+  });
+
+  it("summarize_deep back-compat: no frame → no frame_addressed / unaddressed_sources fields", async () => {
+    const client = new Mock("a faithful digest of cosmology preprint content");
+    const env = await handleSummarizeDeep(
+      { text: FRESH_PACK_COSMOLOGY_TEXT },
+      makeCtx(client),
+    );
+    expect((env.result as { frame_addressed?: boolean | null }).frame_addressed).toBeUndefined();
+    expect((env.result as { unaddressed_sources?: string[] }).unaddressed_sources).toBeUndefined();
+    expect(env.result.summary).toContain("digest");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Seed regression — corpus relevance threshold (B)
+//
+// Closed by the abstention slice (Agent B, swarm 2026-05-11).
+// Companion to Agent A's frame-contract block above: the same
+// evidence-custody frame, but the failure mode is on the CORPUS
+// retrieval side rather than the extract/classify/summarize side.
+//
+// Original failure: corpus_answer would happily synthesize from 5
+// hits @ top_score 0.21 (cosmology / off-topic chunks). The new
+// `min_top_score` floor short-circuits that path with
+// `abstained: true` instead of driving ungrounded synthesis.
+// ═══════════════════════════════════════════════════════════════
+
+describe("seed regression — corpus relevance threshold (B)", () => {
+  it("min_top_score above top retrieval score → abstain, no synthesis", async () => {
+    // We import lazily so the storage env trick doesn't bleed into the
+    // top-level Mock-only tests above.
+    const { handleCorpusAnswer } = await import("../src/tools/corpusAnswer.js");
+    const { saveCorpus, CORPUS_SCHEMA_VERSION } = await import("../src/corpus/storage.js");
+    const tempDir = await mkdtemp(join(tmpdir(), "intern-seed-b-"));
+    const orig = process.env.INTERN_CORPUS_DIR;
+    process.env.INTERN_CORPUS_DIR = tempDir;
+    try {
+      // Off-topic cosmology corpus — same evidence-custody frame as A's
+      // block: the question is about evidence custody, but the corpus
+      // contains a cosmology preprint. The retrieval scores will be
+      // non-zero (some token overlap) but well below a 0.5 threshold.
+      await saveCorpus({
+        schema_version: CORPUS_SCHEMA_VERSION,
+        name: "cosmology",
+        model_version: PROFILES["dev-rtx5080"].tiers.embed,
+        model_digest: null,
+        indexed_at: "2026-05-11T00:00:00.000Z",
+        chunk_chars: 800,
+        chunk_overlap: 100,
+        stats: { documents: 1, chunks: 1, total_chars: 100 },
+        titles: { "/papers/2112.10422.md": "Cosmological Standard Timers" },
+        chunks: [
+          {
+            id: "c-0",
+            path: "/papers/2112.10422.md",
+            file_hash: "sha256:test",
+            file_mtime: "2026-05-11T00:00:00.000Z",
+            chunk_index: 0,
+            char_start: 0,
+            char_end: 100,
+            text: "primordial black hole bubbles as standard timers for cosmic history",
+            vector: [1, 0, 0, 0],
+            heading_path: [],
+            chunk_type: "paragraph",
+          },
+        ],
+      });
+
+      const client = new Mock(
+        JSON.stringify({ answer: "should never be invoked", citations: [1] }),
+      );
+      // Question shares one keyword ("history") with the chunk so lexical
+      // retrieval returns a hit with a non-zero but small BM25 score —
+      // this is the regression shape: 5-ish hits with a low top_score
+      // driving synthesis. A 999 floor reliably trips the threshold path
+      // (not the 0-hit short-circuit) on any BM25 implementation.
+      const env = await handleCorpusAnswer(
+        {
+          corpus: "cosmology",
+          question: "evidence custody history of inspectable chains",
+          mode: "lexical",
+          min_top_score: 999,
+        },
+        makeCtx(client),
+      );
+
+      expect(env.result.abstained).toBe(true);
+      expect(env.result.citations).toEqual([]);
+      expect(env.result.retrieval.weak).toBe(true);
+      // Threshold branch (not 0-hit branch) — top_score > 0 because the
+      // single token "history" matched in the chunk.
+      expect(env.result.retrieval.retrieved).toBeGreaterThan(0);
+      expect(env.result.retrieval.top_score).toBeGreaterThan(0);
+      expect(env.result.retrieval.top_score).toBeLessThan(999);
+      // Model was NOT invoked — the whole point.
+      expect(client.lastGenerate).toBeUndefined();
+      expect(env.warnings?.some((w) => w.includes("min_top_score"))).toBe(true);
+    } finally {
+      if (orig === undefined) delete process.env.INTERN_CORPUS_DIR;
+      else process.env.INTERN_CORPUS_DIR = orig;
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("regression: InternError carries code/message/hint/retryable", () => {
   it("every error kind has all four fields (shipcheck gate B)", () => {

@@ -37,39 +37,94 @@ export const extractSchema = z.object({
     .describe("Batch of texts to extract from, each with a stable id. Returns one batch envelope with per-item {id, ok, result|error} entries."),
   schema: z.record(z.string(), z.unknown()).describe("JSONSchema the output must conform to — shared across all items in a batch."),
   hint: z.string().optional().describe("Optional field-by-field hint."),
+  frame: z.string().optional().describe("The question / section purpose / topic this extraction is FOR. When supplied, the model first determines on/off-topic, then extracts only fields the source addresses for that frame."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
 });
 
 export type ExtractInput = z.infer<typeof extractSchema>;
 
+export interface FrameAlignment {
+  on_topic: boolean;
+  reason: string;
+  unaddressed_aspects?: string[];
+}
+
 export type ExtractResult =
-  | { ok: true; data: Record<string, unknown> }
+  | { ok: true; data: Record<string, unknown>; frame_alignment?: FrameAlignment }
   | { ok: false; error: "unparseable"; raw: string };
 
-function buildPromptFor(text: string, schema: Record<string, unknown>, hint?: string): string {
+function buildPromptFor(text: string, schema: Record<string, unknown>, hint?: string, frame?: string): string {
   const schemaStr = JSON.stringify(schema, null, 2);
   const hintLine = hint ? `\nHint: ${hint}` : "";
-  return [
+  const lines = [
     `You are a structured extractor. Read the text and return JSON conforming to this schema:`,
     schemaStr,
     `Return JSON only — no prose, no markdown fences.${hintLine}`,
     `If a field is not present in the text, use null or omit the field per the schema.`,
-    ``,
-    `Text:`,
-    text,
-  ].join("\n");
+  ];
+  if (frame !== undefined) {
+    lines.push(
+      ``,
+      `Frame: ${frame}`,
+      `Before extracting, judge whether the source addresses this frame. If it does not, return _frame_alignment: { on_topic: false, reason: "..." } and either null-fill content fields per schema OR (preferred) return an empty data shape conforming to the caller's schema. Do not paraphrase off-topic content to fill the schema. When the source DOES address the frame, include _frame_alignment: { on_topic: true, reason: "..." } alongside the extracted fields, and only extract values the source actually supplies for the frame.`,
+    );
+  }
+  lines.push(``, `Text:`, text);
+  return lines.join("\n");
 }
 
-function parse(raw: string): ExtractResult {
-  try {
-    const obj = JSON.parse(raw.trim());
-    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      return { ok: true, data: obj as Record<string, unknown> };
-    }
-    return { ok: false, error: "unparseable", raw };
-  } catch {
-    return { ok: false, error: "unparseable", raw };
+/** Lift `_frame_alignment` out of the parsed object and validate its shape. */
+function liftFrameAlignment(
+  data: Record<string, unknown>,
+): { data: Record<string, unknown>; frame_alignment?: FrameAlignment; warning?: string } {
+  if (!("_frame_alignment" in data)) {
+    return { data };
   }
+  const raw = data._frame_alignment;
+  const { _frame_alignment: _ignored, ...rest } = data;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      data: rest,
+      warning: "ollama_extract: _frame_alignment present but not an object — discarded.",
+    };
+  }
+  const candidate = raw as Record<string, unknown>;
+  const onTopic = candidate.on_topic;
+  const reason = candidate.reason;
+  if (typeof onTopic !== "boolean" || typeof reason !== "string") {
+    return {
+      data: rest,
+      warning: "ollama_extract: _frame_alignment is missing required {on_topic: boolean, reason: string} — discarded.",
+    };
+  }
+  const fa: FrameAlignment = { on_topic: onTopic, reason };
+  const aspects = candidate.unaddressed_aspects;
+  if (Array.isArray(aspects) && aspects.every((a) => typeof a === "string")) {
+    fa.unaddressed_aspects = aspects as string[];
+  }
+  return { data: rest, frame_alignment: fa };
+}
+
+function parseFactory(frameSupplied: boolean, warnings: string[]) {
+  return function parse(raw: string): ExtractResult {
+    try {
+      const obj = JSON.parse(raw.trim());
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        const asObj = obj as Record<string, unknown>;
+        if (frameSupplied) {
+          const lifted = liftFrameAlignment(asObj);
+          if (lifted.warning) warnings.push(lifted.warning);
+          const out: ExtractResult = { ok: true, data: lifted.data };
+          if (lifted.frame_alignment) out.frame_alignment = lifted.frame_alignment;
+          return out;
+        }
+        return { ok: true, data: asObj };
+      }
+      return { ok: false, error: "unparseable", raw };
+    } catch {
+      return { ok: false, error: "unparseable", raw };
+    }
+  };
 }
 
 function assertExactlyOneInput(input: ExtractInput): void {
@@ -92,9 +147,12 @@ export async function handleExtract(
   ctx: RunContext,
 ): Promise<Envelope<ExtractResult> | Envelope<BatchResult<ExtractResult>>> {
   assertExactlyOneInput(input);
+  const frameSupplied = input.frame !== undefined;
+  const warnings: string[] = [];
+  const parse = parseFactory(frameSupplied, warnings);
 
   if (input.items) {
-    return runBatch<{ id: string; text: string }, ExtractResult>({
+    const env = await runBatch<{ id: string; text: string }, ExtractResult>({
       tool: "ollama_extract",
       tier: "workhorse",
       ctx,
@@ -102,12 +160,14 @@ export async function handleExtract(
       items: input.items,
       build: (item, _tier, model) => ({
         model,
-        prompt: buildPromptFor(item.text, input.schema, input.hint),
+        prompt: buildPromptFor(item.text, input.schema, input.hint, input.frame),
         format: "json",
         options: { temperature: TEMPERATURE_BY_SHAPE.extract, num_predict: 1024 },
       }),
       parse,
     });
+    if (warnings.length > 0) env.warnings = [...(env.warnings ?? []), ...warnings];
+    return env;
   }
 
   let text: string;
@@ -118,17 +178,19 @@ export async function handleExtract(
   } else {
     text = input.text as string;
   }
-  return runTool<ExtractResult>({
+  const env = await runTool<ExtractResult>({
     tool: "ollama_extract",
     tier: "workhorse",
     ctx,
     think: false,
     build: (_tier, model) => ({
       model,
-      prompt: buildPromptFor(text, input.schema, input.hint),
+      prompt: buildPromptFor(text, input.schema, input.hint, input.frame),
       format: "json",
       options: { temperature: TEMPERATURE_BY_SHAPE.extract, num_predict: 1024 },
     }),
     parse,
   });
+  if (warnings.length > 0) env.warnings = [...(env.warnings ?? []), ...warnings];
+  return env;
 }

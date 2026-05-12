@@ -168,3 +168,63 @@ describe("handleClassify — source_path mode", () => {
     }
   });
 });
+
+describe("handleClassify — frame contract", () => {
+  it("back-compat: no frame input → no off_topic / off_topic_reason in result", async () => {
+    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const env = await handleClassify(
+      { text: "patch null pointer", labels: ["feat", "fix"] },
+      makeCtx(client),
+    );
+    expect(env.result.label).toBe("fix");
+    expect((env.result as { off_topic?: boolean }).off_topic).toBeUndefined();
+    expect((env.result as { off_topic_reason?: string }).off_topic_reason).toBeUndefined();
+    expect(client.lastGenerate?.prompt ?? "").not.toContain("frame:");
+  });
+
+  it("frame supplied + model says off_topic:false → off_topic is false, label kept", async () => {
+    const client = new MockClient(
+      JSON.stringify({ label: "fix", confidence: 0.9, off_topic: false, off_topic_reason: null }),
+    );
+    const env = await handleClassify(
+      { text: "patch null pointer in auth", labels: ["feat", "fix"], frame: "what type of change is this commit?" },
+      makeCtx(client),
+    );
+    expect(env.result.label).toBe("fix");
+    expect(env.result.off_topic).toBe(false);
+    expect(env.result.off_topic_reason).toBeNull();
+    expect(client.lastGenerate?.prompt ?? "").toContain("frame: what type of change");
+  });
+
+  it("frame supplied + model says off_topic:true → label is forced null", async () => {
+    const client = new MockClient(
+      JSON.stringify({
+        label: "fix",
+        confidence: 0.95,
+        off_topic: true,
+        off_topic_reason: "input is unrelated to the frame",
+      }),
+    );
+    const env = await handleClassify(
+      { text: "weather report", labels: ["feat", "fix"], frame: "what type of change is this commit?" },
+      makeCtx(client),
+    );
+    expect(env.result.label).toBeNull();
+    expect(env.result.off_topic).toBe(true);
+    expect(env.result.off_topic_reason).toContain("unrelated");
+  });
+
+  it("off_topic and below_threshold are independent concepts", async () => {
+    // High-confidence label, but off-topic → label nulled because of frame, not threshold.
+    const client = new MockClient(
+      JSON.stringify({ label: "fix", confidence: 0.99, off_topic: true, off_topic_reason: "wrong frame" }),
+    );
+    const env = await handleClassify(
+      { text: "x", labels: ["feat", "fix"], frame: "f" },
+      makeCtx(client),
+    );
+    expect(env.result.label).toBeNull();
+    expect(env.result.off_topic).toBe(true);
+    expect(env.result.below_threshold).toBe(false); // confidence 0.99 > 0.7
+  });
+});

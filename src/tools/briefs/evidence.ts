@@ -23,6 +23,21 @@ export interface EvidenceItem {
   kind: EvidenceKind;
   ref: string;
   excerpt: string;
+  /**
+   * Retrieval relevance score. Populated for corpus-sourced items from the
+   * underlying CorpusHit (cosine/RRF/lexical, mode-dependent). Absent for
+   * log / diff / path evidence — those have no retrieval-time relevance
+   * signal, only structural position.
+   */
+  score?: number;
+  /**
+   * Short LLM-generated rationale for why this corpus chunk matched. Only
+   * present when corpus_search was called with `explain: true` upstream;
+   * brief tools don't currently set explain, so this is reserved for
+   * forward compatibility when assembleEvidence routes pre-explained hits
+   * through.
+   */
+  why_matched?: string;
 }
 
 export const EVIDENCE_CONFIG = {
@@ -72,12 +87,24 @@ export function corpusHitsToEvidence(hits: CorpusHit[], startId: number): Eviden
   const items: EvidenceItem[] = [];
   let nextId = startId;
   for (const h of hits) {
-    items.push({
+    const item: EvidenceItem = {
       id: `e${nextId++}`,
       kind: "corpus",
       ref: `${h.path}#${h.chunk_index}`,
       excerpt: (h.preview ?? "").slice(0, EVIDENCE_CONFIG.CORPUS_EXCERPT_CHARS),
-    });
+      // Carry the retrieval score through so downstream callers can apply
+      // a topicality threshold or surface relevance in coverage notes.
+      // This is the dogfood fix: corpusSearch's real cosine/RRF score was
+      // computed per chunk and then silently dropped at this seam.
+      score: h.score,
+    };
+    // `why_matched` is forward-compatible only — CorpusHit doesn't carry
+    // it today (corpus_search adds it at a higher layer when explain=true).
+    // Defensive lookup so future routing through pre-explained hits
+    // populates the field without further edits here.
+    const why = (h as CorpusHit & { why_matched?: string }).why_matched;
+    if (typeof why === "string" && why.length > 0) item.why_matched = why;
+    items.push(item);
   }
   return items;
 }

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased — v2.2.0
+
+Non-breaking additive minor. All v2.1.0 callers continue working unchanged. New behavior unlocks when new optional inputs are supplied.
+
+Closes the relevance-laundering gap identified in the 2026-05-11 role-contract dogfood: tools can now signal topicality and abstain from synthesis when sources do not address the caller's frame, rather than laundering off-topic-but-true content into authoritative-looking output.
+
+### Added
+
+- **Frame-bound extraction.** `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, and `ollama_summarize_deep` accept an optional `frame: string` input. Output includes a structured `frame_alignment` block (`on_topic: boolean`, `reason: string`, `unaddressed_aspects: string[]` for `extract`; equivalent shape for the other three). Omitting `frame` preserves v2.1.0 behavior.
+- **Abstention contract on `ollama_research`.** New output fields `weak: boolean`, `abstained: boolean`, `sources_address_question: boolean | null`. An empty `citations[]` paired with a non-empty `answer` is no longer silent — the tool now declares abstention explicitly. Abstention is a success, not a failure.
+- **Topicality threshold on `ollama_corpus_answer`.** New optional input `min_top_score: number` (0.0–1.0). When the top retrieval score is below this floor, the tool short-circuits with `abstained: true` and does not invoke the synthesis model. Closes the "five sub-threshold hits still drive a confident answer" gap that `weak: true` (which only fired on `hits.length < 2`) did not catch.
+- **Per-citation retrieval score on `ollama_corpus_answer`.** Each item in `citations[]` now includes `score: number` (the underlying retrieval score for that chunk). Operators can audit retrieval quality directly from the envelope.
+- **Retrieval score propagation into brief evidence.** `corpusHitsToEvidence` now carries the retrieval `score` through to `EvidenceItem` records consumed by `incident_brief`, `repo_brief`, and `change_brief`. Briefs synthesized from corpus material can now expose the underlying retrieval grounding rather than dropping it at the corpus→evidence boundary.
+
+### Changed
+
+- **README envelope example** — corpus `citations[]` field renamed from the historical `chunk_id` to the actual implementation field `chunk_index`. The example envelope previously documented a field that did not exist in the return shape.
+- **README "validated server-side" wording** — the sentence "Every claim in `answer` cites a chunk id validated server-side." has been rewritten to explicitly disclose that server validation is citation-identity / range-bound, not semantic-content-bound. The model remains responsible for grounding claims in cited content.
+- **README Evidence Laws section** — new clarifying bullet: ID-validated is not content-validated. Reframes the existing "unknowns stripped server-side" law to make the boundary explicit.
+- **README cathedral example** — `weak: false` annotated as "≥2 evidence items assembled, not vetted hypotheses." Renderer-deterministic language qualified: the renderer is code, the *content* is generative.
+- **`docs/marketing-research.md` slogan** — "Evidence-first. No fiction." now qualified inline with the citation-ID-validated boundary clarification.
+- **Tool descriptions for affected tools** in the MCP schema surface the new optional inputs and the abstention contract (see `src/index.ts`).
+
+### Fixed
+
+- **`line_range` bounds-check in citations.** `src/guardrails/citations.ts` now validates that `line_range` falls within the actual file's line count before accepting a citation, matching the posture already in `code_citation`. Previously only `code_citation` performed this check; `research` accepted unbounded ranges.
+
+### Stats (preliminary — will firm up at release)
+
+- Tool count unchanged at 41 (extends existing tools; no new tier class).
+- All v2.1.0 callers continue to work without changes.
+
 ## [2.1.0] — 2026-04-22
 
 Feature pass of the dogfood swarm. 28-tool freeze lifted after validating Hermes integration on v2.0.0-v2.0.2. Tool count **28 → 41**. Extends existing tiers with ops, refactor, corpus, and artifact tools. No new tier class.

@@ -39,35 +39,81 @@ export const classifySchema = z.object({
   labels: strictStringArray({ min: 2, fieldName: "labels" }).describe("Candidate labels — the model picks exactly one, or null if allow_none."),
   allow_none: z.boolean().optional().describe("If true and confidence < threshold, return label=null instead of a weak guess."),
   threshold: z.number().min(0).max(1).optional().describe("Confidence floor (default 0.7)."),
+  frame: z.string().optional().describe("The question / section purpose / topic this classification is FOR. When supplied, the model first determines on/off-topic for the frame, then picks a label only within that frame. Off-topic inputs return label=null with off_topic=true regardless of label fit."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
 });
 
 export type ClassifyInput = z.infer<typeof classifySchema>;
 
+export interface ClassifyGuardedWithFrame extends ClassifyGuarded {
+  off_topic?: boolean;
+  off_topic_reason?: string | null;
+}
+
 function buildPromptFor(text: string, input: ClassifyInput): string {
   const labels = input.labels.map((l) => `"${l}"`).join(", ");
-  return [
+  const lines = [
     `You are a classifier. Pick exactly one label from this set: [${labels}].`,
     input.allow_none
       ? `If no label fits with high confidence, return label: null.`
       : `You must pick one of the provided labels.`,
-    `Return only JSON in this exact shape: {"label": "...", "confidence": 0.0}`,
+  ];
+  if (input.frame !== undefined) {
+    lines.push(
+      `These labels apply ONLY within the frame: ${input.frame}.`,
+      `If the source is off-topic for the frame, return label: null and set off_topic: true regardless of how well one of the labels fits in isolation. Do not pick a label just because the words rhyme.`,
+      `Return only JSON in this exact shape: {"label": "...", "confidence": 0.0, "off_topic": false, "off_topic_reason": null}`,
+    );
+  } else {
+    lines.push(`Return only JSON in this exact shape: {"label": "...", "confidence": 0.0}`);
+  }
+  lines.push(
     `Confidence is your estimate in [0, 1] that the label is correct.`,
     ``,
     `Text:`,
     text,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
-function parseClassify(raw: string): { label: string | null; confidence: number } {
+interface ClassifyRawFromModel {
+  label: string | null;
+  confidence: number;
+  off_topic?: boolean;
+  off_topic_reason?: string | null;
+}
+
+function parseClassify(raw: string): ClassifyRawFromModel {
   try {
     const obj = JSON.parse(raw.trim());
     const label = typeof obj.label === "string" ? obj.label : null;
     const confidence = typeof obj.confidence === "number" ? obj.confidence : 0;
-    return { label, confidence: Math.max(0, Math.min(1, confidence)) };
+    const out: ClassifyRawFromModel = { label, confidence: Math.max(0, Math.min(1, confidence)) };
+    if (typeof obj.off_topic === "boolean") out.off_topic = obj.off_topic;
+    if (typeof obj.off_topic_reason === "string" || obj.off_topic_reason === null) {
+      out.off_topic_reason = obj.off_topic_reason ?? null;
+    }
+    return out;
   } catch {
     return { label: null, confidence: 0 };
   }
+}
+
+function applyFrameAlignment(
+  guarded: ClassifyGuarded,
+  rawParsed: ClassifyRawFromModel,
+  frameSupplied: boolean,
+): ClassifyGuardedWithFrame {
+  if (!frameSupplied) return guarded;
+  const offTopic = rawParsed.off_topic === true;
+  const out: ClassifyGuardedWithFrame = {
+    ...guarded,
+    off_topic: offTopic,
+    off_topic_reason: rawParsed.off_topic_reason ?? null,
+  };
+  // When off_topic, null out the label regardless of allow_none — off-topic ≠ low confidence.
+  if (offTopic) out.label = null;
+  return out;
 }
 
 function assertExactlyOneInput(input: ClassifyInput): void {
@@ -88,11 +134,20 @@ function assertExactlyOneInput(input: ClassifyInput): void {
 export async function handleClassify(
   input: ClassifyInput,
   ctx: RunContext,
-): Promise<Envelope<ClassifyGuarded> | Envelope<BatchResult<ClassifyGuarded>>> {
+): Promise<Envelope<ClassifyGuardedWithFrame> | Envelope<BatchResult<ClassifyGuardedWithFrame>>> {
   assertExactlyOneInput(input);
+  const frameSupplied = input.frame !== undefined;
+  const parseOne = (raw: string): ClassifyGuardedWithFrame => {
+    const rawParsed = parseClassify(raw);
+    const guarded = applyConfidenceThreshold(rawParsed, {
+      threshold: input.threshold,
+      allow_none: input.allow_none,
+    });
+    return applyFrameAlignment(guarded, rawParsed, frameSupplied);
+  };
 
   if (input.items) {
-    return runBatch<{ id: string; text: string }, ClassifyGuarded>({
+    return runBatch<{ id: string; text: string }, ClassifyGuardedWithFrame>({
       tool: "ollama_classify",
       tier: "instant",
       ctx,
@@ -104,11 +159,7 @@ export async function handleClassify(
         format: "json",
         options: { temperature: TEMPERATURE_BY_SHAPE.classify, num_predict: 64 },
       }),
-      parse: (raw) =>
-        applyConfidenceThreshold(parseClassify(raw), {
-          threshold: input.threshold,
-          allow_none: input.allow_none,
-        }),
+      parse: parseOne,
     });
   }
 
@@ -120,7 +171,7 @@ export async function handleClassify(
   } else {
     text = input.text as string;
   }
-  return runTool<ClassifyGuarded>({
+  return runTool<ClassifyGuardedWithFrame>({
     tool: "ollama_classify",
     tier: "instant",
     ctx,
@@ -131,10 +182,6 @@ export async function handleClassify(
       format: "json",
       options: { temperature: TEMPERATURE_BY_SHAPE.classify, num_predict: 64 },
     }),
-    parse: (raw) =>
-      applyConfidenceThreshold(parseClassify(raw), {
-        threshold: input.threshold,
-        allow_none: input.allow_none,
-      }),
+    parse: parseOne,
   });
 }

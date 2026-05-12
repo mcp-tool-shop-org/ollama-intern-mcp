@@ -388,6 +388,93 @@ describe("handleCorpusAnswer", () => {
     expect(note).toBeDefined();
   });
 
+  // ── min_top_score topicality threshold (abstention slice) ─
+
+  it("min_top_score above top hit score → abstains, model not invoked", async () => {
+    // The corpus contains content but no chunk matches strongly. We can't
+    // directly control searchCorpus's scoring from this fixture, so we
+    // load the corpus, find the actual top_score the searcher produces,
+    // and set the threshold above it. The lexical mode produces small
+    // bm25 scores for the single-keyword overlap we wire here.
+    await writeCorpus("low", EMBED_MODEL, [
+      { id: "c-0", path: "/docs/alpha.md", text: "alpha body about topic" },
+    ]);
+    const client = new ProgrammableClient(
+      JSON.stringify({ answer: "should not see this", citations: [1] }),
+    );
+    // 999 is well above any realistic retrieval score — guarantees the
+    // threshold trips for any non-zero top_score the searcher returns.
+    const env = await handleCorpusAnswer(
+      { corpus: "low", question: "topic", mode: "lexical", min_top_score: 999 },
+      makeCtx(client),
+    );
+    expect(client.generateCalls).toBe(0);
+    expect(env.result.abstained).toBe(true);
+    expect(env.result.citations).toEqual([]);
+    expect(env.result.retrieval.weak).toBe(true);
+    expect(env.result.answer).toMatch(/below threshold/);
+    const note = env.result.coverage_notes.find((n) => n.includes("below caller-supplied min_top_score"));
+    expect(note).toBeDefined();
+    expect(env.warnings?.some((w) => w.includes("min_top_score"))).toBe(true);
+  });
+
+  it("min_top_score below top hit score → normal synthesis path", async () => {
+    await writeCorpus("ok", EMBED_MODEL, [
+      { id: "c-0", path: "/docs/alpha.md", text: "alpha body about topic" },
+    ]);
+    const client = new ProgrammableClient(
+      JSON.stringify({ answer: "Synthesized.", citations: [1] }),
+    );
+    // Threshold of 0 is always cleared (lexical scores > 0 for hits).
+    const env = await handleCorpusAnswer(
+      { corpus: "ok", question: "topic", mode: "lexical", min_top_score: 0 },
+      makeCtx(client),
+    );
+    expect(client.generateCalls).toBe(1);
+    expect(env.result.abstained).toBe(false);
+    expect(env.result.citations).toHaveLength(1);
+  });
+
+  it("per-citation score is populated from the retrieval hit", async () => {
+    await writeCorpus("ok", EMBED_MODEL, [
+      { id: "c-0", path: "/docs/alpha.md", chunk_index: 0, text: "alpha body about topic" },
+    ]);
+    const client = new ProgrammableClient(
+      JSON.stringify({ answer: "A.", citations: [1] }),
+    );
+    const env = await handleCorpusAnswer(
+      { corpus: "ok", question: "topic", mode: "lexical" },
+      makeCtx(client),
+    );
+    expect(env.result.citations).toHaveLength(1);
+    expect(typeof env.result.citations[0].score).toBe("number");
+    expect(env.result.citations[0].score).toBeGreaterThan(0);
+  });
+
+  it("zero-hit short-circuit sets abstained=true", async () => {
+    await writeCorpus("empty", EMBED_MODEL, []);
+    const client = new ProgrammableClient("{}");
+    const env = await handleCorpusAnswer(
+      { corpus: "empty", question: "anything", mode: "lexical" },
+      makeCtx(client),
+    );
+    expect(env.result.abstained).toBe(true);
+  });
+
+  it("normal synthesis path sets abstained=false", async () => {
+    await writeCorpus("ok", EMBED_MODEL, [
+      { id: "c-0", path: "/docs/alpha.md", text: "alpha body about topic" },
+    ]);
+    const client = new ProgrammableClient(
+      JSON.stringify({ answer: "A.", citations: [1] }),
+    );
+    const env = await handleCorpusAnswer(
+      { corpus: "ok", question: "topic", mode: "lexical" },
+      makeCtx(client),
+    );
+    expect(env.result.abstained).toBe(false);
+  });
+
   it("retrieval block carries retrieved / total_in_corpus / top_score / weak", async () => {
     await writeCorpus("t", EMBED_MODEL, [
       { id: "c-0", path: "/docs/a.md", text: "alpha body topic one" },

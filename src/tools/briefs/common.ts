@@ -42,6 +42,13 @@ export interface AssembleEvidenceInput {
   per_file_max_chars?: number;
   /** How many chunks to pull from the corpus. */
   corpus_top_k?: number;
+  /**
+   * Minimum retrieval score for a corpus chunk to survive into the
+   * assembled evidence. Corpus hits with `score < threshold` are dropped
+   * before the model sees them. Absent → no filtering (current behavior).
+   * This is the brief-side analogue of `min_top_score` on corpus_answer.
+   */
+  corpus_min_evidence_score?: number;
 }
 
 export interface AssembledEvidence {
@@ -49,6 +56,12 @@ export interface AssembledEvidence {
   corpus_used: { name: string; chunks_used: number } | null;
   /** Corpus hits kept for callers that want to inspect them beyond evidence snapshotting. */
   corpus_hits: CorpusHit[];
+  /**
+   * Coverage notes generated during evidence assembly (e.g. dropped-by-
+   * threshold counts). Handlers should merge these into their final
+   * `coverage_notes` so the operator sees them in the brief.
+   */
+  assembly_notes: string[];
 }
 
 /**
@@ -86,6 +99,7 @@ export async function assembleEvidence(
 
   let corpus_used: AssembledEvidence["corpus_used"] = null;
   let corpus_hits: CorpusHit[] = [];
+  const assembly_notes: string[] = [];
   if (input.corpus) {
     const corpus = await loadCorpus(input.corpus);
     if (!corpus) {
@@ -108,14 +122,33 @@ export async function assembleEvidence(
         preview_chars: EVIDENCE_CONFIG.CORPUS_EXCERPT_CHARS,
         client: ctx.client,
       });
-      const corpusEv = corpusHitsToEvidence(corpus_hits, nextId);
+      // Apply the optional relevance floor before building evidence. This
+      // is the architectural fix from the role-contract dogfood — the
+      // retrieval score is real signal; dropping low-relevance chunks
+      // upstream keeps the model from anchoring to off-topic context.
+      let filtered_hits = corpus_hits;
+      const threshold = input.corpus_min_evidence_score;
+      if (typeof threshold === "number") {
+        filtered_hits = corpus_hits.filter((h) => h.score >= threshold);
+        const dropped = corpus_hits.length - filtered_hits.length;
+        if (dropped > 0) {
+          assembly_notes.push(
+            `Dropped ${dropped} corpus chunk(s) below relevance threshold ${threshold} (top retrieval score: ${corpus_hits[0]?.score ?? 0}).`,
+          );
+        }
+      }
+      const corpusEv = corpusHitsToEvidence(filtered_hits, nextId);
       evidence.push(...corpusEv);
       nextId += corpusEv.length;
+      // `corpus_hits` reflects what we kept for evidence — callers that
+      // need the raw retrieval (e.g. for pack-level inspection) get the
+      // same view the model sees, not pre-threshold noise.
+      corpus_hits = filtered_hits;
     }
     corpus_used = { name: input.corpus, chunks_used: corpus_hits.length };
   }
 
-  return { evidence, corpus_used, corpus_hits };
+  return { evidence, corpus_used, corpus_hits, assembly_notes };
 }
 
 /**

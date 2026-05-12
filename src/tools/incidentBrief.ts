@@ -50,6 +50,12 @@ export const incidentBriefSchema = z.object({
     .describe("Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_hypotheses: z.number().int().min(1).max(10).optional().describe("Cap on root-cause hypotheses in the output (default 5)."),
+  corpus_min_evidence_score: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe("Minimum retrieval score (0–1) for a corpus chunk to enter evidence. Hits below the floor are dropped before the model sees them, with a counted note in coverage_notes. Use this when corpus retrieval may surface off-topic chunks. Absent → no relevance filter."),
 });
 
 export type IncidentBriefInput = z.infer<typeof incidentBriefSchema>;
@@ -180,6 +186,7 @@ export async function handleIncidentBrief(
     corpus: input.corpus,
     corpus_query: corpusQuery,
     per_file_max_chars: input.per_file_max_chars,
+    corpus_min_evidence_score: input.corpus_min_evidence_score,
   }, ctx);
   return synthesizeIncidentBrief(input, ctx, assembled);
 }
@@ -196,7 +203,7 @@ export async function synthesizeIncidentBrief(
   assembled: AssembledEvidence,
 ): Promise<Envelope<IncidentBriefResult>> {
   const maxHypotheses = input.max_hypotheses ?? 5;
-  const { evidence, corpus_used } = assembled;
+  const { evidence, corpus_used, assembly_notes } = assembled;
   const validIds = new Set(evidence.map((e) => e.id));
 
   // 0-evidence inputs short-circuit before the model — refuse to
@@ -214,6 +221,11 @@ export async function synthesizeIncidentBrief(
       weak: true,
       coverage_notes: [
         "No evidence could be assembled from the provided inputs. Model was not invoked — synthesis without grounding would be unsafe.",
+        // Surface a relevance-filter drop reason here too: when the floor
+        // killed every corpus hit and there was no other primary input,
+        // the operator needs the score-level explanation, not just "no
+        // evidence."
+        ...assembly_notes,
       ],
       corpus_used,
     };
@@ -319,7 +331,10 @@ export async function synthesizeIncidentBrief(
         next_checks: checks,
         evidence,
         weak: coverage.weak,
-        coverage_notes: coverage.notes,
+        // Prepend assembly-time notes (e.g. dropped-by-threshold counts)
+        // so the operator sees them before the synthesis-time notes. These
+        // describe what the model never got to see — load-bearing context.
+        coverage_notes: [...assembly_notes, ...coverage.notes],
         corpus_used,
       };
     },

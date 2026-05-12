@@ -438,3 +438,101 @@ describe("handleChangeBrief — shape + grounding", () => {
     expect(env.result.corpus_used).toEqual({ name: "doctrine", chunks_used: 1 });
   });
 });
+
+// ── corpus_min_evidence_score + score propagation (architecture fix) ──
+
+describe("repo_brief — corpus score propagation + relevance floor", () => {
+  it("corpus evidence items carry retrieval score through to result", async () => {
+    await writeCorpus("handbook", EMBED_MODEL, [
+      { id: "c-0", path: "/handbook/layout.md", text: "the repo follows a monorepo layout" },
+    ]);
+    const p = join(tempDir, "README.md");
+    await writeFile(p, "short readme", "utf8");
+    const modelOut = JSON.stringify({
+      repo_thesis: "T", key_surfaces: [], architecture_shape: "A",
+      risk_areas: [], read_next: [],
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleRepoBrief(
+      { source_paths: [p], corpus: "handbook", corpus_query: "layout" },
+      makeCtx(client),
+    );
+    const corpusEv = env.result.evidence.find((e) => e.kind === "corpus");
+    expect(corpusEv).toBeDefined();
+    expect(typeof corpusEv!.score).toBe("number");
+    expect(corpusEv!.score).toBeGreaterThan(0);
+  });
+
+  it("corpus_min_evidence_score=999 drops all corpus chunks with a counted note", async () => {
+    await writeCorpus("handbook", EMBED_MODEL, [
+      { id: "c-0", path: "/handbook/layout.md", text: "the repo follows a monorepo layout" },
+    ]);
+    const p = join(tempDir, "README.md");
+    await writeFile(p, "short readme", "utf8");
+    const modelOut = JSON.stringify({
+      repo_thesis: "T", key_surfaces: [], architecture_shape: "A",
+      risk_areas: [], read_next: [],
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleRepoBrief(
+      {
+        source_paths: [p],
+        corpus: "handbook",
+        corpus_query: "layout",
+        corpus_min_evidence_score: 999,
+      },
+      makeCtx(client),
+    );
+    expect(env.result.corpus_used?.chunks_used).toBe(0);
+    expect(env.result.evidence.some((e) => e.kind === "corpus")).toBe(false);
+    const note = env.result.coverage_notes.find((n) => n.includes("Dropped") && n.includes("999"));
+    expect(note).toBeDefined();
+  });
+});
+
+describe("change_brief — corpus score propagation + relevance floor", () => {
+  it("corpus evidence items carry retrieval score through to result", async () => {
+    await writeCorpus("doctrine", EMBED_MODEL, [
+      { id: "c-0", path: "/doctrine/safety.md", text: "defaults must favor safety" },
+    ]);
+    const diff = `diff --git a/x b/x\n@@\n+x\n`;
+    const modelOut = JSON.stringify({
+      change_summary: "S", affected_surfaces: [], why_it_matters: "W",
+      likely_breakpoints: [], validation_checks: [], release_note_draft: "N",
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleChangeBrief(
+      { diff_text: diff, corpus: "doctrine", corpus_query: "safety defaults" },
+      makeCtx(client),
+    );
+    const corpusEv = env.result.evidence.find((e) => e.kind === "corpus");
+    expect(corpusEv).toBeDefined();
+    expect(typeof corpusEv!.score).toBe("number");
+    expect(corpusEv!.score).toBeGreaterThan(0);
+  });
+
+  it("corpus_min_evidence_score=999 drops all corpus chunks with a counted note", async () => {
+    await writeCorpus("doctrine", EMBED_MODEL, [
+      { id: "c-0", path: "/doctrine/safety.md", text: "defaults must favor safety" },
+    ]);
+    const diff = `diff --git a/x b/x\n@@\n+x\n`;
+    const modelOut = JSON.stringify({
+      change_summary: "S", affected_surfaces: [], why_it_matters: "W",
+      likely_breakpoints: [], validation_checks: [], release_note_draft: "N",
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleChangeBrief(
+      {
+        diff_text: diff,
+        corpus: "doctrine",
+        corpus_query: "safety defaults",
+        corpus_min_evidence_score: 999,
+      },
+      makeCtx(client),
+    );
+    expect(env.result.corpus_used?.chunks_used).toBe(0);
+    expect(env.result.evidence.some((e) => e.kind === "corpus")).toBe(false);
+    const note = env.result.coverage_notes.find((n) => n.includes("Dropped") && n.includes("999"));
+    expect(note).toBeDefined();
+  });
+});

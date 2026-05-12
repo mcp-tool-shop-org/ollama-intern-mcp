@@ -2,6 +2,12 @@
  * Citation guardrail — `ollama_research` must only cite paths that were
  * provided in its source_paths input. Anything else is a fabrication and
  * gets stripped server-side before returning to the caller.
+ *
+ * line_range guardrail (added in the abstention slice): when the caller
+ * threads in a line-count map keyed by normalized path, we additionally
+ * check the cited range falls within the actual file. Out-of-bounds
+ * ranges are silently dropped from the citation (path is kept) and a
+ * warning is appended to the result envelope.
  */
 
 import { normalizePath } from "../protectedPaths.js";
@@ -19,27 +25,68 @@ export interface ValidatedCitation {
 export interface CitationValidationResult {
   valid: ValidatedCitation[];
   stripped: RawCitation[];
+  /**
+   * Citations whose line_range was dropped because it pointed past EOF.
+   * The path-only citation is still emitted in `valid`. Callers should
+   * surface these as warnings without failing the call — the model still
+   * pointed at the right file, just at non-existent lines.
+   */
+  out_of_bounds_ranges: Array<{ path: string; line_range: string; file_lines: number }>;
+}
+
+interface ParsedRange { start: number; end: number }
+
+function parseLineRange(raw: string): ParsedRange | null {
+  const m = raw.match(/^(\d+)(?:-(\d+))?$/);
+  if (!m) return null;
+  const start = parseInt(m[1], 10);
+  const end = m[2] ? parseInt(m[2], 10) : start;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 1 || end < start) return null;
+  return { start, end };
 }
 
 /**
  * Strip any citation whose path is not in allowedPaths.
  * Comparison is on normalized paths — forward slashes, no leading ./.
+ *
+ * When `linesByPath` is supplied (keyed by normalized path), line_range
+ * values that point beyond the file's actual line count have their range
+ * dropped (path-only citation is preserved) and the case recorded in
+ * `out_of_bounds_ranges` for the handler to surface as a warning.
  */
 export function validateCitations(
   citations: RawCitation[],
   allowedPaths: string[],
+  linesByPath?: Map<string, number>,
 ): CitationValidationResult {
   const allowed = new Set(allowedPaths.map(normalizePath));
   const valid: ValidatedCitation[] = [];
   const stripped: RawCitation[] = [];
+  const out_of_bounds_ranges: CitationValidationResult["out_of_bounds_ranges"] = [];
   for (const c of citations) {
-    if (allowed.has(normalizePath(c.path))) {
-      valid.push({ path: c.path, ...(c.line_range ? { line_range: c.line_range } : {}) });
-    } else {
+    const norm = normalizePath(c.path);
+    if (!allowed.has(norm)) {
       stripped.push(c);
+      continue;
     }
+    let line_range = c.line_range;
+    if (line_range && linesByPath) {
+      const lineCount = linesByPath.get(norm);
+      if (typeof lineCount === "number") {
+        const parsed = parseLineRange(line_range);
+        // Drop only when we could parse it AND the end exceeds the file —
+        // unparseable ranges fall through unchanged (matches earlier
+        // permissive behavior; range strings have always been free-form).
+        if (parsed && parsed.end > lineCount) {
+          out_of_bounds_ranges.push({ path: c.path, line_range, file_lines: lineCount });
+          line_range = undefined;
+        }
+      }
+    }
+    valid.push({ path: c.path, ...(line_range ? { line_range } : {}) });
   }
-  return { valid, stripped };
+  return { valid, stripped, out_of_bounds_ranges };
 }
 
 /**

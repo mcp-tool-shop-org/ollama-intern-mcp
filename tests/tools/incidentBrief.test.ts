@@ -353,6 +353,76 @@ describe("handleIncidentBrief — corpus integration", () => {
     ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
     expect(client.generateCalls).toBe(0);
   });
+
+  // ── corpus_min_evidence_score (architecture fix from dogfood) ──
+
+  it("corpus evidence items carry retrieval score through to result", async () => {
+    await writeCorpus("doctrine", EMBED_MODEL, [
+      { id: "c-0", path: "/doctrine/memory.md", text: "workers use 256MB", heading_path: ["Memory"] },
+    ]);
+    const modelOut = JSON.stringify({
+      root_cause_hypotheses: [{ hypothesis: "H", confidence: "high", evidence_refs: ["e1", "e2"] }],
+      affected_surfaces: [], timeline_clues: [], next_checks: [],
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleIncidentBrief(
+      { log_text: "worker OOM killed", corpus: "doctrine", corpus_query: "memory" },
+      makeCtx(client),
+    );
+    const corpusEv = env.result.evidence.find((e) => e.kind === "corpus");
+    expect(corpusEv).toBeDefined();
+    // Score is real signal — must propagate through to the evidence item.
+    expect(typeof corpusEv!.score).toBe("number");
+    expect(corpusEv!.score).toBeGreaterThan(0);
+  });
+
+  it("corpus_min_evidence_score=999 drops every corpus chunk with a counted note", async () => {
+    await writeCorpus("doctrine", EMBED_MODEL, [
+      { id: "c-0", path: "/doctrine/memory.md", text: "workers use 256MB" },
+      { id: "c-1", path: "/doctrine/other.md", text: "unrelated" },
+    ]);
+    const modelOut = JSON.stringify({
+      root_cause_hypotheses: [{ hypothesis: "H", confidence: "high", evidence_refs: ["e1"] }],
+      affected_surfaces: [], timeline_clues: [], next_checks: [],
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleIncidentBrief(
+      {
+        log_text: "worker oom killed memory limit exceeded",
+        corpus: "doctrine",
+        corpus_query: "memory",
+        corpus_min_evidence_score: 999,
+      },
+      makeCtx(client),
+    );
+    // Every corpus chunk filtered out — chunks_used reflects the kept set.
+    expect(env.result.corpus_used?.chunks_used).toBe(0);
+    expect(env.result.evidence.some((e) => e.kind === "corpus")).toBe(false);
+    const note = env.result.coverage_notes.find((n) => n.includes("Dropped") && n.includes("999"));
+    expect(note).toBeDefined();
+  });
+
+  it("corpus_min_evidence_score=0 keeps every corpus chunk (baseline behavior)", async () => {
+    await writeCorpus("doctrine", EMBED_MODEL, [
+      { id: "c-0", path: "/doctrine/memory.md", text: "workers use 256MB" },
+    ]);
+    const modelOut = JSON.stringify({
+      root_cause_hypotheses: [{ hypothesis: "H", confidence: "high", evidence_refs: ["e1", "e2"] }],
+      affected_surfaces: [], timeline_clues: [], next_checks: [],
+    });
+    const client = new ProgrammableClient(modelOut);
+    const env = await handleIncidentBrief(
+      {
+        log_text: "worker oom killed",
+        corpus: "doctrine",
+        corpus_query: "memory",
+        corpus_min_evidence_score: 0,
+      },
+      makeCtx(client),
+    );
+    expect(env.result.corpus_used?.chunks_used).toBe(1);
+    expect(env.result.evidence.some((e) => e.kind === "corpus")).toBe(true);
+  });
 });
 
 describe("handleIncidentBrief — prompt shape boundaries", () => {
