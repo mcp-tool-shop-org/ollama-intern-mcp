@@ -13,36 +13,42 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-> **El "becario" local para Claude Code.** 28 herramientas estructuradas, informes basados en evidencia, artefactos duraderos.
+**El agente local para Claude Code.** 41 herramientas, informes basados en evidencia, artefactos duraderos.
 
-Un servidor MCP que proporciona a Claude Code un **"becario" local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / Potente / Profundo / Incorporado); el nivel escribe un archivo que puedes abrir la semana que viene.
+Un servidor MCP que proporciona a Claude Code un **agente local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / Potente / Profundo / Integrado); el nivel escribe un archivo que puedes abrir la semana que viene.
 
-**También ejecuta [Hermes Agent](https://github.com/NousResearch/hermes-agent) en `hermes3:8b`** — validado de extremo a extremo el 19 de abril de 2026. La configuración predeterminada es `hermes3:8b`; `qwen3:*` es la opción alternativa. Consulte [Uso con Hermes](#use-with-hermes) a continuación.
+**También ejecuta [Hermes Agent](https://github.com/NousResearch/hermes-agent) en `hermes3:8b`** — validado de extremo a extremo el 19 de abril de 2026. El nivel predeterminado es `hermes3:8b`; `qwen3:*` es la opción alternativa. Consulta [Uso con Hermes](#use-with-hermes) a continuación.
 
-**Requisitos de hardware:** ~6 GB de VRAM para `hermes3:8b`, o ~16 GB de RAM para inferencia en CPU. Consulte [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums) para obtener más detalles.
+**Requisitos de hardware:** ~6 GB de VRAM para `hermes3:8b`, o ~16 GB de RAM para inferencia en CPU. Consulta [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums) para obtener más detalles.
 
-**¿No está utilizando Claude?** El directorio [`examples/`](./examples/) contiene un cliente mínimo de Node.js y Python para MCP que se puede ejecutar a través de stdio. Consulte también [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
+**¿No estás usando Claude?** El directorio [`examples/`](./examples/) contiene un cliente MCP mínimo de Node.js y Python que puedes ejecutar a través de stdio. Consulta también [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
 
-Sin nube. Sin telemetría. Nada de funciones "autónomas". Cada llamada muestra su trabajo.
-
----
-
-## Novedades en v2.1.0
-
-La extensión de funciones mantiene los niveles existentes; no se crea una nueva clase de nivel, y "atoms+briefs" permanece en 18.
-
-- **`ollama_log_tail`** — lee el registro de llamadas NDJSON dentro de una sesión de MCP. [handbook/observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/#the-ollama_log_tail-tool).
-- **`ollama_batch_proof_check`** — ejecuta `tsc` / `eslint` / `pytest` en un conjunto de rutas; un único paquete con resultados de aprobación/fallo por verificación. Nueva superficie de ejecución; consulte [SECURITY.md](./SECURITY.md).
-- **`ollama_code_map`** — mapa estructural de un árbol de código (exportaciones, esquemas de grafo de llamadas, TODOs).
-- **`ollama_code_citation`** — dado un símbolo, devuelve el archivo de definición + línea + contexto circundante.
-- **`ollama_corpus_amend`** — modificaciones en línea y aditivas a un corpus existente; las respuestas posteriores muestran `has_amended_content: true`.
-- **`ollama_artifact_prune`** — eliminación basada en la edad, con ejecución de prueba predeterminada. [handbook/artifacts](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/artifacts/#artifact_prune).
-- **Mejoras** — `summarize_deep` ahora acepta `source_path`; `corpus_answer` muestra el estado de contenido modificado; se documentan nuevos eventos de observabilidad de extremo a extremo.
-- **Nuevas páginas del manual** — [Observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/) (registro NDJSON + recetas jq) y [Comparison](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/comparison/) (matriz honesta frente a alternativas).
+Sin nube. Sin telemetría. Nada de "autonomía". Cada llamada muestra su trabajo.
 
 ---
 
-## Ejemplo principal: una llamada, un artefacto
+## Novedades en v2.2.0
+
+Contrato de rol de agente local de procesamiento de evidencia: relevancia temática y abstención estructurada. Pequeña adición — las llamadas de la versión v2.1.0 no han cambiado. Consulta las entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md).
+
+- **Extracción basada en el contexto** en `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` — entrada opcional `frame: string` + salidas estructuradas `frame_alignment` / `on_topic` / `frame_addressed`. Las fuentes que no son relevantes se marcan en lugar de parafrasearse en el esquema.
+- **Abstención estructurada** en `ollama_research` — campos `weak` / `abstained` / `sources_address_question`. Un `answer` no vacío con `citations[]` vacío ya no se considera un éxito silencioso.
+- **Umbral de relevancia temática** en `ollama_corpus_answer` — `min_top_score` opcional. Si el valor está por debajo del umbral, la herramienta se detiene con `abstained: true` y omite la síntesis. La puntuación de cada cita ahora es visible.
+- **Preservación de la puntuación de recuperación** a través de evidencia concisa — `corpusHitsToEvidence` incluye la `score` (y el parámetro `corpus_min_evidence_score` filtra en el momento de la compilación en `incident_brief` / `repo_brief` / `change_brief`).
+- **Límites del rango de citas** — `guardrails/citations.ts` rechaza rangos fuera de los límites en `ollama_research`, lo que coincide con el comportamiento existente en `ollama_code_citation`.
+- **Documentación del contrato del operador corregida** — corrección de `chunk_id`/`chunk_index` en el README, reescritura de "validado en el lado del servidor", la sección de Leyes de Evidencia está calificada, el eslogan de marketing está anotado.
+
+### Regresión de la semilla — la verificación
+
+El contrato de la sección se verifica contra el fallo literal de la nueva instalación de research-os: arxiv 2112.10422 (Cosmological Standard Timers) en la sección-01 con el título *"¿Qué significa la custodia de la evidencia en los flujos de trabajo de investigación profunda locales frente a la nube con LLM?"* — 9 de 9 pruebas de contrato de LLM simuladas confirman que la fuente que no es relevante ahora está contenida (`frame_alignment.on_topic = false` en la extracción; `off_topic: true` en la clasificación; `frame_addressed: false` en el resumen profundo; `abstained: true` en `corpus_answer` con `min_top_score` establecido).
+
+### Histórico — entregables de v2.1.0
+
+Consulta [CHANGELOG.md](./CHANGELOG.md) para ver la entrada completa de v2.1.0 (paquete de funciones: 13 nuevas herramientas + 4 mejoras + actualización).
+
+---
+
+## Ejemplo principal — una llamada, un artefacto
 
 ```jsonc
 // Claude → ollama-intern-mcp
@@ -56,7 +62,7 @@ La extensión de funciones mantiene los niveles existentes; no se crea una nueva
 }
 ```
 
-Devuelve un "sobre" que apunta a un archivo en el disco:
+Devuelve un envoltorio que apunta a un archivo en el disco:
 
 ```jsonc
 {
@@ -78,9 +84,11 @@ Devuelve un "sobre" que apunta a un archivo en el disco:
 }
 ```
 
-Ese archivo Markdown es el resultado del "becario" en su escritorio: encabezados, bloque de evidencia con identificadores citados, comandos de investigación `next_checks`, y un indicador `weak: true` si la evidencia es limitada. Es determinista: el renderizador es código, no una instrucción. Ábrelo mañana, compáralo la semana que viene y expórtalo a un manual con `ollama_artifact_export_to_path`.
+→ `weak: false` significa que se han ensamblado ≥2 elementos de evidencia; NO significa que las hipótesis estén verificadas. Consulta [Leyes de la evidencia](#evidence-laws) a continuación.
 
-Todos los competidores en esta categoría destacan la función de "ahorro de tokens". Nosotros destacamos el hecho de que _aquí está el archivo que el becario escribió_.
+Ese archivo Markdown es el resultado del trabajo del becario: encabezados, bloques de evidencia con identificadores citados, la etiqueta de investigación `next_checks`, y una advertencia `weak: true` si la evidencia es insuficiente. Es determinista: el renderizador es código, no una instrucción. (El renderizador es determinista; el *contenido* de las hipótesis y los resultados es generado, así que considérenlo como un borrador, no como algo verificado). Ábrelo mañana, compáralo la semana que viene y expórtalo a un manual utilizando `ollama_artifact_export_to_path`.
+
+Cada competidor en esta categoría comienza con "ahorra tokens". Nosotros comenzamos con "_aquí está el archivo que escribió el becario_".
 
 ### Segundo ejemplo: crea un corpus y luego hazle una pregunta
 
@@ -97,38 +105,66 @@ Todos los competidores en esta categoría destacan la función de "ahorro de tok
   "arguments": { "name": "sprite-foundry",
                  "query": "how does the worker handle OOM eviction?",
                  "top_k": 8 } }
-// → { answer: "...", citations: [{chunk_id, path}...], weak: false }
+// → { answer: "...", citations: [{chunk_index, path}...], weak: false }
 ```
 
-Cada afirmación en `answer` cita un ID de fragmento validado en el servidor. Consulte el tutorial completo en [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
+El servidor valida la identidad de la cita y que cada `chunk_index` esté dentro del rango de los resultados recuperados. NO prueba que cada afirmación generada esté semánticamente respaldada por el contenido del fragmento citado; esa es la responsabilidad del modelo, y una recuperación deficiente aún puede producir respuestas con formato de cita. Consulte la guía completa en [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
 
 ---
 
-## ¿Qué hay aquí? Cuatro niveles, 28 herramientas
+## Extracción basada en contexto (nuevo en v2.2.0)
 
-**Diseñado para tareas específicas** significa que cada herramienta nombra una tarea que le asignarías a un becario: clasifica esto, extrae eso, prioriza estos registros, redacta esta nota de lanzamiento, empaqueta este incidente. La entrada de la herramienta es la especificación de la tarea; la salida es el resultado. No hay una función primitiva genérica `run_model` / `chat_with_llm` en la parte superior.
+`ollama_extract`, `ollama_classify`, `ollama_summarize_fast` y `ollama_summarize_deep` aceptan una entrada opcional `frame: string`. El nombre del "frame" indica la pregunta a la que se espera que responda la fuente; el modelo se instruye para que se abstenga de generar contenido irrelevante en lugar de contenido verdadero pero fuera de tema cuando la fuente no aborda el "frame".
+
+```jsonc
+{
+  "tool": "ollama_extract",
+  "arguments": {
+    "text": "<long source document>",
+    "schema": { /* your fields */ },
+    "frame": "section purpose here — e.g. 'OOM eviction behavior in the sprite worker'"
+  }
+}
+// → result includes frame_alignment: { on_topic: boolean, reason: string, unaddressed_aspects: string[] }
+```
+
+Si se omite el `frame`, el comportamiento no cambia con respecto a la versión 2.1.0. Cuando se proporciona, `frame_alignment.on_topic = false` indica que los campos extraídos pueden ser verdaderos para la fuente, pero no relevantes para el "frame"; considérelos como un resumen con `weak: true`: útiles, pero verifiquen antes de incluirlos en la evidencia.
+
+---
+
+## Contrato de abstención (nuevo en v2.2.0)
+
+`ollama_research` devuelve campos de abstención estructurados: `weak: boolean`, `abstained: boolean`, `sources_address_question: boolean | null`. Un `citations[]` vacío con una `answer` no vacía ya no es silencioso; `abstained: true` indica que el modelo se negó a sintetizar porque las rutas proporcionadas por el llamador no abordaban la pregunta. Trate la abstención como un éxito, no como un fracaso: es la herramienta que se niega a convertir una recuperación deficiente en una salida autorizada.
+
+`ollama_corpus_answer` acepta un umbral de relevancia opcional `min_top_score: number` (0.0–1.0). Cuando la puntuación de recuperación superior para una consulta está por debajo de `min_top_score`, la herramienta se detiene con `abstained: true` y omite la síntesis, evitando el modo de falla "5 fragmentos fuera de tema con una puntuación de 0.21 aún generan una respuesta completa" que la regla `weak: true` de la versión 2.1.0 no detectó (la regla `weak: true` solo se activaba cuando `hits.length < 2`). Combine esto con el campo `score` por cita que ahora se muestra en cada cita para auditar la calidad de la recuperación directamente desde el paquete.
+
+---
+
+## ¿Qué hay aquí? Cuatro niveles, 41 herramientas
+
+**Con forma de tarea** significa que cada herramienta define una tarea que se le asignaría a un becario: clasifica esto, extrae eso, triaje estos registros, redacta esta nota de lanzamiento, empaqueta este incidente. La entrada de la herramienta es la especificación de la tarea; la salida es el resultado. No hay una función primitiva genérica `run_model` / `chat_with_llm` en la parte superior.
 
 | Nivel | Cantidad | Qué hay aquí |
 |---|---|---|
-| **Atoms** | 15 | Elementos básicos estructurados para tareas específicas. `classify` (clasificar), `extract` (extraer), `triage_logs` (triaje de registros), `summarize_fast` / `deep` (resumir rápido / profundo), `draft` (borrador), `research` (investigación), `corpus_search` (búsqueda en corpus), `answer` (responder), `index` (indexar), `refresh` (actualizar), `list` (listar), `embed_search` (búsqueda de incrustaciones), `embed` (incrustar), `chat` (chat). Los elementos básicos que admiten procesamiento por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
-| **Briefs** | 3 | Informes estructurados basados en evidencia. `incident_brief` (informe de incidente), `repo_brief` (informe de repositorio), `change_brief` (informe de cambio). Cada afirmación cita un identificador de evidencia; la información desconocida se elimina en el servidor. La evidencia débil muestra `weak: true` en lugar de una narrativa falsa. |
-| **Packs** | 3 | Tareas compuestas con un flujo de trabajo fijo que escriben archivos Markdown + JSON duraderos en `~/.ollama-intern/artifacts/`. `incident_pack` (paquete de incidente), `repo_pack` (paquete de repositorio), `change_pack` (paquete de cambio). Renderizadores deterministas: no hay llamadas a modelos en la forma del artefacto. |
-| **Artifacts** | 7 | Interfaz de consistencia sobre los resultados de los paquetes. `artifact_list` (lista de artefactos), `read` (leer), `diff` (comparar), `export_to_path` (exportar a ruta), más tres fragmentos deterministas: `incident_note` (nota de incidente), `onboarding_section` (sección de incorporación), `release_note` (nota de lanzamiento). |
+| **Atoms** | 15 | Primitivas con forma de tarea. `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. Los elementos por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
+| **Briefs** | 3 | Resúmenes estructurados con respaldo de evidencia. `incident_brief`, `repo_brief`, `change_brief`. Cada afirmación cita un identificador de evidencia; los desconocidos se eliminan en el servidor. La evidencia débil muestra `weak: true` en lugar de una narrativa falsa. |
+| **Packs** | 3 | Tareas compuestas con un flujo de trabajo fijo que escriben datos duraderos en formato Markdown y JSON en el directorio `~/.ollama-intern/artifacts/`. Incluyen `incident_pack`, `repo_pack` y `change_pack`. Renderizadores deterministas: no se realizan llamadas a modelos en la estructura de los artefactos. |
+| **Artifacts** | 7 | Interfaz de consistencia sobre las salidas de los paquetes. Incluye `artifact_list`, `read`, `diff`, `export_to_path`, y tres fragmentos deterministas: `incident_note`, `onboarding_section` y `release_note`. |
 
-Total: **18 elementos básicos + 3 paquetes + 7 herramientas de artefacto = 28**.
+Total: **18 elementos básicos + 3 paquetes + 7 herramientas de artefactos = 28**.
 
-Líneas congeladas:
-- Los elementos básicos están congelados en 18 (elementos básicos + informes). No hay nuevas herramientas de elemento básico.
-- Los paquetes están congelados en 3. No hay nuevos tipos de paquete.
-- El nivel de artefacto está congelado en 7.
+Elementos congelados:
+- Elementos básicos congelados en 18 (elementos básicos + resúmenes). No hay nuevas herramientas de elementos básicos.
+- Paquetes congelados en 3. No hay nuevos tipos de paquetes.
+- Nivel de artefacto congelado en 7.
 
-La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/).
+La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 
 ## Instalación
 
-Requiere [Ollama](https://ollama.com) instalado localmente y los modelos de nivel descargados (consulte [Model pulls](#model-pulls) a continuación).
+Requiere que [Ollama](https://ollama.com) se ejecute localmente y que se hayan descargado los modelos correspondientes (ver la sección [Descarga de modelos](#model-pulls) a continuación).
 
 ### Claude Code (recomendado)
 
@@ -151,11 +187,11 @@ La mayoría de los usuarios instalan esto agregándolo a la configuración del s
 
 ### Claude Desktop
 
-El mismo archivo, escrito en `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+Mismo bloque, escrito en `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
 
 ### Instalación global (avanzado)
 
-Solo es necesario si desea tener el binario en su `PATH` para uso ad-hoc fuera de Claude Code:
+Solo es necesario si desea tener el ejecutable en su `PATH` para uso ad-hoc fuera de Claude Code:
 
 ```bash
 npm install -g ollama-intern-mcp
@@ -163,7 +199,7 @@ npm install -g ollama-intern-mcp
 
 ### Uso con Hermes
 
-Este MCP se validó de extremo a extremo con [Hermes Agent](https://github.com/NousResearch/hermes-agent) contra `hermes3:8b` en Ollama (19 de abril de 2026). Hermes es un agente externo que *llama* a la superficie primitiva congelada de este MCP; se encarga de la planificación, y nosotros nos encargamos del trabajo.
+Este MCP se validó de extremo a extremo con [Hermes Agent](https://github.com/NousResearch/hermes-agent) contra `hermes3:8b` en Ollama (19 de abril de 2026). Hermes es un agente externo que *llama* a la interfaz de elementos básicos congelados de este MCP; él se encarga de la planificación, y nosotros realizamos el trabajo.
 
 Configuración de referencia ([hermes.config.example.yaml](hermes.config.example.yaml) en este repositorio):
 
@@ -193,7 +229,7 @@ mcp_servers:
       # only needed if you're pinning a different local model.
 ```
 
-**La estructura de las instrucciones es importante.** Las instrucciones imperativas para invocar herramientas ("Llama a X con los argumentos…") son la prueba de integración; proporcionan a un modelo local de 8B la estructura necesaria para generar llamadas a herramientas (`tool_calls`) limpias. Las instrucciones en forma de lista para múltiples tareas ("haz A, luego B, luego C") son puntos de referencia de capacidad para modelos más grandes; no interpretes un fallo en una instrucción en forma de lista en un modelo de 8B como un "problema de conexión". Consulta [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) para obtener la guía completa de integración y las advertencias conocidas sobre la transmisión (Ollama `/v1` + una capa de compatibilidad no de transmisión para el SDK de OpenAI).
+**La estructura de la solicitud es importante.** Las solicitudes de invocación de herramientas imperativas ("Llama a X con argumentos...") son la prueba de integración; proporcionan a un modelo local de 8B suficiente estructura para generar `tool_calls` limpios. Las solicitudes de tareas múltiples en formato de lista ("haz A, luego B, luego C") son puntos de referencia de capacidad para modelos más grandes; no interpretes un fallo en formato de lista en un modelo de 8B como "el sistema está roto". Consulta [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) para obtener una guía completa de la integración y las advertencias de transporte conocidas (transmisión de Ollama `/v1` + shim no de transmisión de openai-SDK).
 
 ### Descarga de modelos
 
@@ -206,7 +242,7 @@ export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
 ```
 
-**Ruta alternativa de Qwen 3 (mismo hardware, para las herramientas de Qwen):**
+**Ruta alternativa de Qwen 3 (mismo hardware, para herramientas de Qwen):**
 
 ```bash
 ollama pull qwen3:8b
@@ -215,7 +251,7 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=dev-rtx5080-qwen3
 ```
 
-**Perfil M5 Max (128GB unificados):**
+**Perfil de M5 Max (128GB unificados):**
 
 ```bash
 ollama pull qwen3:14b
@@ -224,11 +260,11 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-Las variables de entorno por nivel (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) aún anulan las selecciones del perfil para casos individuales.
+Las variables de entorno por nivel (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) aún anulan las selecciones de perfil para casos individuales.
 
 ---
 
-## "Sobre" uniforme
+## Interfaz uniforme
 
 Cada herramienta devuelve la misma estructura:
 
@@ -250,64 +286,65 @@ Cada herramienta devuelve la misma estructura:
 }
 ```
 
-La información de `residency` (residencia) proviene de `/api/ps` de Ollama. Cuando `evicted: true` (desalojado) o `size_vram < size` (tamaño de la VRAM menor que el tamaño), el modelo se carga en el disco y la inferencia se reduce entre 5 y 10 veces. Muestra esta información al usuario para que sepa que debe reiniciar Ollama o reducir el número de modelos cargados.
+`residency` proviene de `/api/ps` de Ollama. Cuando `evicted: true` o `size_vram < size`, el modelo se carga en el disco y la inferencia disminuye entre 5 y 10 veces; muestra esto al usuario para que sepa que debe reiniciar Ollama o reducir el número de modelos cargados.
 
-Cada llamada se registra como una línea en formato NDJSON en `~/.ollama-intern/log.ndjson`. Filtra por `hardware_profile` para mantener los datos de desarrollo fuera de los puntos de referencia publicados.
+Cada llamada se registra como una línea en `~/.ollama-intern/log.ndjson`. Filtra por `hardware_profile` para evitar que los datos de desarrollo contaminen los puntos de referencia publicados.
 
 ---
 
 ## Perfiles de hardware
 
-| Perfil | Instantáneo | Potente | Profundo | Incorporado |
+| Perfil | Instantáneo | Workhorse | Profundo | Embed |
 |---|---|---|---|---|
 | **`dev-rtx5080`** (predeterminado) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
 | `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
 | `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**Configuración predeterminada para desarrollo:** La configuración predeterminada para desarrollo consolida los tres niveles de trabajo en `hermes3:8b`, que es la ruta de integración validada de Hermes Agent. Utilizar el mismo modelo de principio a fin significa que solo hay un componente que mantener, un costo de alojamiento, y un conjunto de comportamientos que comprender. Los usuarios que prefieren Qwen 3 (con su infraestructura `THINK_BY_SHAPE`) pueden optar por `dev-rtx5080-qwen3`. `m5-max` es la versión de Qwen 3 optimizada para memoria unificada.
+**Configuración predeterminada de desarrollo:** Esta configuración consolida los tres niveles de trabajo en `hermes3:8b`, que es la ruta de integración validada de Hermes Agent. Utilizar el mismo modelo de principio a fin significa que solo hay un componente que descargar, un único costo de uso y un único conjunto de comportamientos que comprender. Los usuarios que prefieren Qwen 3 (con su mecanismo `THINK_BY_SHAPE`) pueden optar por la configuración `dev-rtx5080-qwen3`. `m5-max` es la versión de Qwen 3 optimizada para memoria unificada.
 
 ---
 
-## Normas de evidencia
+## Leyes de evidencia
 
-Estas normas se aplican en el servidor, no en la solicitud:
+Estas reglas se aplican en el servidor, no en la solicitud:
 
 - **Se requieren citas.** Cada afirmación breve cita un identificador de evidencia.
-- **Información desconocida se elimina en el servidor.** Los modelos que citan identificadores que no están en el paquete de evidencia tienen esos identificadores eliminados, con una advertencia, antes de que se devuelva el resultado.
-- **Lo débil es lo débil.** La evidencia débil se marca como `weak: true` con notas de cobertura. Nunca se suaviza para crear una narrativa falsa.
-- **Investigación, no prescripción.** Solo `next_checks` / `read_next` / `likely_breakpoints`. Las solicitudes prohíben "aplicar esta corrección".
-- **Renderizadores deterministas.** La forma del marcador de texto de los artefactos es código, no una solicitud. `draft` se reserva para el texto donde la redacción del modelo es importante.
-- **Solo diferencias dentro del mismo paquete.** Se rechaza explícitamente la función `artifact_diff` entre diferentes paquetes; los paquetes permanecen distintos.
+- **Información desconocida se elimina en el servidor.** Los modelos que citan identificadores que no están en el conjunto de evidencia tienen esos identificadores eliminados, con una advertencia, antes de que se devuelva el resultado.
+- **Validación por ID, no por contenido.** El servidor verifica que cada `evidence_ref` citado apunte a un identificador de evidencia real en el conjunto ensamblado. NO verifica que el texto de la afirmación se pueda derivar de la evidencia citada; esa es la tarea del modelo. A veces, las afirmaciones débiles contienen afirmaciones no respaldadas con referencias válidas. Utilice `weak: true` + notas de cobertura + el campo `excerpt` incluido para realizar una verificación puntual.
+- **"Débil" significa "débil".** La evidencia con poca solidez se marca como `weak: true` con notas de cobertura. Nunca se suaviza para crear una narrativa falsa.
+- **Investigación, no prescripción.** Solo se incluyen `next_checks` / `read_next` / `likely_breakpoints`. Las solicitudes prohíben la instrucción "aplique esta corrección".
+- **Renderizado determinista.** La forma del marcado de los artefactos es código, no una solicitud. `draft` se reserva para texto donde la redacción del modelo es importante.
+- **Solo diferencias dentro del mismo paquete.** Se rechaza explícitamente cualquier `artifact_diff` entre paquetes; los paquetes permanecen distintos.
 
 ---
 
 ## Artefactos y continuidad
 
-Los paquetes escriben en `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`. La capa de artefactos proporciona una superficie de continuidad sin convertir esto en una herramienta de gestión de archivos:
+Los paquetes escriben en `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`. El nivel de artefactos proporciona una superficie de continuidad sin convertir esto en una herramienta de gestión de archivos:
 
-- `artifact_list` — índice de metadatos, filtrable por paquete, fecha, patrón de slug
-- `artifact_read` — lectura tipada por `{pack, slug}` o `{json_path}`
-- `artifact_diff` — comparación estructurada dentro del mismo paquete; se muestra la inversión de la debilidad
-- `artifact_export_to_path` — escribe un artefacto existente (con un encabezado de procedencia) en una ubicación declarada por el usuario (`allowed_roots`). Rechaza archivos existentes a menos que `overwrite: true`.
-- `artifact_incident_note_snippet` — fragmento de nota del operador
-- `artifact_onboarding_section_snippet` — fragmento del manual
-- `artifact_release_note_snippet` — fragmento de nota de la versión (BORRADOR)
+- `artifact_list`: índice que contiene solo metadatos, filtrable por paquete, fecha, patrón de slug.
+- `artifact_read`: lectura tipada por `{pack, slug}` o `{json_path}`.
+- `artifact_diff`: comparación estructurada dentro del mismo paquete; se muestra la posibilidad de una corrección.
+- `artifact_export_to_path`: escribe un artefacto existente (con un encabezado de procedencia) en una ubicación declarada por el usuario en `allowed_roots`. Rechaza archivos existentes a menos que `overwrite: true`.
+- `artifact_incident_note_snippet`: fragmento de nota del operador.
+- `artifact_onboarding_section_snippet`: fragmento del manual.
+- `artifact_release_note_snippet`: fragmento de nota de la versión (BORRADOR).
 
-No hay llamadas a modelos en esta capa. Todo se renderiza a partir de contenido almacenado.
+No hay llamadas a modelos en este nivel. Todo se genera a partir de contenido almacenado.
 
 ---
 
 ## Modelo de amenazas y telemetría
 
-**Datos accedidos:** rutas de archivos que el usuario proporciona explícitamente (`ollama_research`, herramientas de corpus), texto incrustado y artefactos que el usuario solicita que se escriban en `~/.ollama-intern/artifacts/` o en una ubicación declarada por el usuario (`allowed_roots`).
+**Datos accedidos:** rutas de archivos que el usuario proporciona explícitamente (`ollama_research`, herramientas de corpus), texto incrustado y artefactos que el usuario solicita que se escriban en `~/.ollama-intern/artifacts/` o en una ubicación declarada por el usuario en `allowed_roots`.
 
 **Datos NO accedidos:** cualquier cosa fuera de `source_paths` / `allowed_roots`. Se rechaza `..` antes de la normalización. `artifact_export_to_path` rechaza archivos existentes a menos que `overwrite: true`. Los borradores dirigidos a rutas protegidas (`memory/`, `.claude/`, `docs/canon/`, etc.) requieren explícitamente `confirm_write: true`, lo que se aplica en el servidor.
 
-**Tráfico de salida de la red:** **desactivado de forma predeterminada.** El único tráfico de salida es al punto final HTTP local de Ollama. No hay llamadas a la nube, ni notificaciones de actualización, ni informes de fallos.
+**Tráfico de salida:** **deshabilitado de forma predeterminada.** El único tráfico de salida es al punto final HTTP local de Ollama. No hay llamadas a la nube, ni notificaciones de actualización, ni informes de fallos.
 
-**Telemetría:** **ninguna.** Cada llamada se registra como una línea en formato NDJSON en `~/.ollama-intern/log.ndjson` en su máquina. Nada sale del sistema.
+**Telemetría:** **ninguna.** Cada llamada se registra como una línea NDJSON en `~/.ollama-intern/log.ndjson` en su máquina. Nada sale del sistema.
 
-**Errores:** formato estructurado `{ code, message, hint, retryable }`. Los rastros de pila nunca se muestran en los resultados de la herramienta.
+**Errores:** estructura `{ code, message, hint, retryable }`. Los rastros de pila nunca se muestran a través de los resultados de la herramienta.
 
 Política completa: [SECURITY.md](SECURITY.md).
 
@@ -315,30 +352,30 @@ Política completa: [SECURITY.md](SECURITY.md).
 
 ## Estándares
 
-Construido según los estándares de [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck). Se superan las pruebas A–D; consulte [SHIP_GATE.md](SHIP_GATE.md) y [SCORECARD.md](SCORECARD.md).
+Construido según el estándar de [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck). Se superan las pruebas A–D; consulte [SHIP_GATE.md](SHIP_GATE.md) y [SCORECARD.md](SCORECARD.md).
 
-- **A. Seguridad** — SECURITY.md, modelo de amenazas, sin telemetría, seguridad de rutas, `confirm_write` en rutas protegidas
-- **B. Errores** — formato estructurado en todos los resultados de la herramienta; sin trazas de pila sin formato
-- **C. Documentación** — README actualizado, CHANGELOG, LICENSE; esquemas de herramientas con autocomentarios
-- **D. Higiene** — `npm run verify` (395 pruebas), CI con análisis de dependencias, Dependabot, archivo de bloqueo, `engines.node`
+- **A. Seguridad** — SECURITY.md, modelo de amenazas, sin telemetría, seguridad de rutas, `confirm_write` en rutas protegidas.
+- **B. Errores** — Estructura consistente en todos los resultados de las herramientas; sin pilas de errores sin procesar.
+- **C. Documentación** — README actualizado, CHANGELOG, LICENCIA; los esquemas de las herramientas se auto-documentan.
+- **D. Mantenimiento** — `npm run verify` (conjunto completo de pruebas de vitest), CI con análisis de dependencias, Dependabot, archivo de bloqueo, `engines.node`.
 
 ---
 
-## Hoja de ruta (fortalecimiento, no ampliación del alcance)
+## Hoja de ruta (endurecimiento, no ampliación del alcance)
 
-- **Fase 1: Espina dorsal de delegación** ✓ Implementada: interfaz atómica, envoltorio uniforme, enrutamiento por niveles, mecanismos de seguridad.
-- **Fase 2: Espina dorsal de la verdad** ✓ Implementada: fragmentación de esquema v2, BM25 + RRF, corpus dinámicos, resúmenes con respaldo de evidencia, paquete de evaluación de recuperación.
-- **Fase 3: Espina dorsal de empaquetado y artefactos** ✓ Implementada: paquetes de flujo de trabajo predefinidos con artefactos duraderos + nivel de continuidad.
-- **Fase 4: Espina dorsal de adopción** ✓ v2.0.1: corpus de salud de tres etapas endurecido (protección contra ataques TOCTOU, límite de tamaño de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido de la ruta de las herramientas, observabilidad (eventos de espera de semáforos, contexto de error de tiempo de espera, registro de anulación de entorno, señal de precalentamiento para inicio en frío), pruebas de seguridad (instantánea del entorno de carga de módulos en 10 archivos, prueba E2E de `tools/call`). Se ha añadido un manual de solución de problemas y los requisitos mínimos de hardware para los operadores.
-- **Fase 5: Pruebas de rendimiento de M5 Max** — Se publicarán los resultados una vez que se disponga del hardware (aproximadamente el 24 de abril de 2026).
+- **Fase 1 — Núcleo de Delegación** ✓ Implementado: interfaz de Atom, envoltorio uniforme, enrutamiento por niveles, mecanismos de protección.
+- **Fase 2 — Núcleo de Veracidad** ✓ Implementado: fragmentación de esquemas v2, BM25 + RRF, corpus vivos, resúmenes respaldados por evidencia, paquete de evaluación de recuperación.
+- **Fase 3 — Núcleo de Paquetes y Artefactos** ✓ Implementado: paquetes con canalizaciones fijas y artefactos duraderos + nivel de continuidad.
+- **Fase 4 — Núcleo de Adopción** ✓ v2.0.1: corpus de salud endurecido en tres etapas (protección contra ataques TOCTOU, límite de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido de rutas de herramientas, observabilidad (registro de eventos de espera de semáforos, contexto de error de tiempo de espera, registro de anulación de entorno, señal de precalentamiento para inicio en frío), seguridad de pruebas (instantánea del entorno de carga de módulos en 10 archivos, `tools/call` de extremo a extremo). Se agregó un manual de solución de problemas y los requisitos mínimos de hardware para los operadores.
+- **Fase 5 — Pruebas de rendimiento en M5 Max** — Números publicables una vez que se disponga del hardware (aproximadamente 24 de abril de 2026).
 
-Fase por capa de fortalecimiento. La interfaz de átomos/paquetes/artefactos permanece inalterada.
+Fase por capa de endurecimiento. La interfaz de Atom/paquete/artefacto permanece inalterada.
 
 ---
 
 ## Licencia
 
-MIT — ver [LICENSE](LICENSE).
+MIT — ver [LICENCIA](LICENCIA).
 
 ---
 

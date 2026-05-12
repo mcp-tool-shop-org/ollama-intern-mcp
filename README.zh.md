@@ -13,36 +13,42 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**Claude Code 的本地实习生。** 28 种实用工具，以证据为基础的简报，以及经久耐用的成果。
+**Claude Code 的本地实习生。** 41 个工具，基于证据的简报，持久的成果。
 
-一个名为“MCP”的服务器，为“Claude Code”提供了一个“本地实习生”角色，该角色拥有规则、等级、办公桌和文件柜。 “Claude”选择“工具”；“工具”选择“等级”（分为“即时”、“工作马”、“深度”和“嵌入”）；“等级”会生成一个文件，您可以在下周打开查看。
+一个 MCP 服务器，为 Claude Code 提供一个**本地实习生**，包括规则、等级、办公桌和文件柜。 Claude 选择 _工具_；工具选择 _等级_（即时/工作型/深度/嵌入式）；等级会生成一个文件，您可以在下周打开它。
 
-**同时驱动 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 模型，使用 `hermes3:8b` 版本** — 已于 2026-04-19 完整验证。默认模型为 `hermes3:8b`；`qwen3:*` 是备选模型。请参阅下方的 [使用 Hermes](#use-with-hermes) 部分。
+**同时在 `hermes3:8b` 上运行 [Hermes Agent](https://github.com/NousResearch/hermes-agent)** — 已于 2026 年 4 月 19 日进行端到端验证。 默认等级为 `hermes3:8b`；`qwen3:*` 是备选方案。 详情请参阅下方的 [与 Hermes 的使用](#use-with-hermes)。
 
-**硬件要求：** 使用 `hermes3:8b` 模型时，需要约 6 GB 的显存 (VRAM)，或者使用 CPU 推理时，需要约 16 GB 的内存 (RAM)。 详细信息请参阅 [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums)。
+**硬件要求：** `hermes3:8b` 需要约 6 GB 的 VRAM，或者 CPU 推理需要约 16 GB 的 RAM。 详细信息请参阅 [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums)。
 
-**不使用 Claude？**  `./examples/` 目录下包含一个最小化的 Node.js 和 Python MCP 客户端，可以通过标准输入/输出 (stdio) 进行交互。 另请参阅 [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)。
+**不使用 Claude？** `examples/` 目录包含一个最小的 Node.js 和 Python MCP 客户端，可以通过标准输入/输出进行交互。 另请参阅 [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)。
 
-没有云服务。没有远程数据传输。没有任何“自动”功能。每一次操作都能清楚地看到其工作原理。
-
----
-
-## 版本 2.1.0 的新增功能
-
-功能增强扩展了现有的层级，没有创建新的层级类别，"atoms+briefs" 的限制仍然保持在 18 个。
-
-- **`ollama_log_tail`** — 从 MCP 会话内部读取 NDJSON 日志。 详细信息请参阅 [handbook/observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/#the-ollama_log_tail-tool)。
-- **`ollama_batch_proof_check`** — 在一组路径上运行 `tsc` / `eslint` / `pytest`，并提供一个包含每个检查结果（通过/失败）的统一输出。 这是一个新的执行接口；请参阅 [SECURITY.md](./SECURITY.md)。
-- **`ollama_code_map`** — 代码树的结构化地图（导出、调用图、TODO 列表）。
-- **`ollama_code_citation`** — 给定一个符号，返回定义该符号的文件、行号以及上下文信息。
-- **`ollama_corpus_amend`** — 对现有语料库进行增量式修改；后续的回答会显示 `has_amended_content: true`。
-- **`ollama_artifact_prune`** — 基于年龄进行删除，默认情况下会进行试运行。 详细信息请参阅 [handbook/artifacts](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/artifacts/#artifact_prune)。
-- **增强功能：** `summarize_deep` 现在可以接受 `source_path` 参数；`corpus_answer` 显示已修改的内容的状态；新的可观察性事件已记录并经过完整验证。
-- **新的手册页面：** [可观察性](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/)（NDJSON 日志 + jq 脚本）和 [比较](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/comparison/)（诚实的模型矩阵与替代方案的比较）。
+无云服务。无遥测。没有任何“自主”功能。 每个调用都会显示其工作过程。
 
 ---
 
-## 示例：一个请求，一个成果
+## 新功能，版本 2.2.0
+
+本地证据处理器的角色规范：基于上下文的主题相关性和结构化拒绝。 这是一个小版本更新，v2.1.0 的调用者未发生变化。 详细信息请参阅 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md)。
+
+- **基于上下文的提取**：在 `ollama_extract`、`ollama_classify`、`ollama_summarize_fast`、`ollama_summarize_deep` 上，可选的 `frame: string` 输入，以及结构化的 `frame_alignment` / `on_topic` / `frame_addressed` 输出。 与其将不相关的主题来源进行释义，不如将其标记为不相关。
+- **结构化拒绝**：在 `ollama_research` 上，`weak` / `abstained` / `sources_address_question` 字段。 空的 `citations[]` 且 `answer` 不为空，不再表示成功。
+- **主题相关性阈值**：在 `ollama_corpus_answer` 上，可选的 `min_top_score`。 如果低于阈值，该工具将直接跳过，并设置 `abstained: true`，从而跳过合成过程。 每个引用的 `score` 现在可以在每个引用中看到。
+- **检索分数保留**：通过简短的证据进行，`corpusHitsToEvidence` 携带 `score`（以及 `corpus_min_evidence_score` 参数，可以在 `incident_brief` / `repo_brief` / `change_brief` 的组装时进行过滤）。
+- **引用范围限制**：`guardrails/citations.ts` 会拒绝 `ollama_research` 中超出范围的引用，这与 `ollama_code_citation` 现有的限制相同。
+- **操作规范文档已更正**：README 文件中的 `chunk_id`/`chunk_index` 已修复，"validated server-side" 已重写，证据法律部分已进行限定，营销口号已进行注释。
+
+### 种子回归 — 验证
+
+该切片的规范已针对字面意义上的研究操作系统的新版本失败进行验证：arxiv 2112.10422 (Cosmological Standard Timers)，在 section-01 框架 *"What does evidence custody mean in local-first vs cloud LLM deep-research workflows?"* 下，9 个模拟的 LLM 规范测试确认，不相关的主题来源现在已被包含 (`frame_alignment.on_topic = false` 在提取时；`off_topic: true` 在分类时；`frame_addressed: false` 在深度摘要时；`abstained: true` 在 `corpus_answer` 中，并且 `min_top_score` 已设置)。
+
+### 历史 — v2.1.0 的交付成果
+
+请参阅 [CHANGELOG.md](./CHANGELOG.md) 以获取完整的 v2.1.0 版本信息（功能更新：13 个新工具 + 4 个增强 + 版本升级）。
+
+---
+
+## 示例 — 一个调用，一个成果
 
 ```jsonc
 // Claude → ollama-intern-mcp
@@ -56,7 +62,7 @@
 }
 ```
 
-返回一个指向磁盘上文件的“信封”对象。
+返回一个指向磁盘上文件的指针：
 
 ```jsonc
 {
@@ -78,11 +84,13 @@
 }
 ```
 
-该 Markdown 文件是实习人员工作台的输出结果，包括标题、带有引用的证据块，以及如果证据不足时显示的“弱：true”提示。它的生成过程是确定的：渲染器是代码，而不是提示。明天打开它，下周进行差异比较，然后使用 `ollama_artifact_export_to_path` 命令将其导出到手册中。
+→ `weak: false` 表示已收集到 ≥2 个证据项；但这并不意味着假设已得到验证。 详情请参阅下方的 [证据法律](#evidence-laws)。
 
-在这个类别中，所有竞争对手都以“节省令牌”为宣传重点。而我们则强调的是：“这是实习生撰写的文档。”
+那个 Markdown 文件是实习生生成的报告 — 包含标题、带有引文 ID 的证据块，以及如果证据不足时显示的“弱：true”提示。它的输出是确定的：渲染器是代码，而不是提示。 （渲染器是确定的；假设和表面的*内容*是生成的，请将其视为草稿，而不是经过验证的内容。）明天打开它，下周进行差异比较，然后使用 `ollama_artifact_export_to_path` 将其导出到手册中。
 
-### 第二个示例：构建一个语料库，然后向其提问
+在这个类别中的每个竞争对手都以“节省令牌”为口号。我们以“这是实习生编写的文件”为口号。
+
+### 第二个示例 — 构建一个语料库，然后向它提问
 
 ```jsonc
 // 1. Build a persistent, searchable corpus over your project.
@@ -97,42 +105,70 @@
   "arguments": { "name": "sprite-foundry",
                  "query": "how does the worker handle OOM eviction?",
                  "top_k": 8 } }
-// → { answer: "...", citations: [{chunk_id, path}...], weak: false }
+// → { answer: "...", citations: [{chunk_index, path}...], weak: false }
 ```
 
-`answer` 中的每个声明都引用了一个经过服务器端验证的 chunk id。 详细的步骤请参阅 [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/)。
+服务器验证引文的身份，并确保每个 `chunk_index` 都在检索到的结果范围内。它*不*证明生成的每个声明都由引用的内容在语义上支持 — 这是模型的责任，而且即使是弱检索也可能产生看起来像引文的答案。 完整的说明请参见 [手册/语料库](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/)。
 
 ---
 
-## 这里包含四层，共28件工具
+## 基于上下文的提取（新功能，v2.2.0 版本）
 
-**任务型 (Job-shaped)** 的含义是，每个工具都定义了一个任务，你可以将其分配给实习生完成，例如：对这进行分类、提取那、对这些日志进行分析、起草这个发布说明、打包这个事件。 工具的输入是任务规范，输出是交付成果。 没有通用的 `run_model` / `chat_with_llm` 基础功能。
+`ollama_extract`、`ollama_classify`、`ollama_summarize_fast` 和 `ollama_summarize_deep` 接受一个可选的 `frame: string` 输入。 `frame` 参数指定了源需要回答的问题；如果源没有涉及该问题，模型将避免输出与问题相关的内容，而是输出其他内容。
 
-| 等级；层级。 | 计数。 | 这里住着什么？ |
+```jsonc
+{
+  "tool": "ollama_extract",
+  "arguments": {
+    "text": "<long source document>",
+    "schema": { /* your fields */ },
+    "frame": "section purpose here — e.g. 'OOM eviction behavior in the sprite worker'"
+  }
+}
+// → result includes frame_alignment: { on_topic: boolean, reason: string, unaddressed_aspects: string[] }
+```
+
+如果省略 `frame`，行为将与 v2.1.0 版本相同。 如果提供了 `frame`，`frame_alignment.on_topic = false` 表示提取的字段可能与源相关，但与 `frame` 不相关 — 将其视为与 `weak: true` 简报相同的含义：有用，但在推广到下游证据之前，请进行重点检查。
+
+---
+
+## 拒绝协议（新功能，v2.2.0 版本）
+
+`ollama_research` 返回结构化的拒绝字段：`weak: boolean`、`abstained: boolean`、`sources_address_question: boolean | null`。 即使 `answer` 不为空，但 `citations[]` 为空，也不会再保持沉默 — `abstained: true` 表示模型拒绝合成，因为调用者提供的路径没有涉及该问题。 将拒绝视为成功，而不是失败：这是工具拒绝将弱检索转化为权威输出。
+
+`ollama_corpus_answer` 接受一个可选的 `min_top_score: number` 主题相关性阈值（0.0–1.0）。 当某个查询的最高检索分数低于 `min_top_score` 时，该工具将使用 `abstained: true` 立即停止，并跳过合成 — 从而防止出现“即使有 5 个得分仅为 0.21 的不相关片段，仍然会生成完整的答案”的情况，而 v2.1.0 版本的 `weak: true` 规则未能捕捉到这种情况（`weak: true` 仅在 `hits.length < 2` 时触发）。 将其与每个引文中的 `score` 字段结合使用，可以直接从结果中审计检索质量。
+
+---
+
+## 这里包含的内容：四个层级，41 个工具
+
+**任务型**意味着每个工具都代表着您可以交给实习生的任务 — 对此进行分类，提取那个，对这些日志进行分级，起草这个发布说明，打包这个事件。 工具的输入是任务规范；输出是交付成果。 没有通用的 `run_model` / `chat_with_llm` 基础功能。
+
+| 层级 | 数量 | 包含的内容 |
 |---|---|---|
-| **Atoms** | 15 | 以下是一些预定义的任务类型：`classify`（分类）、`extract`（提取）、`triage_logs`（日志分析）、`summarize_fast` / `deep`（快速/深度摘要）、`draft`（起草）、`research`（研究）、`corpus_search` / `answer`（语料库搜索/回答）、`index`（索引）、`refresh`（刷新）、`list`（列表）、`embed_search`（嵌入式搜索）、`embed`（嵌入）、`chat`（聊天）。 能够处理批处理任务的模块（`classify`、`extract`、`triage_logs`）接受以下格式的输入：`items: [{id, text}]`。 |
-| **Briefs** | 3 | 基于证据的、结构化的操作简报。包括“事件简报”、“报告简报”和“变更简报”等类型。每个论点都引用了证据ID；未知信息在服务器端进行处理并被移除。对于证据不足的情况，会标记为“证据不足：true”，而不是捏造虚假信息。 |
-| **Packs** | 3 | 固定流水线任务，用于将持久化的 Markdown 和 JSON 数据写入到 `~/.ollama-intern/artifacts/` 目录。这些任务包括 `incident_pack`、`repo_pack` 和 `change_pack`。这些渲染过程是确定性的，不会对生成的artifact进行任何模型调用。 |
-| **Artifacts** | 7 | 针对打包输出结果，提供连续性信息。包含以下内容：`artifact_list`（工件列表）、`read`（读取）、`diff`（差异）、`export_to_path`（导出到路径），以及三个确定性的片段：`incident_note`（事件记录）、`onboarding_section`（入职指南）和 `release_note`（发布说明）。 |
+| **Atoms** | 15 | 任务型基础功能。 `classify`、`extract`、`triage_logs`、`summarize_fast` / `deep`、`draft`、`research`、`corpus_search` / `answer` / `index` / `refresh` / `list`、`embed_search`、`embed`、`chat`。 批量处理能力的基础功能 (`classify`、`extract`、`triage_logs`) 接受 `items: [{id, text}]`。 |
+| **Briefs** | 3 | 基于证据的结构化简报。 `incident_brief`、`repo_brief`、`change_brief`。 每个声明都引用一个证据 ID；未知内容在服务器端被删除。 弱证据会显示 `weak: true`，而不是虚构的叙述。 |
+| **Packs** | 3 | 固定流水线，用于将持久化的 Markdown + JSON 写入到 `~/.ollama-intern/artifacts/` 目录。包括 `incident_pack`、`repo_pack` 和 `change_pack`。采用确定性渲染方式，不直接调用模型，仅处理数据形状。 |
+| **Artifacts** | 7 | 提供一个连续的接口，用于处理打包输出。包括 `artifact_list`、`read`、`diff`、`export_to_path`，以及三个确定性的代码片段：`incident_note`、`onboarding_section` 和 `release_note`。 |
 
-总计：**18 个基础物品 + 3 个礼包 + 7 件工具 = 28 件**。
+总计：**18 个基本组件 + 3 个打包模块 + 7 个工具 = 28 个**。
 
-冻结内容：
-- 原子：已冻结在18个（包括原子和简易版）。 不会增加新的原子工具。
-- 组装包：已冻结在3个。 不会增加新的组装包类型。
-- 遗物等级：已冻结在7级。
+冻结状态：
+- 18 个原子组件（原子组件 + 简报）。没有新的原子组件工具。
+- 3 个打包模块。没有新的打包模块类型。
+- 7 个工具层级。
 
-完整的工具参考资料请查阅[手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/reference/)。
+完整的工具参考文档位于 [手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/)。
 
 ---
 
 ## 安装
 
-需要安装 [Ollama](https://ollama.com) 并运行本地，以及下载指定的模型（请参阅下方的 [模型下载](#model-pulls) 部分）。
+需要安装并运行 [Ollama](https://ollama.com)，并且需要下载相应的模型（参见下面的 [模型下载](#model-pulls)）。
 
 ### Claude Code (推荐)
 
-大多数用户通过将其添加到 Claude Code MCP 服务器的配置文件中来安装此工具，无需全局安装。 Claude Code 通过 `npx` 命令按需运行服务器。
+大多数用户通过将其添加到 Claude Code MCP 服务器的配置文件中来安装此工具，无需全局安装。Claude Code 通过 `npx` 命令按需运行服务器。
 
 ```json
 {
@@ -149,23 +185,23 @@
 }
 ```
 
-### Claude 桌面版
+### Claude Desktop
 
-内容相同，将被写入到 `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS 系统) 或 `%APPDATA%\Claude\claude_desktop_config.json` (Windows 系统) 文件中。
+与上述类似，写入到 `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) 或 `%APPDATA%\Claude\claude_desktop_config.json` (Windows)。
 
 ### 全局安装 (高级)
 
-只有当您希望在 Claude Code 之外，通过命令行直接使用该二进制文件时，才需要进行全局安装：
+只有当您希望在 Claude Code 之外，将二进制文件添加到 `PATH` 环境变量中，以便进行临时使用时，才需要进行全局安装。
 
 ```bash
 npm install -g ollama-intern-mcp
 ```
 
-### 与爱马仕产品搭配使用
+### 使用方法：与 Hermes 配合使用
 
-该模型控制程序（MCP）已使用 [Hermes Agent](https://github.com/NousResearch/Hermes) 在 Ollama 上的 `hermes3:8b` 模型上进行了端到端的验证（验证日期：2026年4月19日）。Hermes 是一个外部代理，它会*调用*该 MCP 的固定底层接口——它负责规划，我们负责执行。
+此 MCP 已使用 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 对 `hermes3:8b` 模型进行了端到端的验证，并在 Ollama 上运行（日期：2026-04-19）。Hermes 是一个外部代理，它会 *调用* 此 MCP 的确定性基本组件接口，它负责规划，我们负责执行。
 
-参考配置（本仓库中的 [hermes.config.example.yaml] 文件）：
+参考配置文件 ([hermes.config.example.yaml](hermes.config.example.yaml) 位于此仓库中)：
 
 ```yaml
 model:
@@ -193,11 +229,11 @@ mcp_servers:
       # only needed if you're pinning a different local model.
 ```
 
-**提示语的格式很重要。** 强制性的工具调用提示语（例如“调用 X，参数为…”）是集成测试，它们为 8B 的本地模型提供了足够的结构，使其能够生成清晰的 `tool_calls`。 列表形式的多任务提示语（例如“先做 A，然后 B，最后 C”）是用于评估更大模型能力的基准测试；不要将 8B 模型在列表形式提示语下的失败归因于“底层连接出现问题”。 请参阅 [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)，以获取完整的集成测试流程以及已知的传输相关注意事项（Ollama 的 `/v1` 流式传输以及 openai-SDK 的非流式传输适配器）。
+**提示的格式很重要。** 强制性的工具调用提示（例如：“调用 X，参数为…”）是集成测试，它为 8B 的本地模型提供了足够的结构，使其能够输出干净的 `tool_calls`。列表形式的多任务提示（例如：“执行 A，然后 B，然后 C”）是更大模型的性能基准。不要将 8B 模型上列表形式的失败解释为“底层连接出现问题”。请参阅 [手册/与 Hermes 配合使用](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)，以获取完整的集成指南以及已知的传输注意事项（Ollama `/v1` 流式传输 + openai-SDK 非流式传输 shim）。
 
-### 模特拉伸
+### 模型下载
 
-**默认开发配置 (RTX 5080 16GB 及类似配置):**
+**默认开发环境配置 (RTX 5080 16GB 及类似配置):**
 
 ```bash
 ollama pull hermes3:8b
@@ -206,7 +242,7 @@ export OLLAMA_MAX_LOADED_MODELS=2
 export OLLAMA_KEEP_ALIVE=-1
 ```
 
-**Qwen 3 专用配置 (相同硬件，用于 Qwen 工具):**
+**Qwen 3 备选配置 (相同硬件，用于 Qwen 工具):**
 
 ```bash
 ollama pull qwen3:8b
@@ -224,13 +260,13 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-每个层级的环境变量 (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) 仍然会覆盖配置文件的选择，用于一次性任务。
+每个层级的环境变量 (`INTERN_TIER_INSTANT`、`INTERN_TIER_WORKHORSE`、`INTERN_TIER_DEEP`、`INTERN_EMBED_MODEL`) 仍然可以覆盖配置文件中的选择，用于临时使用。
 
 ---
 
-## 统一的接口
+## 统一接口
 
-每个工具返回相同的结构：
+每个工具都返回相同的格式：
 
 ```ts
 {
@@ -250,64 +286,65 @@ export INTERN_PROFILE=m5-max
 }
 ```
 
-`residency` (模型驻留状态) 来自 Ollama 的 `/api/ps` 接口。当 `evicted: true` (模型已被移除) 或 `size_vram < size` (显存不足) 时，模型会被写入磁盘，推理速度会下降 5-10 倍。系统会向用户显示此信息，以便用户重启 Ollama 或减少加载的模型数量。
+`residency` (驻留状态) 来自 Ollama 的 `/api/ps` 接口。当 `evicted: true` 或 `size_vram < size` 时，模型会被分页到磁盘，推理速度会下降 5-10 倍。将此信息显示给用户，以便他们知道需要重启 Ollama 或减少已加载的模型数量。
 
-每个调用都会被记录为一行 NDJSON 数据，保存在 `~/.ollama-intern/log.ndjson` 文件中。可以通过 `hardware_profile` 进行过滤，以将开发环境的数据排除在可发布的基准测试之外。
+每个调用都会记录为一行 NDJSON 数据，写入到 `~/.ollama-intern/log.ndjson` 文件。通过 `hardware_profile` 过滤，以将开发环境的数据排除在可发布的基准测试之外。
 
 ---
 
 ## 硬件配置
 
-| 配置 | Instant | Workhorse | Deep | Embed |
+| 配置 | 快速 | 工作马 | 深度 | 嵌入 |
 |---|---|---|---|---|
-| **`dev-rtx5080`** (默认) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| **`dev-rtx5080` (默认)** | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
 | `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
 | `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**默认开发配置** 将所有三个工作层都映射到 `hermes3:8b`，这是经过验证的 Hermes Agent 集成路径。使用相同的模型可以简化操作，减少学习成本，并降低资源消耗。如果用户更喜欢 Qwen 3 (它具有 `THINK_BY_SHAPE` 功能)，可以选择 `dev-rtx5080-qwen3` 配置。`m5-max` 配置是为 Qwen 3 优化的，适用于统一内存环境。
+**默认开发模式** 将所有三个工作层级合并到 `hermes3:8b` 上，即经过验证的 Hermes Agent 集成路径。 采用相同的模型架构，从上到下，这意味着只需要一个模型，成本相同，行为也更容易理解。 那些更喜欢 Qwen 3（及其 `THINK_BY_SHAPE` 功能）的用户可以选择 `dev-rtx5080-qwen3`。 `m5-max` 是针对统一内存优化的 Qwen 3 版本。
 
 ---
 
-## 证据规则
+## 证据相关规则
 
-这些规则在服务器端强制执行，而不是在提示词中：
+这些规则在服务器端执行，而不是在提示词中：
 
-- **必须提供引用。** 每个简短的陈述都必须引用一个证据 ID。
-- **未知内容在服务器端被移除。** 如果模型引用了不在证据包中的 ID，则这些 ID 会在返回结果之前被移除，并会显示警告。
-- **弱证据标记为弱。** 弱证据会标记为 `weak: true`，并附带说明，不会被伪装成虚假叙述。
-- **用于调查，而非指导。** 仅提供 `next_checks` (下一步检查) / `read_next` (下一步阅读) / `likely_breakpoints` (可能的中断点)。提示词禁止使用 "应用此修复"。
-- **确定性的渲染器。** 标记文本的形状是代码，而不是提示词。`draft` (草稿) 仍然保留用于需要模型措辞的文本。
-- **仅支持同一包的差异。** 跨包的 `artifact_diff` (差异) 会被明确拒绝；每个包的数据保持独立。
+- **必须提供引用。** 每一个简短的陈述都必须引用一个证据 ID。
+- **未知的 ID 会在服务器端被移除。** 如果模型引用了不在证据包中的 ID，这些 ID 会在结果返回之前被移除，并会显示警告。
+- **验证的是 ID，而不是内容。** 服务器会检查每一个引用的 `evidence_ref` 是否指向一个有效的证据 ID。 它不会验证陈述文本是否可以从引用的证据中推导出来——这是模型的任务。 有时，简短的陈述可能包含未经支持的断言，但引用是有效的。 使用 `weak: true` + 覆盖说明 + 包含的 `excerpt` 字段进行检查。
+- **“弱”就是“弱”。** 证据标记为 `weak: true` 时，会附带覆盖说明，不会被修改成虚假的叙述。
+- **用于调查，而不是规定。** 仅提供 `next_checks` / `read_next` / `likely_breakpoints`。 提示词禁止使用“应用此修复”之类的指令。
+- **确定性的渲染器。** 标记文本的形状是代码，而不是提示词。 `draft` 仍然保留用于需要模型进行措辞调整的文本。
+- **仅支持同一包的差异比较。** 跨包的 `artifact_diff` 会被明确拒绝；每个包的数据是独立的。
 
 ---
 
 ## 数据和连续性
 
-每个包会将数据写入 `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`。数据层提供连续性，但不会将其变成一个文件管理工具：
+每个包会将数据写入 `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`。 数据层为您提供数据连续性的保障，但它不是一个文件管理工具：
 
-- `artifact_list` (数据列表) — 仅包含元数据的索引，可以按包、日期、slug 前缀进行过滤。
-- `artifact_read` (数据读取) — 按 `{pack, slug}` (包和 slug) 或 `{json_path}` (JSON 路径) 进行类型读取。
-- `artifact_diff` (数据差异) — 结构化的同一包比较；弱点会被突出显示。
-- `artifact_export_to_path` (数据导出到路径) — 将现有数据（包含来源信息）导出到调用者声明的 `allowed_roots` 目录。如果目标文件已存在，则会拒绝导出，除非设置了 `overwrite: true`。
-- `artifact_incident_note_snippet` (事件备注片段) — 操作员备注片段。
-- `artifact_onboarding_section_snippet` (入职部分片段) — 手册片段。
-- `artifact_release_note_snippet` (发布备注片段) — DRAFT (草稿) 发布备注片段。
+- `artifact_list`：仅包含元数据的索引，可以按包、日期、slug glob 进行过滤。
+- `artifact_read`：按 `{pack, slug}` 或 `{json_path}` 进行类型读取。
+- `artifact_diff`：对同一包的结构化比较，会显示“弱”级别的差异。
+- `artifact_export_to_path`：将现有数据（包含来源信息头）写入调用者指定的 `allowed_roots`。 如果文件已存在，除非 `overwrite: true`，否则会拒绝写入。
+- `artifact_incident_note_snippet`：操作员备注片段。
+- `artifact_onboarding_section_snippet`：入门指南片段。
+- `artifact_release_note_snippet`：草稿版本的发布说明片段。
 
-此层级中没有模型调用。所有内容都从存储的内容中渲染。
+此层级中没有模型调用。 所有数据都从存储的内容中读取。
 
 ---
 
-## 威胁模型和遥测
+## 安全模型和遥测
 
-**涉及的数据：** 调用者显式传递的文件路径 (`ollama_research`, corpus tools)，内联文本，以及调用者请求写入到 `~/.ollama-intern/artifacts/` 或调用者声明的 `allowed_roots` 目录中的数据。
+**访问的数据：** 调用者明确提供的文件路径（`ollama_research`、语料库工具），内联文本，以及调用者请求写入到 `~/.ollama-intern/artifacts/` 或调用者指定的 `allowed_roots` 的数据。
 
-**未被修改的数据：** 任何位于 `source_paths` 或 `allowed_roots` 之外的数据都不会被修改。 `..` 在标准化之前会被拒绝。 `artifact_export_to_path` 除非 `overwrite: true`，否则会拒绝已存在的文件。 针对受保护路径（如 `memory/`, `.claude/`, `docs/canon/` 等）的草稿需要明确设置 `confirm_write: true`，服务器端强制执行。
+**未访问的数据：** 任何位于 `source_paths` / `allowed_roots` 之外的数据。 `..` 在归一化之前会被拒绝。 `artifact_export_to_path` 会拒绝写入已存在的文件，除非 `overwrite: true`。 针对受保护路径（`memory/`、`.claude/`、`docs/canon/` 等）的草稿需要明确指定 `confirm_write: true`，并在服务器端强制执行。
 
-**网络出站：** **默认情况下禁用。** 唯一的出站流量是发送到本地 Ollama HTTP 接口。 不会进行任何云端调用，也不会发送更新请求或崩溃报告。
+**网络出站流量：** **默认情况下禁用。** 唯一的出站流量是到本地 Ollama HTTP 端点。 不会进行任何云端调用、更新提示或崩溃报告。
 
-**遥测：** **无。** 每次调用都会被记录为一行 NDJSON 数据，存储在您的机器上的 `~/.ollama-intern/log.ndjson` 文件中。 没有任何数据会离开设备。
+**遥测：** **无。** 每次调用都会被记录为一行 NDJSON 数据，写入到您机器上的 `~/.ollama-intern/log.ndjson` 文件。 没有任何数据会离开本地。
 
-**错误：** 采用结构化的格式 `{ code, message, hint, retryable }`。 堆栈跟踪信息永远不会通过工具结果暴露。
+**错误：** 结构化的错误信息，格式为 `{ code, message, hint, retryable }`。 堆栈跟踪信息不会通过工具结果暴露。
 
 完整策略：[SECURITY.md](SECURITY.md)。
 
@@ -315,24 +352,24 @@ export INTERN_PROFILE=m5-max
 
 ## 标准
 
-符合 [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) 的标准。 通过 A–D 级别的测试；请参阅 [SHIP_GATE.md](SHIP_GATE.md) 和 [SCORECARD.md](SCORECARD.md)。
+遵循 [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) 标准。 通过 A-D 级别的测试；请参阅 [SHIP_GATE.md](SHIP_GATE.md) 和 [SCORECARD.md](SCORECARD.md)。
 
-- **A. 安全性：** SECURITY.md，威胁模型，无遥测，路径安全，针对受保护路径使用 `confirm_write`。
-- **B. 错误：** 所有工具结果都采用结构化的格式；不暴露原始堆栈信息。
-- **C. 文档：** README 文档当前版本，CHANGELOG，LICENSE；工具模式具有自文档功能。
-- **D. 质量：** `npm run verify` (395 个测试)，CI 包含依赖项扫描，Dependabot，lockfile，`engines.node`。
+- **A. 安全性** — SECURITY.md，威胁模型，无遥测功能，路径安全，对受保护路径使用 `confirm_write`。
+- **B. 错误** — 所有工具结果采用结构化格式；不包含原始堆栈信息。
+- **C. 文档** — README（当前版本），CHANGELOG，LICENSE；工具的 schema 自带文档。
+- **D. 规范性** — `npm run verify`（完整的 vitest 测试套件），CI 包含依赖项扫描，Dependabot，lockfile，`engines.node`。
 
 ---
 
-## 路线图（加强安全，而非扩大范围）
+## 路线图（加强现有功能，而非扩大范围）
 
-- **第一阶段 — 授权核心** 已完成：原子表面、统一封装、分层路由、安全机制。
-- **第二阶段 — 真实性核心** 已完成：模式 v2 分块、BM25 + RRF、动态语料库、基于证据的简报、检索评估工具包。
-- **第三阶段 — 打包与工件核心** 已完成：包含持久工件的固定流水线包，以及连续部署层级。
-- **第四阶段 — 采用核心** 已完成 v2.0.1：三阶段健康检查，增强型语料库（防止时间序列攻击、文件大小限制为 50MB、拒绝符号链接、原子写入、针对每个文件的故障捕获），工具路径遍历，可观察性（信号量等待事件、超时错误上下文、配置环境覆盖日志、预热冷启动信号），测试安全性（跨 10 个文件的模块加载环境快照，`tools/call` 端到端测试）。为操作人员添加了故障排除手册和硬件最低要求。
-- **第五阶段 — M5 Max 性能基准测试** 待发布：硬件到位后，将发布可公开的性能数据（预计 2026 年 4 月 24 日左右）。
+- **第一阶段 — 授权核心** ✓ 已完成：atom 界面，统一的封装方式，分层路由，安全机制。
+- **第二阶段 — 真实性核心** ✓ 已完成：schema v2 分块，BM25 + RRF，动态语料库，基于证据的简报，检索评估工具包。
+- **第三阶段 — 打包与制品核心** ✓ 已完成：具有持久制品和连续性层的固定流水线打包。
+- **第四阶段 — 采用核心** ✓ v2.0.1：三阶段健康检查，强化语料库（防止时间窗口攻击，文件大小限制为 50MB，拒绝符号链接，原子写入，每个文件失败捕获），工具路径遍历，可观察性（信号量等待事件，超时错误上下文，配置文件覆盖日志，预热冷启动信号），测试安全性（跨 10 个文件进行模块加载环境快照，`tools/call` 端到端测试）。为操作员添加了故障排除手册和硬件最低要求。
+- **第五阶段 — M5 Max 性能基准测试** — 硬件到位后发布可公开的性能数据（预计 2026 年 4 月 24 日左右）。
 
-按安全加固层进行划分。 原子/打包/工件表面保持不变。
+阶段划分基于安全加固层。atom/pack/artifact 接口保持不变。
 
 ---
 

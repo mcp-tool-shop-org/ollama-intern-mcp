@@ -27,18 +27,24 @@ No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ---
 
-## New in v2.1.0
+## New in v2.2.0
 
-Feature pass extends existing tiers — no new tier class, atoms+briefs freeze at 18 stays intact.
+Local evidence-worker role contract: frame-bound topicality and structured abstention. Additive minor — v2.1.0 callers unchanged. Detailed entries in [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md).
 
-- **`ollama_log_tail`** — read the NDJSON call log from inside an MCP session. [handbook/observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/#the-ollama_log_tail-tool).
-- **`ollama_batch_proof_check`** — run `tsc` / `eslint` / `pytest` across a set of paths; single envelope with per-check pass/fail. New execution surface; see [SECURITY.md](./SECURITY.md).
-- **`ollama_code_map`** — structural map of a code tree (exports, call-graph sketches, TODOs).
-- **`ollama_code_citation`** — given a symbol, return the defining file + line + surrounding context.
-- **`ollama_corpus_amend`** — additive in-place edits to an existing corpus; later answers surface `has_amended_content: true`.
-- **`ollama_artifact_prune`** — age-based deletion with dry-run default. [handbook/artifacts](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/artifacts/#artifact_prune).
-- **Enhancements** — `summarize_deep` now accepts `source_path`; `corpus_answer` surfaces amended-content state; new observability events documented end-to-end.
-- **New handbook pages** — [Observability](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/observability/) (NDJSON log + jq recipes) and [Comparison](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/comparison/) (honest matrix vs alternatives).
+- **Frame-bound extraction** on `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` — optional `frame: string` input + structured `frame_alignment` / `on_topic` / `frame_addressed` outputs. Off-topic sources are flagged instead of paraphrased into the schema.
+- **Structured abstention** on `ollama_research` — `weak` / `abstained` / `sources_address_question` fields. Empty `citations[]` with non-empty `answer` is no longer silent success.
+- **Topicality threshold** on `ollama_corpus_answer` — optional `min_top_score`. Below the floor, the tool short-circuits with `abstained: true` and skips synthesis. Per-citation `score` now visible on each citation.
+- **Retrieval score preservation** through brief evidence — `corpusHitsToEvidence` carries `score` (and `corpus_min_evidence_score` knob filters at assembly time on `incident_brief` / `repo_brief` / `change_brief`).
+- **Citation line-range bounds** — `guardrails/citations.ts` rejects out-of-bounds ranges on `ollama_research`, matching the existing posture on `ollama_code_citation`.
+- **Operator-contract docs corrected** — README `chunk_id`/`chunk_index` fix, "validated server-side" rewritten, Evidence Laws section qualified, marketing slogan annotated.
+
+### Seed regression — the verification
+
+The slice's contract is verified against the literal research-os fresh-pack failure: arxiv 2112.10422 (Cosmological Standard Timers) under the section-01 frame *"What does evidence custody mean in local-first vs cloud LLM deep-research workflows?"* — 9 / 9 mocked-LLM contract tests confirm the off-topic source is now contained (`frame_alignment.on_topic = false` on extract; `off_topic: true` on classify; `frame_addressed: false` on summarize_deep; `abstained: true` on corpus_answer with `min_top_score` set).
+
+### Historical — v2.1.0 deliverables
+
+See [CHANGELOG.md](./CHANGELOG.md) for the full v2.1.0 entry (feature pass: 13 new tools + 4 enhancements + freeze lift).
 
 ---
 
