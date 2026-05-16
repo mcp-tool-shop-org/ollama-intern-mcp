@@ -19,34 +19,13 @@
  * race cleanly rather than crashing every test in the file.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
+import { handleCodeReview, codeReviewSchema } from "../../src/tools/codeReview.js";
 
-// Lazy-binding so a missing src/tools/codeReview.ts surfaces as a
-// describe-level skip with a clear reason, not a crash on import.
-let handleCodeReview: ((args: unknown, ctx: unknown) => Promise<unknown>) | null = null;
-let codeReviewSchema: { parse: (x: unknown) => unknown } | null = null;
-let importError: string | null = null;
-
-beforeAll(async () => {
-  try {
-    const mod = await import("../../src/tools/codeReview.js");
-    handleCodeReview = (mod as { handleCodeReview?: typeof handleCodeReview }).handleCodeReview ?? null;
-    codeReviewSchema = (mod as { codeReviewSchema?: typeof codeReviewSchema }).codeReviewSchema ?? null;
-  } catch (err) {
-    importError = err instanceof Error ? err.message : String(err);
-  }
-});
-
-// Race-aware describe block — when the source module isn't present
-// yet, we register the suite as `describe.skip` so the test runner
-// reports a clear "skipped: cross-domain dependency not landed yet."
-const describeIfImported = () => {
-  if (importError || !handleCodeReview) {
-    return describe.skip;
-  }
-  return describe;
-};
+// Source is landed (Phase 7 Wave 7) + registered in src/index.ts (Phase 8
+// coordinator fix). Suite runs unconditionally.
+const describeIfImported = () => describe;
 
 // Small unified-diff fixture (3 hunks across 2 files) — large enough to
 // drive multiple findings but small enough to keep the test cheap.
@@ -74,49 +53,45 @@ index abcd..ef01 100644
 // ── Smoke check that the import landed (or skipped cleanly) ────
 
 describe("codeReview — module import", () => {
-  it("either the module is present (handleCodeReview defined) or import failed cleanly", () => {
-    if (importError) {
-      // Document the race for the operator reading the test output.
-      console.warn(
-        `[tests/tools/codeReview.test.ts] src/tools/codeReview.ts not landed yet — cross-domain race. import error: ${importError}`,
-      );
-    }
-    // Either side of the race is acceptable here; the actual happy-
-    // path tests below register as .skip when the module is absent.
-    expect(true).toBe(true);
+  it("module is present (handleCodeReview defined)", () => {
+    expect(typeof handleCodeReview).toBe("function");
+    expect(codeReviewSchema).toBeDefined();
   });
 });
 
 describeIfImported()("handleCodeReview — happy path (small diff)", () => {
   it("returns structured findings from a small diff", async () => {
-    // Model returns 2 findings; default severity_floor admits both.
+    // Model returns 2 findings using the canonical schema enums
+    // (severity: critical|high|medium|low, category: bug|security|performance|style|maintainability).
     const modelOut = JSON.stringify({
       findings: [
         {
           file: "src/foo.ts",
           line: 2,
-          severity: "info",
-          category: "debugging",
-          message: "console.log left in source",
+          severity: "low",
+          category: "style",
+          description: "console.log left in source",
+          recommendation: "remove the debug console.log before merge",
         },
         {
           file: "src/bar.ts",
           line: 11,
           severity: "high",
-          category: "error_handling",
-          message: "fetch result not error-checked",
+          category: "bug",
+          description: "fetch result not error-checked",
+          recommendation: "wrap in try/catch and surface the error to the caller",
         },
       ],
-      weak: false,
+      summary: "two findings: a debug log and a missing error handler",
     });
     const client = createFakeOllama({ defaultGenerateResponse: modelOut });
     const ctx = makeFakeCtx({ client });
     const env = (await handleCodeReview!({ diff_text: SMALL_DIFF }, ctx)) as {
-      result: { findings: unknown[]; weak: boolean };
+      result: { findings: unknown[]; summary?: string; diff_size_bytes?: number };
     };
     expect(Array.isArray(env.result.findings)).toBe(true);
     expect(env.result.findings.length).toBeGreaterThan(0);
-    // Every finding carries a file + line + severity field — that's the
+    // Every finding carries a file + severity field — that's the
     // contract callers can rely on for downstream PR-comment rendering.
     for (const f of env.result.findings as Array<Record<string, unknown>>) {
       expect(typeof f.file).toBe("string");
@@ -127,36 +102,33 @@ describeIfImported()("handleCodeReview — happy path (small diff)", () => {
 });
 
 describeIfImported()("handleCodeReview — abstain path", () => {
-  it("model returns null → empty findings, weak=true (no fabrication)", async () => {
+  it("model returns null → empty findings (no fabrication)", async () => {
     const client = createFakeOllama({ defaultGenerateResponse: "null" });
     const ctx = makeFakeCtx({ client });
     const env = (await handleCodeReview!({ diff_text: SMALL_DIFF }, ctx)) as {
-      result: { findings: unknown[]; weak: boolean };
+      result: { findings: unknown[] };
     };
     expect(env.result.findings).toEqual([]);
-    expect(env.result.weak).toBe(true);
   });
 
-  it('model returns {"findings": []} → empty findings, weak=true', async () => {
+  it('model returns {"findings": []} → empty findings', async () => {
     const client = createFakeOllama({
       defaultGenerateResponse: JSON.stringify({ findings: [] }),
     });
     const ctx = makeFakeCtx({ client });
     const env = (await handleCodeReview!({ diff_text: SMALL_DIFF }, ctx)) as {
-      result: { findings: unknown[]; weak: boolean };
+      result: { findings: unknown[] };
     };
     expect(env.result.findings).toEqual([]);
-    expect(env.result.weak).toBe(true);
   });
 
-  it("model returns invalid JSON → empty findings, weak=true (parser-tolerant)", async () => {
+  it("model returns invalid JSON → empty findings (parser-tolerant)", async () => {
     const client = createFakeOllama({ defaultGenerateResponse: "not json" });
     const ctx = makeFakeCtx({ client });
     const env = (await handleCodeReview!({ diff_text: SMALL_DIFF }, ctx)) as {
-      result: { findings: unknown[]; weak: boolean };
+      result: { findings: unknown[] };
     };
     expect(env.result.findings).toEqual([]);
-    expect(env.result.weak).toBe(true);
   });
 });
 
@@ -164,11 +136,10 @@ describeIfImported()("handleCodeReview — severity_floor filtering", () => {
   it("filters out findings below the severity floor", async () => {
     const modelOut = JSON.stringify({
       findings: [
-        { file: "src/foo.ts", line: 2, severity: "info", category: "x", message: "low" },
-        { file: "src/foo.ts", line: 3, severity: "medium", category: "x", message: "med" },
-        { file: "src/foo.ts", line: 4, severity: "high", category: "x", message: "high" },
+        { file: "src/foo.ts", line: 2, severity: "low", category: "style", description: "low item", recommendation: "fix low" },
+        { file: "src/foo.ts", line: 3, severity: "medium", category: "style", description: "med item", recommendation: "fix med" },
+        { file: "src/foo.ts", line: 4, severity: "high", category: "bug", description: "high item", recommendation: "fix high" },
       ],
-      weak: false,
     });
     const client = createFakeOllama({ defaultGenerateResponse: modelOut });
     const ctx = makeFakeCtx({ client });
@@ -177,7 +148,7 @@ describeIfImported()("handleCodeReview — severity_floor filtering", () => {
       ctx,
     )) as { result: { findings: Array<{ severity: string }> } };
     const severities = env.result.findings.map((f) => f.severity);
-    expect(severities).not.toContain("info");
+    expect(severities).not.toContain("low");
     expect(severities).toContain("medium");
     expect(severities).toContain("high");
   });
@@ -189,11 +160,12 @@ describeIfImported()("handleCodeReview — max_findings cap", () => {
       file: "src/foo.ts",
       line: i + 1,
       severity: "medium",
-      category: "x",
-      message: `finding ${i}`,
+      category: "bug",
+      description: `finding ${i}`,
+      recommendation: `fix ${i}`,
     }));
     const client = createFakeOllama({
-      defaultGenerateResponse: JSON.stringify({ findings, weak: false }),
+      defaultGenerateResponse: JSON.stringify({ findings }),
     });
     const ctx = makeFakeCtx({ client });
     const env = (await handleCodeReview!(
@@ -206,30 +178,30 @@ describeIfImported()("handleCodeReview — max_findings cap", () => {
 
 describeIfImported()("handleCodeReview — oversized diff rejection", () => {
   it("rejects diffs larger than the documented cap with SCHEMA_INVALID", async () => {
-    // Build a clearly-oversized diff — 200KB of hunk lines. The exact
-    // cap is up to the tool author; we assert "rejection happens before
-    // a wire call" so the model never wastes budget on garbage input.
+    // Build a clearly-oversized diff > 2MB cap (schema rejects at 2MB).
+    // We assert "rejection happens before a wire call" so the model
+    // never wastes budget on garbage input.
     const giantDiff =
       "diff --git a/src/x.ts b/src/x.ts\n--- a/src/x.ts\n+++ b/src/x.ts\n" +
-      "+x\n".repeat(50_000); // 50_000 added lines ~ 200KB
+      "+x\n".repeat(700_000); // ~2.8MB, comfortably above the 2MB cap
     const client = createFakeOllama();
     const ctx = makeFakeCtx({ client });
-    // Either the schema rejects at parse OR the handler throws SCHEMA_INVALID.
-    // Both shapes are acceptable; what we forbid is "silent acceptance →
-    // wire call with garbage". The fake client's generate must NOT be hit.
+    // MCP layer parses input via codeReviewSchema BEFORE calling the
+    // handler. The schema is the rejection gate; we assert it throws
+    // and that the handler never sees the request (and never calls
+    // the model). Direct handler calls in tests must mirror this
+    // parse-first path.
     let threw = false;
     try {
-      await handleCodeReview!({ diff_text: giantDiff }, ctx);
+      const parsed = codeReviewSchema!.parse({ diff_text: giantDiff });
+      // If parse somehow accepts, fail the test below by checking the
+      // wire call count after a direct handler invocation.
+      await handleCodeReview!(parsed, ctx);
     } catch {
       threw = true;
     }
-    if (!threw) {
-      // The other acceptable shape: weak=true with empty findings AND no
-      // wire call. Either way, the model must not have been invoked.
-      expect(client.callCount.generate).toBe(0);
-    } else {
-      expect(threw).toBe(true);
-    }
+    expect(threw).toBe(true);
+    expect(client.callCount.generate).toBe(0);
   });
 });
 

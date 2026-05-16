@@ -77,6 +77,7 @@ import { multiFileRefactorProposeSchema, handleMultiFileRefactorPropose } from "
 import { batchProofCheckSchema, handleBatchProofCheck } from "./tools/batchProofCheck.js";
 import { refactorPlanSchema, handleRefactorPlan } from "./tools/refactorPlan.js";
 import { codeCitationSchema, handleCodeCitation } from "./tools/codeCitation.js";
+import { codeReviewSchema, handleCodeReview } from "./tools/codeReview.js";
 import { hypothesisDrillSchema, handleHypothesisDrill } from "./tools/hypothesisDrill.js";
 
 export function createServer(ctx: RunContext): McpServer {
@@ -457,6 +458,14 @@ export function createServer(ctx: RunContext): McpServer {
     "RESEARCH. Answer a code question with PER-CLAIM CITATIONS (file + line range). Distinct from ollama_research: research cites files, code_citation cites LINES. Pass `question` (10-1000 chars), `source_paths[]`, optional `per_file_max_chars` (default 100_000). Server numbers each line 1-based in the prompt so the Deep tier can anchor claims exactly. Returns `{answer, citations:[{claim_fragment, file, start_line, end_line, excerpt}], uncited_fragments[], weak}`. Citations to files outside source_paths are stripped (same rule as ollama_research). Citations with line ranges outside the loaded file bounds are also stripped — each stripping reason lands in warnings[]. Empty answer or answer-without-citations flips weak=true.",
     codeCitationSchema.shape,
     (args, extra) => wrap(() => handleCodeCitation(args, ctx), "ollama_code_citation", extra),
+  );
+
+  // REVIEW — ollama_code_review (Workhorse default — structured PR review findings)
+  server.tool(
+    "ollama_code_review",
+    "REVIEW. Given a unified diff (and optional source_paths for context), returns STRUCTURED FINDINGS: `{findings:[{severity, category, file, line?, symbol?, description, recommendation}], summary, diff_size_bytes}`. Severity enum critical|high|medium|low; category enum bug|security|performance|style|maintainability. Distinct from ollama_multi_file_refactor_propose (proposes refactors) — code_review flags issues to fix on the diff as-is. Optional `severity_floor` filters out below-floor findings; `max_findings` caps result. Diff capped at 2MB; source_paths max 50. Tier defaults to workhorse; pass `tier:'deep'` for high-stakes review. coerceReview drops malformed entries instead of throwing.",
+    codeReviewSchema.shape,
+    (args, extra) => wrap(() => handleCodeReview(args, ctx), "ollama_code_review", extra),
   );
 
   // DRILL — ollama_hypothesis_drill (Deep tier — zoom into one incident hypothesis)

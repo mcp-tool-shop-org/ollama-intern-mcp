@@ -59,12 +59,12 @@ export type Category = (typeof CATEGORIES)[number];
 // ── Schema ──────────────────────────────────────────────────
 
 export const codeReviewSchema = z.object({
-  diff: z
+  diff_text: z
     .string()
     .min(1)
     .max(2 * 1024 * 1024) // 2 MB — smaller than the 50 MB Ollama payload cap
     .describe(
-      "Unified diff text (e.g. `git diff` output). Required. Max 2 MB to keep prompts within sensible context budgets — for larger reviews chunk the diff per logical change.",
+      "Unified diff text (e.g. `git diff` output). Required. Max 2 MB to keep prompts within sensible context budgets — for larger reviews chunk the diff per logical change. Field name matches changePack / changeBrief convention.",
     ),
   source_paths: z
     .array(z.string().min(1))
@@ -242,7 +242,7 @@ function coerceReview(
 // ── Prompt builder ──────────────────────────────────────────
 
 function buildPrompt(args: {
-  diff: string;
+  diff_text: string;
   sourceBody: string;
   severityFloor: Severity;
   maxFindings: number;
@@ -269,7 +269,7 @@ function buildPrompt(args: {
   lines.push(
     `Unified diff:`,
     `\`\`\``,
-    args.diff,
+    args.diff_text,
     `\`\`\``,
     ``,
     `Return JSON matching this shape EXACTLY:`,
@@ -310,7 +310,7 @@ export async function handleCodeReview(
   // caller can spot when their diff was clipped upstream (e.g. CI passed
   // only the first 64KB of a huge change). The Buffer.byteLength call is
   // UTF-8 aware so multi-byte characters don't under-count.
-  const diffSize = Buffer.byteLength(input.diff, "utf8");
+  const diffSize = Buffer.byteLength(input.diff_text, "utf8");
 
   // Optional source-paths context. We load + format here in the handler
   // so the prompt builder stays pure and the loadSources call is
@@ -332,7 +332,7 @@ export async function handleCodeReview(
     build: (_tier, model) => ({
       model,
       prompt: buildPrompt({
-        diff: input.diff,
+        diff_text: input.diff_text,
         sourceBody,
         severityFloor,
         maxFindings,

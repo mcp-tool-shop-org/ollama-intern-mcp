@@ -295,6 +295,7 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
       "ollama_batch_proof_check",
       "ollama_refactor_plan",
       "ollama_code_citation",
+      "ollama_code_review",
       "ollama_hypothesis_drill",
       "ollama_chat",
     ];
