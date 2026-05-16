@@ -362,9 +362,19 @@ describe("indexCorpus + searchCorpus", () => {
     // race the rotation deterministically, but we can narrow the roots
     // and verify assertSafePath runs on the resolved real path.
     //
-    // allowedRoots() always implicitly includes homedir(). On Windows,
-    // tmpdir() is under homedir(), so we can't use a tmpdir-based fixture
-    // to exercise "outside". Skip on that platform.
+    // allowedRoots() always implicitly includes homedir(). Windows is
+    // skipped unconditionally — the local-dev case (tmpdir under homedir)
+    // and the GH Actions case (tmpdir on D:\a\_temp while homedir is on
+    // C:\Users\runneradmin) both prevent a clean "outside" assertion: in
+    // local-dev the file IS under an allowed root; in GH Actions the
+    // narrowed sibling root + homedir leave gaps the test setup can't
+    // bridge without inventing a path nobody owns. assertSafePath itself
+    // has direct unit tests; this test exists to verify the indexer's
+    // realpath→assertSafePath wiring on POSIX where the topology is
+    // controllable.
+    if (process.platform === "win32") {
+      return;
+    }
     const home = (await import("node:os")).homedir();
     if (tmpdir().startsWith(home)) {
       return; // tmpdir is inside homedir — can't simulate "outside" here.

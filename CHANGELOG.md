@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.1] — 2026-05-16
+
+Patch — closes three cross-platform CI matrix failures the v2.5.0 multi-OS strategy surfaced on first invocation. No API or behavior changes. The release-spine doing exactly what it was built to do: catching real platform-sensitive code that had been sitting in the repo behind the Linux-only gate.
+
+### Fixed
+
+- **`tests/errorHintQuality.test.ts` Node 20 compatibility.** Test used `fs.globSync` which is a Node 22+ API; Node 20 doesn't have it (`TypeError: globSync is not a function`). Replaced with a small hand-rolled `walkTsFilesSync` (recursive `readdirSync` with `withFileTypes`). Skips `.dot` dirs + `node_modules`. No new dep. `engines.node: ">=20.0.0"` honored.
+- **`src/corpus/manifest.ts` macOS realpath consistency.** `allowedRoots()` returned entries as-is, while the indexer calls `realpath(path)` before checking them. On macOS, `realpath('/var/folders/...')` resolves to `/private/var/folders/...` (the canonical symlink target). An allowed root configured as `/var/folders/...` was therefore rejected as outside-roots even though it pointed at the same directory. `allowedRoots()` now calls `realpathSync` on each entry (fall through to `normalize` if the path doesn't exist yet). Tests on macOS that set `INTERN_CORPUS_ALLOWED_ROOTS = tmpdir()` now produce paths consistent with `realpath(file)` from inside the indexer.
+- **`tests/corpus/indexerSearcher.test.ts` Windows skip widened.** The TOCTOU-style "outside allowed roots" test had a dynamic skip (`if (tmpdir().startsWith(homedir())) return`) intended to catch the local-dev case where Windows tmpdir is under the user profile. On GitHub Actions Windows runners, tmpdir is on `D:\a\_temp` and homedir is on `C:\Users\runneradmin` (different drive), so the dynamic skip didn't fire but the test setup couldn't produce a reliable "outside" path either. Skip is now `process.platform === 'win32'` unconditionally; `assertSafePath` has its own direct unit tests covering the rejection path, this integration test exists to verify the indexer's `realpath → assertSafePath` wiring on POSIX where the topology is controllable.
+
+### Notes
+
+- Tests, typecheck, build, coverage thresholds unchanged. Local Windows run: 958/959 passing, 1 todo. Coverage holds at 86.52% statements / 88.94% lines.
+- v2.5.0 npm package + GitHub release are unaffected — the publish workflow gated on `ubuntu × 22` which passed; this patch only restores green CI across the multi-OS verify matrix that v2.5.0 introduced.
+
 ## [2.5.0] — 2026-05-15
 
 Health hardening, proactive defenses, humanization of error/observability surfaces, and 10 user-facing feature additions from a 10-phase dogfood swarm. The 41-tool surface gains `ollama_code_review` (42 total). Correlation IDs now propagate across every NDJSON event so an operator can join `pack_step` to its originating `tools/call` envelope. A breaking behavior change in the confidence guardrail default (now fail-closed) is the reason for the minor bump's prominence — see **Changed** below.

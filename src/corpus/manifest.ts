@@ -12,7 +12,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, isAbsolute, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +65,20 @@ function allowedRoots(): string[] {
       if (r.trim()) roots.push(r.trim());
     }
   }
-  return roots.map((r) => normalize(r));
+  // Realpath each root so platforms that symlink common dirs (notably macOS
+  // resolving /var → /private/var, /tmp → /private/tmp) compare consistently
+  // against realpath(filePath) in assertSafePath. Without this, an allowed
+  // root of /var/folders/... is rejected when the file's realpath comes back
+  // as /private/var/folders/.... Fall back to normalize() if the root doesn't
+  // exist yet (env-var pointing at a path that hasn't been mkdir'd).
+  return roots.map((r) => {
+    const n = normalize(r);
+    try {
+      return realpathSync(n);
+    } catch {
+      return n;
+    }
+  });
 }
 
 export function assertSafePath(p: string): void {

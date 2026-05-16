@@ -8,9 +8,31 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { globSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve, relative, join } from "node:path";
+
+/**
+ * Node-20-compatible recursive .ts walker. `fs.globSync` is Node-22+; we run
+ * CI on the Node-20 LTS too, so we hand-roll the small piece we need.
+ */
+function walkTsFilesSync(root: string): string[] {
+  const out: string[] = [];
+  const stack: string[] = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const ent of entries) {
+      if (ent.name.startsWith(".") || ent.name === "node_modules") continue;
+      const full = join(dir, ent.name);
+      if (ent.isDirectory()) {
+        stack.push(full);
+      } else if (ent.isFile() && ent.name.endsWith(".ts")) {
+        out.push(relative(root, full));
+      }
+    }
+  }
+  return out;
+}
 
 const ACTIONABLE_PATTERNS: RegExp[] = [
   /OLLAMA_HOST/,
@@ -34,7 +56,7 @@ const ACTIONABLE_PATTERNS: RegExp[] = [
  */
 function extractInternErrorHints(): Array<{ file: string; code: string; hint: string }> {
   const srcDir = resolve(process.cwd(), "src");
-  const files = globSync("**/*.ts", { cwd: srcDir });
+  const files = walkTsFilesSync(srcDir);
   const hits: Array<{ file: string; code: string; hint: string }> = [];
   for (const rel of files) {
     const abs = resolve(srcDir, rel);
