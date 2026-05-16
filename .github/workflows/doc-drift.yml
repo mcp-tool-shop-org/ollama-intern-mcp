@@ -111,6 +111,15 @@ jobs:
           rm -f package-lock.json
           npm install --no-audit --no-fund
 
+      # Several tests (cli.test.ts, mcpGolden.test.ts, mcp.integration.test.ts,
+      # pack.test.ts) spawn or inspect dist/index.js + the packed tarball, so a
+      # fresh build is a prerequisite for the count to match what the user gets
+      # post-publish. Without this step the count was parseable but artificially
+      # low because half the suite errored at beforeAll on missing dist/.
+      - name: Build
+        shell: bash
+        run: npm run build
+
       - name: Run tests and capture pass count
         id: tests
         shell: bash
