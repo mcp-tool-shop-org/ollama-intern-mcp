@@ -1,6 +1,6 @@
 # Ollama Intern MCP — Handoff
 
-**Status:** v<!-- VERSION:start -->2.5.2<!-- VERSION:end --> published · <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> tools (atoms + briefs + packs + artifact tier) · <!-- TEST_COUNT:start -->958<!-- TEST_COUNT:end --> tests · CI green
+**Status:** v<!-- VERSION:start -->2.5.3<!-- VERSION:end --> published · <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> tools (atoms + briefs + packs + artifact tier) · <!-- TEST_COUNT:start -->958<!-- TEST_COUNT:end --> tests · CI green
 **Repo:** https://github.com/mcp-tool-shop-org/ollama-intern-mcp
 **npm:** https://www.npmjs.com/package/ollama-intern-mcp
 **Hardware:** M5 Max 128GB unified (active 2026-04-24+); RTX 5080 16GB box still works for `dev-rtx5080` profile
