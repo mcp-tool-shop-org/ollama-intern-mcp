@@ -202,3 +202,32 @@ export function readArray(obj: Record<string, unknown>, key: string): unknown[] 
   const v = obj[key];
   return Array.isArray(v) ? v : [];
 }
+
+/**
+ * Pick an array field that callers iterate as objects, dropping non-object
+ * entries (null / numbers / strings / nested arrays).
+ *
+ * Most brief / refactor parsers iterate `for (const entry of readArray(...))`
+ * and immediately cast `entry as { field?: unknown }` then access fields.
+ * Models occasionally return arrays with `null` or stray strings sprinkled
+ * in; `null.field` throws TypeError uncaught and crashes the whole tool
+ * call. This helper keeps loops crash-safe by filtering down to the only
+ * shape the call sites actually handle. Callers that legitimately want
+ * mixed-type arrays (e.g. `uncited_fragments: ["a", "b"]`) keep using
+ * `readArray` and do their own per-entry type check.
+ */
+export function readObjectArray(
+  obj: Record<string, unknown>,
+  key: string,
+): Record<string, unknown>[] {
+  const v = obj[key];
+  if (!Array.isArray(v)) return [];
+  const out: Record<string, unknown>[] = [];
+  for (const entry of v) {
+    if (entry === null || entry === undefined) continue;
+    if (typeof entry !== "object") continue;
+    if (Array.isArray(entry)) continue;
+    out.push(entry as Record<string, unknown>);
+  }
+  return out;
+}

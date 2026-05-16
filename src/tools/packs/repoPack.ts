@@ -128,6 +128,70 @@ export interface OnboardingFacts {
   runtime_hints?: string[];
 }
 
+/**
+ * Sanitize untrusted extract output into the OnboardingFacts shape.
+ *
+ * extract.handleExtract returns ExtractResult.data as `unknown` — the model
+ * may have produced "string-instead-of-array" / mixed-type entries / null
+ * inside arrays. A bare cast `as OnboardingFacts` would compile but throw
+ * at render time when `.map()` hits a non-array or `.file` on null.
+ *
+ * Rules:
+ *   - Returns a fully-shaped object with safe defaults (empty arrays).
+ *   - Drops non-string entries from string arrays.
+ *   - Drops non-object entries from object arrays.
+ *   - Coerces a single string-where-array-was-expected into a 1-element array.
+ *   - Never throws on malformed input — only sanitizes.
+ */
+export function coerceOnboardingFacts(data: unknown): OnboardingFacts {
+  const obj = data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : {};
+
+  const stringArray = (v: unknown): string[] => {
+    if (typeof v === "string") return v.length > 0 ? [v] : [];
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === "string");
+  };
+
+  const entrypointArray = (v: unknown): Array<{ file?: string; purpose?: string }> => {
+    if (!Array.isArray(v)) return [];
+    const out: Array<{ file?: string; purpose?: string }> = [];
+    for (const entry of v) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const e = entry as Record<string, unknown>;
+      const item: { file?: string; purpose?: string } = {};
+      if (typeof e.file === "string") item.file = e.file;
+      if (typeof e.purpose === "string") item.purpose = e.purpose;
+      out.push(item);
+    }
+    return out;
+  };
+
+  const scriptArray = (v: unknown): Array<{ name?: string; command?: string }> => {
+    if (!Array.isArray(v)) return [];
+    const out: Array<{ name?: string; command?: string }> = [];
+    for (const entry of v) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const e = entry as Record<string, unknown>;
+      const item: { name?: string; command?: string } = {};
+      if (typeof e.name === "string") item.name = e.name;
+      if (typeof e.command === "string") item.command = e.command;
+      out.push(item);
+    }
+    return out;
+  };
+
+  return {
+    package_names: stringArray(obj.package_names),
+    entrypoints: entrypointArray(obj.entrypoints),
+    scripts: scriptArray(obj.scripts),
+    config_files: stringArray(obj.config_files),
+    exposed_surfaces: stringArray(obj.exposed_surfaces),
+    runtime_hints: stringArray(obj.runtime_hints),
+  };
+}
+
 // ── Result shape ────────────────────────────────────────────
 
 export interface StepEntry {
@@ -438,7 +502,9 @@ export async function handleRepoPack(
     // Single-mode narrow: result is ExtractResult, not BatchResult.
     const extractResult = extractEnv.result as ExtractResult;
     if (extractResult.ok) {
-      facts = extractResult.data as OnboardingFacts;
+      // Sanitize untrusted model output before render — string-instead-of-
+      // array, null entries, mixed types would otherwise crash renderFactsBlock.
+      facts = coerceOnboardingFacts(extractResult.data);
     } else {
       extractWarning = "Extract output was unparseable; onboarding facts omitted.";
     }

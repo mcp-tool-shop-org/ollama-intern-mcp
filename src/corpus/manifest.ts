@@ -11,13 +11,14 @@
  * manifest as a side effect; ollama_corpus_refresh reads it.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, dirname, isAbsolute, normalize, sep } from "node:path";
+import { join, isAbsolute, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
 import { assertValidCorpusName } from "./storage.js";
+import { atomicWriteFile } from "./atomicWrite.js";
 
 export const MANIFEST_SCHEMA_VERSION = 2;
 
@@ -226,6 +227,10 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
 export async function saveManifest(manifest: CorpusManifest): Promise<void> {
   assertValidCorpusName(manifest.name);
   const path = manifestPath(manifest.name);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(manifest, null, 2), "utf8");
+  // Atomic write: tmp+fsync+rename — mirrors saveCorpus in storage.ts so
+  // the corpus JSON and manifest JSON paired under withCorpusLock are
+  // each individually durable. A torn manifest write would leave a
+  // truncated JSON that loadManifest's silent catch swallows, breaking
+  // the lock's "one logical state" guarantee.
+  await atomicWriteFile(path, JSON.stringify(manifest, null, 2));
 }

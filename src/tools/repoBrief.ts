@@ -25,7 +25,7 @@ import {
   normalizeRefs,
   parseJsonObject,
   readString,
-  readArray,
+  readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
 import { normalizeCorpusQuery } from "./_helpers.js";
@@ -216,8 +216,7 @@ export async function synthesizeRepoBrief(
       const architecture_shape = readString(o, "architecture_shape");
 
       const key_surfaces: KeySurface[] = [];
-      for (const entry of readArray(o, "key_surfaces")) {
-        const s = entry as { surface?: unknown; why?: unknown; evidence_refs?: unknown };
+      for (const s of readObjectArray(o, "key_surfaces")) {
         if (typeof s.surface !== "string") continue;
         const refs = normalizeRefs(s.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -230,8 +229,7 @@ export async function synthesizeRepoBrief(
       }
 
       const risk_areas: RiskArea[] = [];
-      for (const entry of readArray(o, "risk_areas")) {
-        const r = entry as { risk?: unknown; evidence_refs?: unknown };
+      for (const r of readObjectArray(o, "risk_areas")) {
         if (typeof r.risk !== "string") continue;
         const refs = normalizeRefs(r.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -240,8 +238,7 @@ export async function synthesizeRepoBrief(
       }
 
       const read_next: ReadNextItem[] = [];
-      for (const entry of readArray(o, "read_next")) {
-        const r = entry as { file?: unknown; why?: unknown };
+      for (const r of readObjectArray(o, "read_next")) {
         if (typeof r.file !== "string") continue;
         read_next.push({
           file: r.file,

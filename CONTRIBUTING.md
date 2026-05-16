@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. This repo is small and opinionated — the 28-tool surface is frozen, so most contributions are bug fixes, docs, or internals work.
+Thanks for looking. This repo is small and opinionated — the atom freeze was lifted at v2.1.0 (28 atoms today; up from the original 15), and pack and artifact tiers remain frozen at 3 and 7. Most contributions are bug fixes, docs, internals work, or new hardware profiles.
 
 ## Reporting bugs
 
@@ -15,7 +15,7 @@ Thanks for looking. This repo is small and opinionated — the 28-tool surface i
 4. Run `npm run verify` locally (see below). It must pass.
 5. Open a PR against `main`. CI must be green before review.
 
-The 28-tool surface is frozen. PRs that add new tools or reshape existing tool schemas will be closed. Internals, bug fixes, docs, new hardware profiles, and new tier envelopes inside existing tools are all welcome.
+**Tool surface policy.** The atom freeze was lifted at v2.1.0; new atom tools require an audit-justified gap, tests, a handbook page, and a CHANGELOG entry — please open an issue first to scope the gap. Pack and artifact tiers remain frozen at 3 and 7 respectively; PRs that add new pack types or new artifact tools will be closed. Internals, bug fixes, docs, new hardware profiles, and new tier envelopes inside existing tools are all welcome.
 
 ## Development setup
 

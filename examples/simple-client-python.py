@@ -74,12 +74,27 @@ async def main() -> None:
         print(f"  - {t['name']}")
 
     # 3. Call a deterministic tool.
+    # ollama_log_tail args: { limit, filter_kind?, filter_tool?, since? }
+    # (default limit = 50, max 1000)
     result = await rpc("tools/call", {
         "name": "ollama_log_tail",
-        "arguments": {"lines": 5},
+        "arguments": {"limit": 5},
     })
     print("\nollama_log_tail →")
     print(json.dumps(result, indent=2))
+
+    # 4. Same tool, narrowed to one event kind + one tool — parity with v2.1.0
+    #    filter fields. Useful for slicing the NDJSON log without shelling out.
+    filtered = await rpc("tools/call", {
+        "name": "ollama_log_tail",
+        "arguments": {
+            "limit": 20,
+            "filter_kind": "call",
+            "filter_tool": "ollama_incident_pack",
+        },
+    })
+    print("\nollama_log_tail (filtered) →")
+    print(json.dumps(filtered, indent=2))
 
     proc.terminate()
     await proc.wait()

@@ -200,10 +200,10 @@ New in v2.1.0. Tail the log without shelling out to `tail` or `cat`. Claude and 
 {
   "tool": "ollama_log_tail",
   "arguments": {
-    "lines": 100,              // last N lines (default 50, max 1000)
-    "kind": "call",            // optional — filter by event kind
-    "tool": "ollama_incident_pack", // optional — filter by tool name
-    "since": "2026-04-21T00:00:00Z" // optional — ISO-8601 lower bound
+    "limit": 100,                       // last N lines (default 50, max 1000)
+    "filter_kind": "call",              // optional — filter by event kind
+    "filter_tool": "ollama_incident_pack", // optional — filter by tool name
+    "since": "2026-04-21T00:00:00Z"     // optional — ISO-8601 lower bound
   }
 }
 ```

@@ -1,13 +1,15 @@
 ---
 title: Tool Reference
-description: All 28 tools grouped by tier.
+description: All 41 tools grouped by tier.
 sidebar:
   order: 2
 ---
 
-Tools are grouped into four tiers. The count freezes here — no new atoms, no new pack types, no new artifact tools.
+Tools are grouped into four tiers. **At-a-glance:** 28 atoms (15 original + 13 added in v2.1.0) + 3 briefs + 3 packs + 7 artifact tools = **41 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
 
-## Atoms (15)
+## Atoms (28 total)
+
+### Original atoms (15)
 
 Job-shaped primitives. Pick the tool that names the job; the tier follows.
 
@@ -172,9 +174,9 @@ If you're dispatching 3+ parallel batches and seeing retries, that's the semapho
 
 Duplicate ids inside one batch refuse at schema validation (`SCHEMA_INVALID`), before any model work. Pick stable, unique ids per call — there is no implicit de-duplication.
 
-## New in v2.1.0
+### v2.1.0 atoms (13)
 
-Tier freeze stays at 4 — everything here extends existing tiers, no new tier class.
+Tier freeze stays at 4 — everything here extends existing tiers, no new tier class. Combined with the 15 originals above, the atom tier total is **28**.
 
 ### Ops tools
 
@@ -223,7 +225,7 @@ Say you want to rename `foo` to `bar` across five files. The v2.1.0 flow:
 5. `ollama_batch_proof_check({checks: ["typescript", "eslint"], files})` — verify nothing broke.
 6. If something surprises you: `ollama_code_citation({question: "where is bar now called?", source_paths})` to audit.
 
-None of the 12 new tools write to disk; all writes are yours to authorize.
+None of the 13 new v2.1.0 atom tools write to disk; all writes are yours to authorize.
 
 ## Envelope
 

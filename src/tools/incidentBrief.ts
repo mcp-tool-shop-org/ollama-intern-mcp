@@ -27,7 +27,7 @@ import {
   normalizeRefs,
   normalizeConfidence,
   parseJsonObject,
-  readArray,
+  readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
 import { normalizeCorpusQuery } from "./_helpers.js";
@@ -265,8 +265,7 @@ export async function synthesizeIncidentBrief(
       let stripped = 0;
 
       const hypotheses: Hypothesis[] = [];
-      for (const entry of readArray(o, "root_cause_hypotheses")) {
-        const h = entry as { hypothesis?: unknown; confidence?: unknown; evidence_refs?: unknown };
+      for (const h of readObjectArray(o, "root_cause_hypotheses")) {
         if (typeof h.hypothesis !== "string") continue;
         const refs = normalizeRefs(h.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -279,8 +278,7 @@ export async function synthesizeIncidentBrief(
       }
 
       const surfaces: AffectedSurface[] = [];
-      for (const entry of readArray(o, "affected_surfaces")) {
-        const s = entry as { surface?: unknown; evidence_refs?: unknown };
+      for (const s of readObjectArray(o, "affected_surfaces")) {
         if (typeof s.surface !== "string") continue;
         const refs = normalizeRefs(s.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -288,8 +286,7 @@ export async function synthesizeIncidentBrief(
       }
 
       const clues: TimelineClue[] = [];
-      for (const entry of readArray(o, "timeline_clues")) {
-        const c = entry as { clue?: unknown; evidence_refs?: unknown };
+      for (const c of readObjectArray(o, "timeline_clues")) {
         if (typeof c.clue !== "string") continue;
         const refs = normalizeRefs(c.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -297,8 +294,7 @@ export async function synthesizeIncidentBrief(
       }
 
       const checks: NextCheck[] = [];
-      for (const entry of readArray(o, "next_checks")) {
-        const n = entry as { check?: unknown; why?: unknown };
+      for (const n of readObjectArray(o, "next_checks")) {
         if (typeof n.check !== "string") continue;
         checks.push({
           check: n.check,

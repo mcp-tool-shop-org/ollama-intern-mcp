@@ -237,15 +237,15 @@ If `frame` is omitted, behavior is unchanged from v2.1.0. When supplied, `frame_
 
 | Tier | Count | What lives here |
 |---|---|---|
-| **Atoms** | 15 | Job-shaped primitives. `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{id, text}]`. |
+| **Atoms** | 28 | Job-shaped primitives. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 added in v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (ops); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactor); `artifact_prune`, `hypothesis_drill` (artifact/brief); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{id, text}]`. |
 | **Briefs** | 3 | Evidence-backed structured operator briefs. `incident_brief`, `repo_brief`, `change_brief`. Every claim cites an evidence id; unknowns stripped server-side. Weak evidence surfaces `weak: true` rather than fake narrative. |
 | **Packs** | 3 | Fixed-pipeline compound jobs that write durable markdown + JSON to `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Deterministic renderers — no model calls on the artifact shape. |
 | **Artifacts** | 7 | Continuity surface over pack outputs. `artifact_list` / `read` / `diff` / `export_to_path`, plus three deterministic snippets: `incident_note`, `onboarding_section`, `release_note`. |
 
-Total: **18 primitives + 3 packs + 7 artifact tools = 28**.
+Total: **28 atoms + 3 briefs + 3 packs + 7 artifact tools = 41**.
 
 Freeze lines:
-- Atoms frozen at 18 (atoms + briefs). No new atom tools.
+- Atoms: freeze **lifted at v2.1.0** (28 today; +13 added in the v2.1.0 feature pass). New atoms still require an audit-justified gap, tests, handbook page, and CHANGELOG entry — no casual additions.
 - Packs frozen at 3. No new pack types.
 - Artifact tier frozen at 7.
 
@@ -460,7 +460,7 @@ Built to the [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) bar. Ha
 - **Phase 4 — Adoption Spine** ✓ v2.0.1: three-stage health pass hardened corpus (TOCTOU, 50 MB file cap, symlink rejection, atomic writes, per-file failure capture), tool path traversal, observability (semaphore wait events, timeout error context, profile env-override logging, prewarm cold-start signal), test safety (module-load env snapshot across 10 files, `tools/call` E2E). Troubleshooting handbook + hardware minimums added for operators.
 - **Phase 5 — M5 Max benchmarks** — publishable numbers once the hardware lands (~2026-04-24)
 
-Phase by hardening layer. The atom/pack/artifact surface stays frozen.
+Phase by hardening layer. Pack and artifact tiers stay frozen at 3 and 7. The atom freeze was lifted at v2.1.0 — new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
 
 ---
 

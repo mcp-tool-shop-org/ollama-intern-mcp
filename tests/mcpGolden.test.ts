@@ -182,7 +182,7 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
     expect(result?.capabilities?.tools).toBeDefined();
   }, 30_000);
 
-  it("tools/list returns all 28 registered tools with flagship tools first", async () => {
+  it("tools/list returns at least the 28 canonical tools with flagships first and no duplicate names", async () => {
     const resp = await roundTrip([
       {
         jsonrpc: "2.0",
@@ -203,8 +203,9 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
     expect(tools).toBeDefined();
 
     const names = tools!.map((t) => t.name);
-    // All 23 expected tools present. Atom surface frozen at 18, packs at 3.
-    // Artifact tier (artifact_list, artifact_read) sits alongside packs.
+    // All 28 canonical tools present (atom surface + packs + artifact
+    // tier). Feature-pass tools land continuously above this floor; the
+    // canonical 28 below is the contract — the list MUST contain them.
     expect(names).toEqual(
       expect.arrayContaining([
         "ollama_research",
@@ -237,11 +238,16 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    // Tool surface is frozen at 28 canonical tools; new utility tools
-    // (doctor, log_tail, etc.) may land concurrently and expand this.
-    // The 28 above are the contract — the list MUST contain them. We allow
-    // growth but never shrinkage.
+    // Tool surface contract: at LEAST the 28 canonical tools above must
+    // be present (any growth is fine — feature-pass tools land
+    // continuously and currently bring the live total to ~41). The
+    // previous `>= 28` alone admitted duplicate registrations silently
+    // (the same name twice still satisfied arrayContaining + length>=28);
+    // add a Set-size == length check to catch dup registrations
+    // explicitly. Names are unique per MCP spec, so any drift here is
+    // either a typo in src/index.ts or a router bug.
     expect(names.length).toBeGreaterThanOrEqual(28);
+    expect(new Set(names).size).toBe(names.length);
 
     // Flagship surface discipline: retrieval/answer flagships first,
     // then briefs, then packs, then artifact tier, then ad-hoc ranker.

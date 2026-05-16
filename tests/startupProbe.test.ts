@@ -67,14 +67,35 @@ describe("startup probe", () => {
     const elapsed = Date.now() - start;
     expect(res.ok).toBe(false);
     expect(res.reason).toMatch(/timeout/);
-    // Should complete near the timeout, not hang.
-    expect(elapsed).toBeLessThan(500);
+    // Should complete bounded, not hang. Ceiling widened from 500 to 2000ms:
+    // a busy Windows runner can spike 600-800ms even on a 50ms probe due
+    // to GC/scheduler jitter, and the load-bearing regression this guards
+    // is "probe hung indefinitely" (15s+) — not "probe took 600ms instead
+    // of 50ms". The 2000 ceiling still catches the real hang.
+    expect(elapsed).toBeLessThan(2000);
   });
 
-  it("INTERN_SKIP_STARTUP_PROBE=1 sentinel value is the documented disable", () => {
-    // This test pins the exact string index.ts checks. If someone "cleans up"
-    // to accept truthy values broadly, CI would hang on the real probe.
-    const sentinel = "1";
-    expect(sentinel).toBe("1");
+  // INTERN_SKIP_STARTUP_PROBE — the load-bearing string check.
+  //
+  // The previous test here was `const sentinel = "1"; expect(sentinel).toBe("1")`,
+  // a pure tautology that imported nothing from src/index.ts and provided
+  // zero coverage of the actual env-var path at src/index.ts:477. If
+  // someone "cleaned up" that string check to accept truthy values
+  // broadly (e.g. `if (process.env.INTERN_SKIP_STARTUP_PROBE)`), CI
+  // would silently start hanging on the real probe against unreachable
+  // localhost Ollama in environments that set the var to "0" / "false".
+  //
+  // Replace with grep against the source to lock the exact comparison
+  // shape — fast, deterministic, and catches the regression without
+  // spawning a subprocess.
+  it("INTERN_SKIP_STARTUP_PROBE=1 is the documented disable string in src/index.ts", async () => {
+    const fs = await import("node:fs/promises");
+    const url = new URL("../src/index.ts", import.meta.url);
+    const src = await fs.readFile(url, "utf8");
+    // Two assertions: (1) the env var is referenced, (2) the check
+    // compares strictly against the literal "1" — not a truthy check
+    // and not against any other sentinel.
+    expect(src).toContain("INTERN_SKIP_STARTUP_PROBE");
+    expect(src).toMatch(/process\.env\.INTERN_SKIP_STARTUP_PROBE\s*!==?\s*["']1["']/);
   });
 });

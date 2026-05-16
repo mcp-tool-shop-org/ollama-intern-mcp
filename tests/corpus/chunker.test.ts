@@ -187,4 +187,42 @@ describe("chunkDocument — heading-aware", () => {
       expect(chunks[i].index).toBe(chunks[i - 1].index + 1);
     }
   });
+
+  // Regression: CRLF-typed input must preserve the invariant
+  //   text.slice(c.char_start, c.char_end) === c.text
+  // (modulo trim) so callers can re-slice the source. The line walker
+  // strips trailing \r off the in-memory `line` for matching purposes,
+  // but the char_start / char_end offsets it records must address the
+  // ORIGINAL bytes — otherwise heading detection on Windows files
+  // (anything checked into git with autocrlf, anything written from
+  // Notepad / VSCode default-on-Windows) silently shifts every chunk's
+  // span by one byte per line, corrupting downstream highlighting and
+  // citation ranges.
+  it("CRLF input — chunk char_start/char_end address original bytes (no \\r drift)", () => {
+    const text = "a\r\nb\r\nc\r\n";
+    const { chunks } = chunkDocument(text);
+    expect(chunks.length).toBeGreaterThan(0);
+    for (const c of chunks) {
+      const fromSrc = text.slice(c.char_start, c.char_end);
+      // The chunk's stored text is whitespace-trimmed via pushSegment,
+      // and the splitter uses \r\n boundaries internally. The slice
+      // back into source must contain every NON-whitespace character
+      // of the chunk text in order — that's the invariant. If offsets
+      // drift by N, the slice no longer contains the full chunk text.
+      const compact = (s: string) => s.replace(/\s+/g, "");
+      expect(compact(fromSrc)).toContain(compact(c.text));
+    }
+  });
+
+  it("CRLF input — heading-aware chunker still detects headings + builds heading_path", () => {
+    const text = "# Top\r\nbody one\r\n\r\n## Sub\r\nbody two\r\n";
+    const { title, chunks } = chunkDocument(text);
+    expect(title).toBe("Top");
+    const sub = chunks.find((c) => c.text.includes("body two"))!;
+    expect(sub).toBeDefined();
+    expect(sub.heading_path).toEqual(["Top", "Sub"]);
+    // And the offsets address the original CRLF source.
+    const fromSrc = text.slice(sub.char_start, sub.char_end);
+    expect(fromSrc).toContain("body two");
+  });
 });

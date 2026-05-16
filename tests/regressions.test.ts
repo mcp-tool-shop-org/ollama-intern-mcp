@@ -172,8 +172,13 @@ describe("regression: embed_search never leaks raw vectors (commit 4ab1776)", ()
     );
     expect(Object.keys(env.result).sort()).toEqual(["candidates_embedded", "model_version", "ranked"]);
     // Every ranked hit must be tiny — id/score/optional preview only.
+    // Per-key not-toContain (the BOTH-absent invariant). The previous
+    // expect.not.arrayContaining([...]) form is asymmetric — it passes
+    // when *either* key is absent, so a regression that leaks one of
+    // the two slipped through silently.
     for (const hit of env.result.ranked) {
-      expect(Object.keys(hit).sort()).toEqual(expect.not.arrayContaining(["embedding", "vector"]));
+      expect(Object.keys(hit)).not.toContain("embedding");
+      expect(Object.keys(hit)).not.toContain("vector");
     }
   });
 

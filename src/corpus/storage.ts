@@ -8,13 +8,14 @@
  * Claude — search handlers strip them before returning.
  */
 
-import { readFile, writeFile, mkdir, readdir, stat, rename, open, unlink } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
 import { loadManifest } from "./manifest.js";
+import { atomicWriteFile } from "./atomicWrite.js";
 
 export const CORPUS_SCHEMA_VERSION = 2;
 /**
@@ -157,7 +158,6 @@ export async function saveCorpus(corpus: CorpusFile): Promise<void> {
     );
   }
   const path = corpusPath(corpus.name);
-  await mkdir(dirname(path), { recursive: true });
   // Stamp the writer version so older builds can refuse to downgrade.
   const stamped: CorpusFile = { ...corpus, schema_version_written_by: SCHEMA_WRITER_VERSION };
   const payload = JSON.stringify(stamped);
@@ -165,24 +165,12 @@ export async function saveCorpus(corpus: CorpusFile): Promise<void> {
   // Using Buffer.byteLength is accurate for non-ASCII content.
   // eslint-disable-next-line no-console
   console.error(`[corpus:save] name=${corpus.name} chunks=${corpus.chunks.length} bytes=${Buffer.byteLength(payload, "utf8")}`);
-  // Atomic write: write to <path>.tmp, fsync, then rename. If Node crashes
-  // mid-write the original file is intact — rename on the same filesystem
-  // is atomic on both POSIX and NTFS.
-  const tmpPath = `${path}.tmp`;
-  const fh = await open(tmpPath, "w");
-  try {
-    await fh.writeFile(payload, "utf8");
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  try {
-    await rename(tmpPath, path);
-  } catch (err) {
-    // Best-effort cleanup of the temp file if rename failed.
-    await unlink(tmpPath).catch(() => {});
-    throw err;
-  }
+  // Atomic write: tmp+fsync+rename. If Node crashes mid-write the original
+  // file is intact — rename on the same filesystem is atomic on both POSIX
+  // and NTFS. Shared with saveManifest via atomicWriteFile so the two
+  // halves of "one logical state" (corpus JSON + manifest JSON) get the
+  // same durability treatment.
+  await atomicWriteFile(path, payload);
 }
 
 export interface CorpusSummary {

@@ -12,7 +12,13 @@
  * to rank on (heading_path match, chunk_type filter, title boost).
  *
  * Boundaries are preserved in absolute char offsets against the input
- * text so callers can slice back into the source if needed.
+ * text so callers can slice back into the source if needed. The
+ * (char_start, char_end) range is byte-faithful to the original input —
+ * text.slice(char_start, char_end) returns the exact source bytes
+ * including any CR, original line separators, and surrounding whitespace
+ * that the chunker trimmed when building chunk.text. The chunk.text
+ * itself is the trimmed/normalized content; rely on the slice for
+ * byte-exact recovery.
  */
 
 export type ChunkType = "heading" | "paragraph" | "code" | "list" | "frontmatter";
@@ -182,17 +188,34 @@ export function chunkDocument(
   const getPath = (): string[] =>
     headingStack.filter((h): h is string => h !== null);
 
+  // Buffer state — track only byte offsets so the segment content is
+  // computed as text.slice(bufStart, bufEnd) at flush time. This keeps
+  // bufText byte-identical to the source range (CRLF preserved, original
+  // separators intact), so callers can slice back into the source by
+  // (char_start, char_end) and recover the exact bytes — which is the
+  // contract advertised at the top of this file. The earlier
+  // line-by-line accumulator joined with "\n" and stripped trailing CR,
+  // which silently broke that contract on CRLF input.
   let bufStart = cursor;
   let bufEnd = cursor;
-  let bufText = "";
+  let bufOpen = false;
   let inCode = false;
   let codeStart = 0;
 
   const flushBuf = (): void => {
-    if (bufText.length === 0) return;
+    if (!bufOpen) return;
+    // Clamp end to text.length — guards the EOF case where nextPos was set
+    // to text.length + 1 to terminate the loop on a final line without a
+    // trailing newline.
+    const end = Math.min(bufEnd, text.length);
+    const bufText = text.slice(bufStart, end);
+    if (bufText.length === 0) {
+      bufOpen = false;
+      return;
+    }
     const type: ChunkType = isListMajority(bufText) ? "list" : "paragraph";
-    pushSegment(segments, type, getPath(), bufStart, bufEnd, bufText);
-    bufText = "";
+    pushSegment(segments, type, getPath(), bufStart, end, bufText);
+    bufOpen = false;
   };
 
   // Line walker over text[cursor..].
@@ -200,6 +223,8 @@ export function chunkDocument(
   while (pos <= text.length) {
     const nl = text.indexOf("\n", pos);
     const lineEnd = nl === -1 ? text.length : nl;
+    // Strip trailing CR for predicates only — the byte-accurate buffer is
+    // reconstructed from text at flush time, so no separator data is lost.
     const line = text.slice(pos, lineEnd).replace(/\r$/, "");
     const lineStart = pos;
     const nextPos = nl === -1 ? text.length + 1 : nl + 1;
@@ -239,16 +264,14 @@ export function chunkDocument(
       if (title === null && heading.depth === 1) title = heading.text;
       bufStart = lineStart;
       bufEnd = nextPos;
-      bufText = line;
+      bufOpen = true;
       pos = nextPos;
       continue;
     }
 
-    if (bufText.length === 0) {
+    if (!bufOpen) {
       bufStart = lineStart;
-      bufText = line;
-    } else {
-      bufText += "\n" + line;
+      bufOpen = true;
     }
     bufEnd = nextPos;
     pos = nextPos;

@@ -133,6 +133,13 @@ async function walkPaths(
       for (const ent of entries) {
         if (ent.name.startsWith(".") && SKIP_DIRS.has(ent.name)) continue;
         if (SKIP_DIRS.has(ent.name)) continue;
+        // Skip symbolic links (and Windows reparse points / junctions) by
+        // default so a symlink under an operator-declared source_path can't
+        // traverse to /etc, ~/.ssh, or any other unintended target. Mirrors
+        // the lstat-based refusal in src/corpus/indexer.ts (sha256File). We
+        // intentionally do NOT add a follow_symlinks opt-in — the indexer
+        // doesn't have one either, so the contract stays consistent.
+        if (ent.isSymbolicLink()) continue;
         const full = join(dir, ent.name);
         if (ent.isDirectory()) {
           queue.push(full);

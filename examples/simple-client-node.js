@@ -62,12 +62,27 @@ async function main() {
   for (const t of tools.slice(0, 5)) console.log(`  - ${t.name}`);
 
   // 3. Call a deterministic tool — no Ollama needed.
+  // ollama_log_tail args: { limit, filter_kind?, filter_tool?, since? }
+  // (default limit = 50, max 1000)
   const res = await rpc("tools/call", {
     name: "ollama_log_tail",
-    arguments: { lines: 5 },
+    arguments: { limit: 5 },
   });
   console.log("\nollama_log_tail →");
   console.log(JSON.stringify(res, null, 2));
+
+  // 4. Same tool, narrowed to one event kind + one tool — parity with v2.1.0
+  //    filter fields. Useful for slicing the NDJSON log without shelling out.
+  const filtered = await rpc("tools/call", {
+    name: "ollama_log_tail",
+    arguments: {
+      limit: 20,
+      filter_kind: "call",
+      filter_tool: "ollama_incident_pack",
+    },
+  });
+  console.log("\nollama_log_tail (filtered) →");
+  console.log(JSON.stringify(filtered, null, 2));
 
   server.kill();
 }

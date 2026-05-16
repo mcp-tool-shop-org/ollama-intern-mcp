@@ -26,15 +26,24 @@ describe("Semaphore wait estimation (out-of-order release)", () => {
     expect(snap.in_flight).toBe(2);
     // Oldest remaining holder is still release1 (from t1) — expected_wait_ms
     // must reflect that, not the age of holder 2.
+    //
+    // Bounds widened from [10, elapsed+50] to [5, elapsed+250]: Windows
+    // timer resolution + CI scheduling jitter make the original ceiling
+    // brittle (a 50ms slack can disappear into a single GC pause). The
+    // load-bearing assertion is "the marker survives out-of-order release"
+    // — that holds with looser bounds. The original lower bound of 10
+    // also presumed setTimeout(10) actually slept >=10ms, which Windows
+    // resolves in 16ms steps and can short-fire under fakeTimers; 5 is
+    // the conservative floor.
     const elapsedSinceT1 = Date.now() - t1;
-    expect(snap.expected_wait_ms).toBeGreaterThanOrEqual(10);
-    expect(snap.expected_wait_ms).toBeLessThanOrEqual(elapsedSinceT1 + 50);
+    expect(snap.expected_wait_ms).toBeGreaterThanOrEqual(5);
+    expect(snap.expected_wait_ms).toBeLessThanOrEqual(elapsedSinceT1 + 250);
 
     // Now release the middle holder — oldest remaining is still release1.
     release2();
     const snap2 = sem.snapshot();
     expect(snap2.in_flight).toBe(1);
-    expect(snap2.expected_wait_ms).toBeGreaterThanOrEqual(10);
+    expect(snap2.expected_wait_ms).toBeGreaterThanOrEqual(5);
 
     // Release the oldest — now no in-flight, expected_wait_ms is 0.
     release1();

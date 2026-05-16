@@ -25,7 +25,45 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+
+/**
+ * Reject file paths containing shell metacharacters.
+ *
+ * Why this exists: defaultSpawner runs with `shell: true` on Windows so npm
+ * shims (npx.cmd / pytest.exe / ruff.exe) resolve through cmd.exe's PATHEXT
+ * lookup — without it the spawn ENOENTs even when the tool is installed.
+ * The trade-off is that cmd.exe expands metacharacters inside arguments
+ * (& | ; ^ " > < ` \n \r ! % $), turning a caller-supplied path like
+ * `foo & calc.exe` into a command-injection vector.
+ *
+ * `strictStringArray` validates type and emptiness but not content. We
+ * reject any path containing a metacharacter BEFORE building argv. Spaces,
+ * dots, parentheses, brackets, hyphens, and Unicode are all legitimate in
+ * Windows paths and are NOT rejected — only the characters cmd.exe parses.
+ *
+ * Reference test cases:
+ *   "C:\\Users\\me\\My Project\\file.ts"   — passes (legitimate)
+ *   "src/(legacy)/foo.ts"                  — passes (legitimate)
+ *   "foo & calc.exe"                       — rejects (& is cmd separator)
+ *   "evil.ts; rm -rf /"                    — rejects (; is cmd separator)
+ *   "x | y.ts"                             — rejects (| is cmd pipe)
+ *   "%PATH%\\foo.ts"                       — rejects (% is cmd var expansion)
+ */
+const SHELL_METACHARACTERS = /[&|;^"><`\r\n!%$]/;
+
+export function assertSafeFilePath(p: string, fieldName = "files"): void {
+  const m = SHELL_METACHARACTERS.exec(p);
+  if (m !== null) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `${fieldName}[]: path contains shell metacharacter ${JSON.stringify(m[0])}: ${p}`,
+      `Paths passed to batch_proof_check are forwarded to a Windows shell to resolve npm shims. Strip or escape the metacharacter before calling — legitimate paths with spaces, dots, parens, or hyphens are fine.`,
+      false,
+    );
+  }
+}
 
 export const batchProofCheckSchema = z.object({
   checks: z
@@ -288,6 +326,16 @@ export async function handleBatchProofCheck(
   const startedAt = Date.now();
   const cwd = input.cwd ?? process.cwd();
   const timeoutMs = input.timeout_ms ?? 60_000;
+
+  // Pre-validate every file path BEFORE building argv. defaultSpawner runs
+  // with `shell: true` on Windows (required for npm-shim resolution); cmd.exe
+  // would otherwise expand & | ; ^ " > < and friends inside arguments,
+  // turning a caller-controlled file path into a command-injection vector.
+  if (input.files) {
+    for (const p of input.files) {
+      assertSafeFilePath(p, "files");
+    }
+  }
 
   const checkResults = await Promise.all(
     input.checks.map((c) => runOne(c, input.files, cwd, timeoutMs)),

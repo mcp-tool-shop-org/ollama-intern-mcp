@@ -94,6 +94,38 @@ export interface ChangeFacts {
   runtime_hints?: string[];
 }
 
+/**
+ * Sanitize untrusted extract output into the ChangeFacts shape.
+ *
+ * extract.handleExtract returns ExtractResult.data as `unknown` — the model
+ * may have produced "string-instead-of-array" / null entries / mixed types.
+ * A bare cast `as ChangeFacts` would compile but throw at render time when
+ * `.map()` hits a non-array.
+ *
+ * Rules:
+ *   - Returns a fully-shaped object with safe defaults (empty arrays).
+ *   - Drops non-string entries from string arrays.
+ *   - Coerces a single string-where-array-was-expected into a 1-element array.
+ *   - Never throws on malformed input — only sanitizes.
+ */
+export function coerceChangeFacts(data: unknown): ChangeFacts {
+  const obj = data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : {};
+
+  const stringArray = (v: unknown): string[] => {
+    if (typeof v === "string") return v.length > 0 ? [v] : [];
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === "string");
+  };
+
+  return {
+    scripts_touched: stringArray(obj.scripts_touched),
+    config_surfaces: stringArray(obj.config_surfaces),
+    runtime_hints: stringArray(obj.runtime_hints),
+  };
+}
+
 // ── Result shape ────────────────────────────────────────────
 
 export interface StepEntry {
@@ -455,7 +487,9 @@ export async function handleChangePack(
     const extractResult = extractEnv.result as ExtractResult;
     let extractWarning: string | null = null;
     if (extractResult.ok) {
-      facts = extractResult.data as ChangeFacts;
+      // Sanitize untrusted model output before render — string-instead-of-
+      // array, null entries, mixed types would otherwise crash renderFactsInline.
+      facts = coerceChangeFacts(extractResult.data);
     } else {
       extractWarning = "Extract output was unparseable; review facts omitted.";
     }

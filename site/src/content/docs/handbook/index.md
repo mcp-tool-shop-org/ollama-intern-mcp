@@ -1,6 +1,6 @@
 ---
 title: Ollama Intern MCP — Handbook
-description: The local intern for Claude Code. 28 job-shaped tools, evidence-first briefs, durable artifacts.
+description: The local intern for Claude Code. 41 job-shaped tools, evidence-first briefs, durable artifacts.
 sidebar:
   order: 0
   label: Overview
@@ -12,16 +12,16 @@ No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ## The shape
 
-Four tiers, 28 tools total.
+Four tiers, 41 tools total.
 
 | Tier | Count | Purpose |
 |---|---|---|
-| **Atoms** | 15 | Job-shaped primitives (`classify`, `extract`, `triage_logs`, `summarize_*`, `draft`, `research`, `corpus_*`, `embed*`, `chat`). Batch-capable atoms accept `items: [{id, text}]`. |
+| **Atoms** | 28 | Job-shaped primitives (`classify`, `extract`, `triage_logs`, `summarize_*`, `draft`, `research`, `corpus_*`, `embed*`, `chat`, plus the 13 v2.1.0 ops/refactor/corpus/artifact additions — see [Tool reference](./tools/)). Batch-capable atoms accept `items: [{id, text}]`. |
 | **Briefs** | 3 | Evidence-backed structured operator briefs — `incident_brief`, `repo_brief`, `change_brief`. |
 | **Packs** | 3 | Fixed-pipeline compound jobs that write durable markdown + JSON. `incident_pack`, `repo_pack`, `change_pack`. |
 | **Artifacts** | 7 | Continuity surface — `list`, `read`, `diff`, `export_to_path`, plus three deterministic snippet helpers. |
 
-Freeze lines: atoms+briefs at 18, packs at 3, artifact tier at 7. The surface does not grow.
+Freeze lines: atoms at 28 (freeze lifted at v2.1.0; new atoms require audit-justified gap + tests + handbook page + CHANGELOG entry); packs and artifact tiers remain frozen at 3 and 7.
 
 ## Why this project exists
 

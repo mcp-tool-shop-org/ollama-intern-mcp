@@ -30,7 +30,7 @@ import {
   normalizeRefs,
   parseJsonObject,
   readString,
-  readArray,
+  readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
 import { normalizeCorpusQuery } from "./_helpers.js";
@@ -245,8 +245,7 @@ export async function synthesizeChangeBrief(
       const release_note_draft = readString(o, "release_note_draft");
 
       const affected_surfaces: AffectedSurface[] = [];
-      for (const entry of readArray(o, "affected_surfaces")) {
-        const s = entry as { surface?: unknown; evidence_refs?: unknown };
+      for (const s of readObjectArray(o, "affected_surfaces")) {
         if (typeof s.surface !== "string") continue;
         const refs = normalizeRefs(s.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -254,8 +253,7 @@ export async function synthesizeChangeBrief(
       }
 
       const likely_breakpoints: LikelyBreakpoint[] = [];
-      for (const entry of readArray(o, "likely_breakpoints")) {
-        const b = entry as { breakpoint?: unknown; evidence_refs?: unknown };
+      for (const b of readObjectArray(o, "likely_breakpoints")) {
         if (typeof b.breakpoint !== "string") continue;
         const refs = normalizeRefs(b.evidence_refs, validIds);
         stripped += refs.stripped;
@@ -264,8 +262,7 @@ export async function synthesizeChangeBrief(
       }
 
       const validation_checks: ValidationCheck[] = [];
-      for (const entry of readArray(o, "validation_checks")) {
-        const c = entry as { check?: unknown; why?: unknown };
+      for (const c of readObjectArray(o, "validation_checks")) {
         if (typeof c.check !== "string") continue;
         validation_checks.push({
           check: c.check,

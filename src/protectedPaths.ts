@@ -38,10 +38,15 @@ export const PROTECTED_PATHS: ProtectedPathRule[] = [
 
 /**
  * Normalize a path for comparison: forward slashes, no leading ./, lowercase on Windows.
+ *
+ * On Windows (case-insensitive NTFS), input is lowercased so callers comparing
+ * against canonical lowercase patterns honor the platform's filesystem semantics.
+ * On POSIX, case is preserved.
  */
 export function normalizePath(p: string): string {
   let n = p.replace(/\\/g, "/");
   if (n.startsWith("./")) n = n.slice(2);
+  if (process.platform === "win32") n = n.toLowerCase();
   return n;
 }
 
@@ -55,8 +60,11 @@ export function matchesProtectedPath(
   rules: ProtectedPathRule[] = PROTECTED_PATHS,
 ): ProtectedMatch {
   const n = normalizePath(path);
+  const win = process.platform === "win32";
   for (const rule of rules) {
-    const pat = rule.pattern;
+    // On Windows, lowercase the rule pattern to match the lowercased input.
+    // On POSIX, compare verbatim — case sensitivity matches the filesystem.
+    const pat = win ? rule.pattern.toLowerCase() : rule.pattern;
     if (pat.endsWith("/")) {
       // Directory rule: any segment boundary containing the dir name matches.
       if (n.startsWith(pat) || n.includes("/" + pat)) {

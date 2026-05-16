@@ -1,6 +1,6 @@
 # Ollama Intern MCP — Handoff
 
-**Status:** v2.1.0 published · 41 tools (atoms + briefs + packs + artifact tier) · 672 tests · CI green
+**Status:** v2.4.0 published · 41 tools (atoms + briefs + packs + artifact tier) · 792 tests · CI green
 **Repo:** https://github.com/mcp-tool-shop-org/ollama-intern-mcp
 **npm:** https://www.npmjs.com/package/ollama-intern-mcp
 **Hardware:** M5 Max 128GB unified (active 2026-04-24+); RTX 5080 16GB box still works for `dev-rtx5080` profile
@@ -54,7 +54,7 @@ export INTERN_PROFILE=m5-max
 # 4. Install + verify
 cd /Volumes/T9-Shared/AI/ollama-intern-mcp
 npm ci
-npm run verify   # typecheck + build + 672 tests
+npm run verify   # typecheck + build + 792 tests
 ```
 
 For RTX 5080 (Windows or other dev box), use `INTERN_PROFILE=dev-rtx5080` (hermes3:8b ladder) or `dev-rtx5080-qwen3` (Qwen 3 alternate).
@@ -66,7 +66,7 @@ For RTX 5080 (Windows or other dev box), use `INTERN_PROFILE=dev-rtx5080` (herme
 ```bash
 # Full verify — must pass before any release work
 npm run verify
-# Expected: typecheck clean, build clean, 672 tests passing
+# Expected: typecheck clean, build clean, 792 tests passing
 
 # Ollama alive
 curl -s http://127.0.0.1:11434/api/version

@@ -11,8 +11,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   handleBatchProofCheck,
   __setSpawner,
+  assertSafeFilePath,
   type SpawnOutcome,
 } from "../../src/tools/batchProofCheck.js";
+import { InternError } from "../../src/errors.js";
 import { PROFILES } from "../../src/profiles.js";
 import { NullLogger } from "../../src/observability.js";
 import type {
@@ -148,5 +150,92 @@ describe("ollama_batch_proof_check — failure parsing", () => {
     );
     expect(env.result.checks[0].status).toBe("fail");
     expect(env.result.checks[0].failures && env.result.checks[0].failures.length > 0).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Regression: assertSafeFilePath shell-injection guard.
+//
+// defaultSpawner runs with `shell: true` on Windows so npm shims
+// (npx.cmd / pytest.exe / ruff.exe) resolve through cmd.exe's
+// PATHEXT lookup. The trade-off is that cmd.exe expands meta-
+// characters inside arguments, so a caller-supplied path like
+// `foo & calc.exe` would chain into a second command. The validator
+// must reject the metacharacters BEFORE building argv, while still
+// accepting legitimate Windows paths with spaces, parens, hyphens,
+// and other non-shell punctuation.
+// ═══════════════════════════════════════════════════════════════
+
+describe("assertSafeFilePath — shell-injection guard", () => {
+  describe("rejects shell metacharacters", () => {
+    it.each([
+      ["foo & calc.exe", "&"],
+      ["evil.ts; rm -rf /", ";"],
+      ["x | y.ts", "|"],
+      ["%PATH%\\foo.ts", "%"],
+      ["foo`whoami`.ts", "`"],
+      ["foo\\nbar.ts".replace("\\n", "\n"), "\n"],
+      ["a > b.ts", ">"],
+      ["a < b.ts", "<"],
+      ["x ^ y.ts", "^"],
+      ["foo$VAR.ts", "$"],
+      ['quote".ts', '"'],
+      ["bang!.ts", "!"],
+    ])("rejects %j (contains %s)", (input) => {
+      expect(() => assertSafeFilePath(input)).toThrow(InternError);
+      expect(() => assertSafeFilePath(input)).toThrow(/shell metacharacter/);
+    });
+
+    it("attaches SCHEMA_INVALID code and a non-retryable hint", () => {
+      try {
+        assertSafeFilePath("foo & calc.exe");
+        throw new Error("should have thrown");
+      } catch (e) {
+        expect(e).toBeInstanceOf(InternError);
+        const err = e as InternError;
+        expect(err.code).toBe("SCHEMA_INVALID");
+        expect(err.retryable).toBe(false);
+        expect(err.hint.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe("accepts legitimate Windows / POSIX paths", () => {
+    it.each([
+      ["C:\\Users\\me\\My Project\\file.ts"],          // spaces
+      ["src/(legacy)/foo.ts"],                          // parens
+      ["src/[scoped]/file.ts"],                         // brackets
+      ["src/foo-bar.ts"],                               // hyphen
+      ["src/foo_bar.ts"],                               // underscore
+      ["src/foo.bar.baz.ts"],                           // dots
+      ["E:/AI/ollama-intern-mcp/src/index.ts"],         // forward-slash absolute
+      ["/usr/local/bin/script.sh"],                     // POSIX absolute
+      ["./relative/path.ts"],                           // ./ prefix
+      ["../other/file.ts"],                             // ../ prefix
+      ["src/файл.ts"],                                  // unicode (Cyrillic)
+      ["src/日本語.ts"],                                 // unicode (Japanese)
+    ])("accepts %j", (input) => {
+      expect(() => assertSafeFilePath(input)).not.toThrow();
+    });
+  });
+
+  describe("uses fieldName in the error message when provided", () => {
+    it("defaults to 'files' if no fieldName given", () => {
+      try {
+        assertSafeFilePath("foo & bar");
+        throw new Error("unreachable");
+      } catch (e) {
+        expect((e as InternError).message).toContain("files[]");
+      }
+    });
+
+    it("propagates a custom fieldName", () => {
+      try {
+        assertSafeFilePath("foo & bar", "custom_paths");
+        throw new Error("unreachable");
+      } catch (e) {
+        expect((e as InternError).message).toContain("custom_paths[]");
+      }
+    });
   });
 });

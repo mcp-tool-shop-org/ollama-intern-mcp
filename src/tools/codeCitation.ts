@@ -23,7 +23,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, type LoadedSource } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
-import { parseJsonObject, readArray } from "./briefs/common.js";
+import { parseJsonObject, readArray, readObjectArray } from "./briefs/common.js";
 import { timestamp } from "../observability.js";
 import type { RunContext } from "../runContext.js";
 
@@ -175,13 +175,7 @@ export async function handleCodeCitation(
       const cites: CodeCitation[] = [];
       let strippedOutOfScope = 0;
       let strippedBadRange = 0;
-      for (const entry of readArray(o, "citations")) {
-        const c = entry as {
-          claim_fragment?: unknown;
-          file?: unknown;
-          start_line?: unknown;
-          end_line?: unknown;
-        };
+      for (const c of readObjectArray(o, "citations")) {
         if (typeof c.file !== "string") continue;
         // Out-of-scope citation — strip (same rule as ollama_research).
         if (!validPathSet.has(c.file)) {

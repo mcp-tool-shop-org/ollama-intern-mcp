@@ -23,7 +23,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
-import { parseJsonObject, readArray } from "./briefs/common.js";
+import { parseJsonObject, readArray, readObjectArray } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
 
 export const multiFileRefactorProposeSchema = z.object({
@@ -194,14 +194,7 @@ export async function handleMultiFileRefactorPropose(
       const o = parseJsonObject(raw);
 
       const perFileChanges: PerFileChange[] = [];
-      for (const entry of readArray(o, "per_file_changes")) {
-        const e = entry as {
-          file?: unknown;
-          before_summary?: unknown;
-          after_summary?: unknown;
-          risk_level?: unknown;
-          change_kinds?: unknown;
-        };
+      for (const e of readObjectArray(o, "per_file_changes")) {
         if (typeof e.file !== "string") continue;
         // Strip files not in the input set — model never gets to invent.
         if (!validFileSet.has(e.file)) continue;
@@ -215,8 +208,7 @@ export async function handleMultiFileRefactorPropose(
       }
 
       const affectedImports: AffectedImport[] = [];
-      for (const entry of readArray(o, "affected_imports")) {
-        const e = entry as { from?: unknown; to?: unknown; files?: unknown };
+      for (const e of readObjectArray(o, "affected_imports")) {
         if (typeof e.from !== "string" || typeof e.to !== "string") continue;
         const files = Array.isArray(e.files)
           ? e.files.filter((f): f is string => typeof f === "string" && validFileSet.has(f))
