@@ -34,8 +34,9 @@ Every local-LLM MCP server leads with token-savings. Ours leads with _what the i
 
 ## Where to go next
 
+- **[Quickstart](./quickstart/)** — your first 5 minutes, end-to-end, from install to artifact
 - [Getting started](./getting-started/) — install, Claude Code config, model pulls
-- [Tool reference](./tools/) — every tool grouped by tier
+- [Tool reference](./tools/) — every tool grouped by tier (overview + per-tool deep-dives for the most-used tools)
 - [Envelope & tiers](./envelope-and-tiers/) — uniform envelope, hardware profiles, residency
 - [Artifacts & continuity](./artifacts/) — how packs write to disk and how to use what they wrote
 - [Laws & guardrails](./laws/) — evidence-first, no remediation drift, deterministic renderers
@@ -46,3 +47,27 @@ Every local-LLM MCP server leads with token-savings. Ours leads with _what the i
 - [Troubleshooting](./troubleshooting/) — Ollama not running, model pull failures, hardware insufficient, MCP server not appearing in Claude Code
 - [Observability](./observability/) — read the NDJSON log, field semantics, jq recipes, degradation signatures, `ollama_log_tail`
 - [Comparison](./comparison/) — honest matrix vs other local-LLM MCPs, raw Ollama, and Claude-direct
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+  Claude["Claude Code<br/>(MCP client)"]
+  MCP["ollama-intern-mcp<br/>server (stdio)"]
+  Ollama["Ollama daemon<br/>(127.0.0.1:11434)"]
+  Models[("Hermes 3 / Qwen 3<br/>nomic-embed-text")]
+  Corpus[("~/.ollama-intern/<br/>corpora/")]
+  Artifacts[("~/.ollama-intern/<br/>artifacts/")]
+  NDJSON[("~/.ollama-intern/<br/>log.ndjson")]
+  Guards{{"Guardrails<br/>citations · banned phrases<br/>protected paths · confidence"}}
+
+  Claude -- "JSON-RPC over stdio" --> MCP
+  MCP --> Guards
+  MCP -- "/api/generate · /api/chat<br/>/api/embed · /api/ps · /api/tags" --> Ollama
+  Ollama --> Models
+  MCP --- Corpus
+  MCP --- Artifacts
+  MCP --> NDJSON
+```
+
+Every Claude tool call enters the MCP server over stdio JSON-RPC. The server validates the call against the tool's zod schema, runs the configured guardrails (citation validation, banned-phrase strip, protected-path enforcement, confidence thresholds), then routes to either a deterministic renderer (artifact tier) or an Ollama HTTP call (every other tier). The Ollama daemon never sees user-supplied paths — only the model tier and the prepared prompt. Every call appends one structured event to the NDJSON log.

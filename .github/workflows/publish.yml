@@ -1,6 +1,19 @@
 name: Publish to npm
 
+# Three trigger surfaces:
+#   1. push: tags v*.*.* — tag-driven auto-release. Push the tag, the workflow
+#      verifies tag-vs-package.json, runs the ship gate, publishes to npm with
+#      provenance, then creates the GitHub release with notes pulled from
+#      CHANGELOG.md. This is the rig-bridge lesson (v1.0.0→v1.0.1 doctrine):
+#      tag-push triggers a single deterministic release, no manual UI step.
+#   2. release: published — preserved for the manual UI flow. When a release
+#      is created from the GitHub UI rather than a tag push, this branch
+#      handles the publish. Skips the auto-create-release step.
+#   3. workflow_dispatch — operator escape hatch with explicit tag input.
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   release:
     types: [published]
   workflow_dispatch:
@@ -18,7 +31,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # id-token: write — required for npm --provenance (OIDC → Sigstore).
+      # contents: write — required for gh release create on the tag-push path.
+      contents: write
       id-token: write
     steps:
       - name: Assert Node major version (20.x or 22.x)
@@ -43,9 +58,17 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Verify package.json version matches tag
+      # Tag-vs-package.json verify gate. Three trigger sources resolve to one
+      # tag string; we always compare against "v$(package.json.version)". A
+      # mismatch fails BEFORE publish so an out-of-sync tag can never produce
+      # an npm artifact. This is the load-bearing rig-bridge ratchet — the
+      # tag and the package version must agree at publish time, full stop.
+      - name: Verify tag matches package.json version
+        id: verify
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
+          # github.event.inputs.tag for dispatch; github.ref_name for tag-push
+          # and release events ('v2.4.0' or refs/tags/v2.4.0 → 'v2.4.0').
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           EXPECTED="v$PKG_VERSION"
           if [ "$TAG" != "$EXPECTED" ]; then
@@ -53,6 +76,8 @@ jobs:
             exit 1
           fi
           echo "Tag $TAG matches package.json $PKG_VERSION"
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Ship gate (typecheck + build + test + pack check)
         run: npm run ship
@@ -61,3 +86,56 @@ jobs:
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Auto-create a GitHub release on the tag-push path. We extract the
+      # version's section from CHANGELOG.md (between "## [<version>]" and the
+      # next "## " heading) and pass it as the release body. Skipped when the
+      # trigger is `release: published` (the release already exists) or when
+      # the workflow is dispatched manually against an existing release.
+      #
+      # If extraction fails for any reason we fall back to --generate-notes,
+      # which uses GitHub's auto-generated changelog from commits. Never
+      # silently ship an empty release body.
+      - name: Extract CHANGELOG section for this version
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        id: changelog
+        run: |
+          VERSION="${{ steps.verify.outputs.version }}"
+          # Match "## [2.4.0]" or "## 2.4.0" and capture everything up to the
+          # next "## " heading. Use awk for portability + multi-line capture.
+          SECTION=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[?" ver "\\]?" { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$SECTION" ]; then
+            echo "::warning::No CHANGELOG section found for v${VERSION} — release body will fall back to --generate-notes"
+            echo "has_section=false" >> "$GITHUB_OUTPUT"
+          else
+            # Write to file to preserve multi-line content for gh release create.
+            printf "%s\n" "$SECTION" > .release-notes.md
+            echo "has_section=true" >> "$GITHUB_OUTPUT"
+            echo "Resolved CHANGELOG section ($(wc -l < .release-notes.md) lines)"
+          fi
+
+      - name: Create GitHub release (tag-push path, section present)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_section == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.verify.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file .release-notes.md \
+            --verify-tag
+
+      - name: Create GitHub release (tag-push path, fallback to auto-notes)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_section != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.verify.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag

@@ -29,8 +29,19 @@ import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
-import { callEvent, packStepEvent } from "../../observability.js";
+import { callEvent } from "../../observability.js";
 import type { RunContext } from "../../runContext.js";
+import {
+  withRunContext as withRunCorrelation,
+  mintRunId,
+  getRunContext as getRunCorrelation,
+} from "../../runContext.js";
+import {
+  buildPackStepEventWithCorrelation as packStepEvent,
+  withCallContext,
+  mintCallId,
+  getCallContext,
+} from "../_runContext.js";
 import { InternError } from "../../errors.js";
 import { assembleEvidence } from "../briefs/common.js";
 import { handleTriageLogs, type TriageLogsResult } from "../triageLogs.js";
@@ -285,6 +296,27 @@ export async function handleIncidentPack(
   ctx: RunContext,
 ): Promise<Envelope<IncidentPackResult>> {
   assertAtLeastOnePrimary(input);
+  // FT-010: pack runs are a single tool call from the caller's POV, but
+  // they emit pack_step events + delegate to nested tool calls (triage,
+  // brief, extract). Inherit any existing run_id (backend-core wraps at
+  // the MCP entry point); otherwise mint one (test invocations that
+  // skip the wrap). Mint a pack-level call_id so each pack_step records
+  // it as parent_call_id; nested runTool calls enter their OWN call
+  // scope, so their setCallId mutations don't leak back into ours.
+  const existingRun = getRunCorrelation();
+  if (existingRun) {
+    return withCallContext({ call_id: mintCallId() }, () => handleIncidentPackInner(input, ctx));
+  }
+  const run_id = mintRunId();
+  return withRunCorrelation({ run_id, started_at: new Date().toISOString() }, () =>
+    withCallContext({ call_id: mintCallId() }, () => handleIncidentPackInner(input, ctx)),
+  );
+}
+
+async function handleIncidentPackInner(
+  input: IncidentPackInput,
+  ctx: RunContext,
+): Promise<Envelope<IncidentPackResult>> {
   const packStartedAt = Date.now();
   const steps: StepEntry[] = [];
   let tokensIn = 0;
@@ -479,6 +511,17 @@ export async function handleIncidentPack(
     residency,
     ...(envelopeWarnings.length > 0 ? { warnings: envelopeWarnings } : {}),
   });
+  // FT-010: echo correlation IDs on the pack envelope (additive cast).
+  // Both IDs pulled from their respective ALS — outer wrapper guarantees
+  // both scopes are active.
+  const runCtx = getRunCorrelation();
+  const callCtx = getCallContext();
+  if (runCtx?.run_id) {
+    (envelope as unknown as Record<string, unknown>).run_id = runCtx.run_id;
+  }
+  if (callCtx?.call_id) {
+    (envelope as unknown as Record<string, unknown>).call_id = callCtx.call_id;
+  }
   await ctx.logger.log(callEvent("ollama_incident_pack", envelope));
   return envelope;
 }

@@ -16,6 +16,32 @@
  * useless for grep — an operator can't find WHICH path the model
  * fabricated without re-running. The per-strip detail makes log_tail
  * actionable.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ * Phase 7 / FT-001 event-emission pattern (corpus-guards lock):
+ * ─────────────────────────────────────────────────────────────────────
+ * `buildCitationStripEventDetails(result)` returns one detail object per
+ * stripped citation, each tagged with `op: 'guardrail'` (closed enum from
+ * observability.CorrelationOp) and `rule: 'citation_strip'`. As with the
+ * confidence helper, this module does NOT stamp `run_id`. The NDJSON
+ * logger auto-merges `run_id` from the active AsyncLocalStorage
+ * `CorrelationContext` at write time (see observability.withCorrelation),
+ * so call sites only have to log the event and the correlation lands
+ * automatically.
+ *
+ * Wiring this into the call site is the tools agent's job (see
+ * src/tools/research.ts). Pattern:
+ *
+ *   const details = buildCitationStripEventDetails(result);
+ *   for (const detail of details) {
+ *     await ctx.logger.log({ kind: 'guardrail', ts: ...,
+ *       tool: 'ollama_research', rule: detail.rule, action: 'strip',
+ *       detail });
+ *   }
+ *
+ * Per-strip events (one per stripped citation) are preferred to a single
+ * `{ count }` event so an operator grepping `log_tail` can find WHICH
+ * path was fabricated, not just the cardinality.
  */
 
 import { normalizePath } from "../protectedPaths.js";
@@ -99,11 +125,20 @@ export function validateCitations(
 
 /**
  * Per-strip detail payload for an operator-facing structured event.
- * Callers that emit `{ kind: "guardrail", rule: "citations", action:
+ * Callers that emit `{ kind: "guardrail", rule: detail.rule, action:
  * "strip", detail: ... }` should use this to surface WHICH path was
  * stripped and why, instead of an opaque `{ count }`.
+ *
+ * Phase 7 / FT-001: `op` and `rule` are stamped on the detail so every
+ * guardrail event in the NDJSON log can be filtered uniformly with
+ * `jq 'select(.op=="guardrail" and .detail.rule=="citation_strip")'`
+ * regardless of which call site emitted it.
  */
 export interface CitationStripEventDetail {
+  /** Closed-enum op tag from observability.CorrelationOp. Always 'guardrail' here. */
+  op: "guardrail";
+  /** Stable rule identifier — greppable. */
+  rule: "citation_strip";
   /** Reason buckets are closed; an operator can grep for "not_in_source_paths". */
   reason: "not_in_source_paths" | "line_range_past_eof";
   path: string;
@@ -129,10 +164,17 @@ export function buildCitationStripEventDetails(
 ): CitationStripEventDetail[] {
   const details: CitationStripEventDetail[] = [];
   for (const s of result.stripped) {
-    details.push({ reason: "not_in_source_paths", path: s.path });
+    details.push({
+      op: "guardrail",
+      rule: "citation_strip",
+      reason: "not_in_source_paths",
+      path: s.path,
+    });
   }
   for (const r of result.out_of_bounds_ranges) {
     details.push({
+      op: "guardrail",
+      rule: "citation_strip",
       reason: "line_range_past_eof",
       path: r.path,
       line_range: r.line_range,

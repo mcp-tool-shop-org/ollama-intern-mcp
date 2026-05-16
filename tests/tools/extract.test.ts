@@ -1,55 +1,23 @@
+/**
+ * MIGRATED (FT-003 / Phase 7) — uses shared tests/_helpers/ instead of
+ * the per-file MockClient + makeCtx boilerplate. Behavior under test
+ * is unchanged. Local `MockClient` becomes `createFakeOllama({ defaultGenerateResponse })`
+ * and `makeCtx(client)` becomes `makeFakeCtx({ client })`.
+ */
 import { describe, it, expect } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleExtract, extractSchema } from "../../src/tools/extract.js";
 import { PROFILES } from "../../src/profiles.js";
-import { NullLogger } from "../../src/observability.js";
-import type {
-  OllamaClient,
-  GenerateRequest,
-  GenerateResponse,
-  ChatRequest,
-  ChatResponse,
-  EmbedRequest,
-  EmbedResponse,
-} from "../../src/ollama.js";
-import type { Residency } from "../../src/envelope.js";
-import type { RunContext } from "../../src/runContext.js";
+import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
 
-class MockClient implements OllamaClient {
-  public lastGenerate?: GenerateRequest;
-  constructor(private raw: string, private tokens = { in: 50, out: 10 }) {}
-
-  async generate(req: GenerateRequest): Promise<GenerateResponse> {
-    this.lastGenerate = req;
-    return {
-      model: req.model,
-      response: this.raw,
-      done: true,
-      prompt_eval_count: this.tokens.in,
-      eval_count: this.tokens.out,
-    };
-  }
-  async chat(_req: ChatRequest): Promise<ChatResponse> {
-    throw new Error("not used");
-  }
-  async embed(_req: EmbedRequest): Promise<EmbedResponse> {
-    throw new Error("not used");
-  }
-  async residency(_model: string): Promise<Residency | null> {
-    return { in_vram: true, size_bytes: 100, size_vram_bytes: 100, evicted: false, expires_at: null };
-  }
+// Local alias for the migration — keeps the per-test call sites short.
+function makeCtx(client: ReturnType<typeof createFakeOllama>) {
+  return makeFakeCtx({ client });
 }
-
-function makeCtx(client: OllamaClient, logger = new NullLogger()): RunContext & { logger: NullLogger } {
-  return {
-    client,
-    tiers: PROFILES["dev-rtx5080"].tiers,
-    timeouts: PROFILES["dev-rtx5080"].timeouts,
-    hardwareProfile: "dev-rtx5080",
-    logger,
-  };
+function mock(raw: string) {
+  return createFakeOllama({ defaultGenerateResponse: raw });
 }
 
 const simpleSchema = {
@@ -60,7 +28,7 @@ const simpleSchema = {
 
 describe("handleExtract — text mode", () => {
   it("returns parsed JSON data on valid output", async () => {
-    const client = new MockClient(JSON.stringify({ name: "foo", count: 3 }));
+    const client = mock(JSON.stringify({ name: "foo", count: 3 }));
     const env = await handleExtract(
       { text: "foo happened 3 times", schema: simpleSchema },
       makeCtx(client),
@@ -71,7 +39,7 @@ describe("handleExtract — text mode", () => {
   });
 
   it("returns unparseable on invalid JSON", async () => {
-    const client = new MockClient("not json");
+    const client = mock("not json");
     const env = await handleExtract(
       { text: "anything", schema: simpleSchema },
       makeCtx(client),
@@ -88,7 +56,7 @@ describe("handleExtract — source_path mode", () => {
     const filePath = join(dir, "report.txt");
     try {
       await writeFile(filePath, "foo happened 7 times today", "utf8");
-      const client = new MockClient(JSON.stringify({ name: "foo", count: 7 }));
+      const client = mock(JSON.stringify({ name: "foo", count: 7 }));
       const env = await handleExtract(
         { source_path: filePath, schema: simpleSchema },
         makeCtx(client),
@@ -102,7 +70,7 @@ describe("handleExtract — source_path mode", () => {
   });
 
   it("rejects missing files with a clear SOURCE_PATH_NOT_FOUND error", async () => {
-    const client = new MockClient("{}");
+    const client = mock("{}");
     await expect(
       handleExtract(
         { source_path: "F:/definitely/does/not/exist.txt", schema: simpleSchema },
@@ -112,7 +80,7 @@ describe("handleExtract — source_path mode", () => {
   });
 
   it("throws SCHEMA_INVALID when both text and source_path are passed", async () => {
-    const client = new MockClient("{}");
+    const client = mock("{}");
     await expect(
       handleExtract(
         { text: "x", source_path: "anywhere.txt", schema: simpleSchema },
@@ -122,7 +90,7 @@ describe("handleExtract — source_path mode", () => {
   });
 
   it("throws SCHEMA_INVALID when none of text/source_path/items are passed", async () => {
-    const client = new MockClient("{}");
+    const client = mock("{}");
     await expect(
       handleExtract({ schema: simpleSchema } as Parameters<typeof handleExtract>[0], makeCtx(client)),
     ).rejects.toThrow(/exactly one of "text", "source_path", or "items"/);
@@ -134,7 +102,7 @@ describe("handleExtract — source_path mode", () => {
     try {
       const content = "ABCDEFGHIJ".repeat(5000); // 50,000 chars
       await writeFile(filePath, content, "utf8");
-      const client = new MockClient(JSON.stringify({ name: "x" }));
+      const client = mock(JSON.stringify({ name: "x" }));
       await handleExtract(
         { source_path: filePath, schema: simpleSchema, per_file_max_chars: 2000 },
         makeCtx(client),
@@ -149,7 +117,7 @@ describe("handleExtract — source_path mode", () => {
 
 describe("handleExtract — frame contract", () => {
   it("back-compat: no frame input → no frame_alignment in result", async () => {
-    const client = new MockClient(JSON.stringify({ name: "foo", count: 1 }));
+    const client = mock(JSON.stringify({ name: "foo", count: 1 }));
     const env = await handleExtract(
       { text: "foo happened once", schema: simpleSchema },
       makeCtx(client),
@@ -167,7 +135,7 @@ describe("handleExtract — frame contract", () => {
       count: 4,
       _frame_alignment: { on_topic: true, reason: "the text addresses the asked-about question" },
     });
-    const client = new MockClient(modelOut);
+    const client = mock(modelOut);
     const env = await handleExtract(
       { text: "foo happened 4 times", schema: simpleSchema, frame: "how often does foo happen?" },
       makeCtx(client),
@@ -185,7 +153,7 @@ describe("handleExtract — frame contract", () => {
     const modelOut = JSON.stringify({
       _frame_alignment: { on_topic: false, reason: "source is about a different topic entirely" },
     });
-    const client = new MockClient(modelOut);
+    const client = mock(modelOut);
     const env = await handleExtract(
       { text: "unrelated material", schema: simpleSchema, frame: "what is the deadline?" },
       makeCtx(client),
@@ -202,7 +170,7 @@ describe("handleExtract — frame contract", () => {
       name: "foo",
       _frame_alignment: "this is a string not an object",
     });
-    const client = new MockClient(modelOut);
+    const client = mock(modelOut);
     const env = await handleExtract(
       { text: "anything", schema: simpleSchema, frame: "some frame" },
       makeCtx(client),
@@ -222,7 +190,7 @@ describe("handleExtract — frame contract", () => {
         unaddressed_aspects: ["evidence chain", "inspectability"],
       },
     });
-    const client = new MockClient(modelOut);
+    const client = mock(modelOut);
     const env = await handleExtract(
       { text: "x", schema: simpleSchema, frame: "evidence custody question" },
       makeCtx(client),
@@ -237,7 +205,7 @@ describe("handleExtract — frame contract", () => {
 
 describe("handleExtract — per-call model override (v2.3.0)", () => {
   it("input.model is passed to the underlying Ollama generate call", async () => {
-    const client = new MockClient(JSON.stringify({ name: "x" }));
+    const client = mock(JSON.stringify({ name: "x" }));
     const env = await handleExtract(
       { text: "anything", schema: simpleSchema, model: "hermes3:8b-q5_K_M" },
       makeCtx(client),
@@ -248,7 +216,7 @@ describe("handleExtract — per-call model override (v2.3.0)", () => {
   });
 
   it("input.model omitted falls through to tier-resolved workhorse model", async () => {
-    const client = new MockClient(JSON.stringify({ name: "x" }));
+    const client = mock(JSON.stringify({ name: "x" }));
     const env = await handleExtract(
       { text: "anything", schema: simpleSchema },
       makeCtx(client),

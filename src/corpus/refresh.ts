@@ -21,6 +21,14 @@
  *   Idempotence is sacred. A no-change refresh is a no-op: no embed
  *   calls, no disk writes, no manifest bump. `no_op: true` in the
  *   report.
+ *
+ * Phase 7 / FT-001 event-emission policy: this module does NOT call
+ * the logger directly — the report return value is the operator-facing
+ * surface. Tool handlers (src/tools/corpusRefresh.ts) build their own
+ * `kind: "call"` event from the report; if a future call site needs to
+ * emit a corpus-step event, use `buildCorpusRefreshStepEvent` below
+ * (op: 'pack_step', rule: 'corpus_refresh_step') so the closed
+ * CorrelationOp enum stays tight.
  */
 
 import { readFile, stat } from "node:fs/promises";
@@ -322,5 +330,65 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
     ...(indexReport.embed_model_resolved_drift_within_refresh
       ? { embed_model_resolved_drift_within_refresh: indexReport.embed_model_resolved_drift_within_refresh }
       : {}),
+  };
+}
+
+/**
+ * Detail payload for an operator-facing structured event a tool handler
+ * can emit when it wraps a corpus refresh in a pack-step pipeline.
+ *
+ * Phase 7 / FT-001: tagged `op: 'pack_step'` so it slots into the
+ * existing closed CorrelationOp enum (corpus refresh is a structured
+ * multi-step operation; a separate corpus_step op would be redundant).
+ * The NDJSON logger auto-merges `run_id` from ALS at write time.
+ *
+ * Carries the same drift signals the report exposes so a log-only
+ * consumer (one that doesn't capture envelopes) can still answer "did
+ * this refresh re-embed anything? did Ollama bump :latest mid-stream?"
+ */
+export interface CorpusRefreshStepEventDetail {
+  /** Closed-enum op tag from observability.CorrelationOp. */
+  op: "pack_step";
+  /** Stable rule identifier — greppable. */
+  rule: "corpus_refresh_step";
+  /** Corpus name. */
+  name: string;
+  /** True iff nothing changed and the refresh was a no-op. */
+  no_op: boolean;
+  /** Chunks reused from the existing corpus. */
+  reused_chunks: number;
+  /** Chunks newly embedded this refresh. */
+  reembedded_chunks: number;
+  /** Chunks dropped this refresh (old chunks that didn't survive). */
+  dropped_chunks: number;
+  /** True when Ollama silently bumped `:latest` between this refresh and the prior one. */
+  embed_model_drift_detected: boolean;
+  /** True when Ollama bumped `:latest` mid-refresh (within a single run). */
+  embed_model_drift_within_refresh: boolean;
+  /** Number of paths that failed this run (read errors, size cap, symlink, etc.). */
+  failed_path_count: number;
+}
+
+/**
+ * Build the pack-step event detail for a completed refresh. Pure
+ * shaping — does NOT call the logger itself. Use from tool handlers
+ * that wrap a `refreshCorpus` call inside a pack-style pipeline.
+ */
+export function buildCorpusRefreshStepEvent(
+  report: RefreshReport,
+): CorpusRefreshStepEventDetail {
+  return {
+    op: "pack_step",
+    rule: "corpus_refresh_step",
+    name: report.name,
+    no_op: report.no_op,
+    reused_chunks: report.reused_chunks,
+    reembedded_chunks: report.reembedded_chunks,
+    dropped_chunks: report.dropped_chunks,
+    embed_model_drift_detected: report.embed_model_resolved_drift !== undefined,
+    embed_model_drift_within_refresh:
+      Array.isArray(report.embed_model_resolved_drift_within_refresh) &&
+      report.embed_model_resolved_drift_within_refresh.length > 0,
+    failed_path_count: report.still_failed.length,
   };
 }

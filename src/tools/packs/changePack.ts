@@ -29,8 +29,19 @@ import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
-import { callEvent, packStepEvent } from "../../observability.js";
+import { callEvent } from "../../observability.js";
 import type { RunContext } from "../../runContext.js";
+import {
+  withRunContext as withRunCorrelation,
+  mintRunId,
+  getRunContext as getRunCorrelation,
+} from "../../runContext.js";
+import {
+  buildPackStepEventWithCorrelation as packStepEvent,
+  withCallContext,
+  mintCallId,
+  getCallContext,
+} from "../_runContext.js";
 import { InternError } from "../../errors.js";
 import { assembleEvidence } from "../briefs/common.js";
 import { loadSources, formatSourcesBlock } from "../../sources.js";
@@ -394,6 +405,23 @@ export async function handleChangePack(
   ctx: RunContext,
 ): Promise<Envelope<ChangePackResult>> {
   assertAtLeastOnePrimary(input);
+  // FT-010: inherit run_id from backend-core's ALS, mint defensively
+  // when missing. Pack-level call_id is the parent_call_id for every
+  // emitted pack_step event.
+  const existingRun = getRunCorrelation();
+  if (existingRun) {
+    return withCallContext({ call_id: mintCallId() }, () => handleChangePackInner(input, ctx));
+  }
+  const run_id = mintRunId();
+  return withRunCorrelation({ run_id, started_at: new Date().toISOString() }, () =>
+    withCallContext({ call_id: mintCallId() }, () => handleChangePackInner(input, ctx)),
+  );
+}
+
+async function handleChangePackInner(
+  input: ChangePackInput,
+  ctx: RunContext,
+): Promise<Envelope<ChangePackResult>> {
   const packStartedAt = Date.now();
   const steps: StepEntry[] = [];
   let tokensIn = 0;
@@ -637,6 +665,15 @@ export async function handleChangePack(
     residency,
     ...(envelopeWarnings.length > 0 ? { warnings: envelopeWarnings } : {}),
   });
+  // FT-010: echo correlation IDs on the pack envelope (additive cast).
+  const runCtx = getRunCorrelation();
+  const callCtx = getCallContext();
+  if (runCtx?.run_id) {
+    (envelope as unknown as Record<string, unknown>).run_id = runCtx.run_id;
+  }
+  if (callCtx?.call_id) {
+    (envelope as unknown as Record<string, unknown>).call_id = callCtx.call_id;
+  }
   await ctx.logger.log(callEvent("ollama_change_pack", envelope));
   return envelope;
 }

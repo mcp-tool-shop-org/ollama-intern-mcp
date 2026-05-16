@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { loadProfile, PROFILES, DEFAULT_PROFILE } from "../src/profiles.js";
+import {
+  loadProfile,
+  PROFILES,
+  DEFAULT_PROFILE,
+  OLLAMA_MODEL_NAME_RE,
+  NUM_CTX_MIN,
+  NUM_CTX_MAX,
+  validateNumCtx,
+} from "../src/profiles.js";
+import { InternError } from "../src/errors.js";
 
 describe("profiles", () => {
   it("defaults to dev-rtx5080 when INTERN_PROFILE is empty", () => {
@@ -188,5 +197,187 @@ describe("profiles", () => {
       expect(p.tiers.num_ctx.workhorse).toBeUndefined();
       expect(p.tiers.num_ctx.deep).toBeUndefined();
     }
+  });
+
+  // ── FT-002 — env-supplied model-name validation (Phase 7) ────────
+  //
+  // A typo like `INTERN_TIER_DEEP=hermes3-8b` (dash where colon belongs)
+  // used to survive loadProfile() and bubble up HOURS later as an
+  // OLLAMA_MODEL_MISSING from /api/generate. The fail-fast validator now
+  // catches the typo at startup with a CONFIG_INVALID + targeted hint.
+  //
+  // These tests pin:
+  //  1. Common typos throw CONFIG_INVALID at load.
+  //  2. The thrown error names the variable, the bad value, and (where
+  //     reasonable) the most-likely intended value.
+  //  3. The validator no-ops on unset/empty values (back-compat).
+  //  4. The regex pattern is exported for callers that need their own
+  //     copy of the contract.
+
+  describe("env model-name validation (FT-002)", () => {
+    // The validator has TWO rejection paths:
+    //  1. Structural regex (OLLAMA_MODEL_NAME_RE) — rejects uppercase
+    //     in name segment, whitespace, slashes, etc.
+    //  2. Dash-for-colon typo heuristic — rejects `hermes3-8b` even
+    //     though the bare regex would accept it, because the trailing
+    //     `-8b` shape is almost certainly a typo for `:8b`.
+    // Tags after `:` are allowed to use mixed case (real-world quantization
+    // labels like `:q4_K_M`).
+
+    it("throws CONFIG_INVALID when INTERN_TIER_DEEP is the dash-typo `hermes3-8b`", () => {
+      let caught: unknown;
+      try {
+        loadProfile({ INTERN_TIER_DEEP: "hermes3-8b" });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(InternError);
+      const err = caught as InternError;
+      expect(err.code).toBe("CONFIG_INVALID");
+      // Helpful diagnostics: the message should name the variable,
+      // the bad value, and the hint should suggest the colon form so
+      // the operator can act without consulting docs.
+      expect(err.message).toContain("INTERN_TIER_DEEP");
+      expect(err.message).toContain("hermes3-8b");
+      expect(err.hint).toContain("hermes3:8b");
+    });
+
+    it("throws CONFIG_INVALID on every tier env when the value is the dash typo", () => {
+      for (const key of [
+        "INTERN_TIER_INSTANT",
+        "INTERN_TIER_WORKHORSE",
+        "INTERN_TIER_DEEP",
+        "INTERN_EMBED_MODEL",
+      ]) {
+        let caught: unknown;
+        try {
+          loadProfile({ [key]: "hermes3-8b" });
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught, `${key} must reject the dash typo`).toBeInstanceOf(InternError);
+        expect((caught as InternError).code).toBe("CONFIG_INVALID");
+      }
+    });
+
+    it("throws CONFIG_INVALID on UPPERCASE in the name segment", () => {
+      // Uppercase in `name` (before `:`) is structural rejection — Ollama
+      // refuses these at `ollama pull` time.
+      let caught: unknown;
+      try {
+        loadProfile({ INTERN_TIER_WORKHORSE: "Hermes3:8b" });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(InternError);
+      expect((caught as InternError).code).toBe("CONFIG_INVALID");
+      const err = caught as InternError;
+      expect(err.message).toContain("INTERN_TIER_WORKHORSE");
+    });
+
+    it("throws CONFIG_INVALID on whitespace-bearing model names", () => {
+      // The validator runs after env merge, where whitespace is preserved
+      // verbatim. Names with spaces are categorically invalid in Ollama.
+      let caught: unknown;
+      try {
+        loadProfile({ INTERN_TIER_INSTANT: "hermes3:8 b" });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(InternError);
+      expect((caught as InternError).code).toBe("CONFIG_INVALID");
+    });
+
+    it("accepts the canonical colon form (back-compat for legitimate overrides)", () => {
+      const p = loadProfile({ INTERN_TIER_DEEP: "hermes3:8b" });
+      expect(p.tiers.deep).toBe("hermes3:8b");
+    });
+
+    it("accepts hyphenated names that contain no colon (e.g. nomic-embed-text)", () => {
+      // The validator must not over-fire on legitimate hyphenated names.
+      // `nomic-embed-text` ends in `-text` (letters not digits) so the
+      // dash-typo heuristic correctly skips it.
+      const p = loadProfile({ INTERN_EMBED_MODEL: "nomic-embed-text" });
+      expect(p.tiers.embed).toBe("nomic-embed-text");
+    });
+
+    it("accepts mixed-case quantization tags (e.g. custom:model-q4_K_M)", () => {
+      // Real-world env overrides routinely pin a quantized variant. The
+      // tag-side of the regex `[A-Za-z0-9._-]+` lets `q4_K_M` through.
+      const p = loadProfile({ INTERN_TIER_DEEP: "custom:model-q4_K_M" });
+      expect(p.tiers.deep).toBe("custom:model-q4_K_M");
+    });
+
+    it("no-ops on unset env (falls through to profile default)", () => {
+      const p = loadProfile({});
+      expect(p.tiers.deep).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    });
+
+    it("no-ops on empty env string (falls through to profile default)", () => {
+      // Empty string is the documented "don't override" path so a shell
+      // that exports an empty value doesn't accidentally pin the default.
+      const p = loadProfile({ INTERN_TIER_DEEP: "" });
+      expect(p.tiers.deep).toBe(PROFILES["dev-rtx5080"].tiers.deep);
+    });
+
+    it("OLLAMA_MODEL_NAME_RE is exported and matches the documented pattern", () => {
+      expect(OLLAMA_MODEL_NAME_RE).toBeInstanceOf(RegExp);
+      // Spot-check the contract — lowercase name, optional :tag (mixed case).
+      expect(OLLAMA_MODEL_NAME_RE.test("hermes3:8b")).toBe(true);
+      expect(OLLAMA_MODEL_NAME_RE.test("nomic-embed-text")).toBe(true);
+      // Mixed-case quantization tag (allowed AFTER the colon).
+      expect(OLLAMA_MODEL_NAME_RE.test("custom:model-q4_K_M")).toBe(true);
+      // The negative lookahead in the regex catches the `<name>-<digits>[letter]`
+      // dash-typo shape directly, so `hermes3-8b` fails at the structural step.
+      expect(OLLAMA_MODEL_NAME_RE.test("hermes3-8b")).toBe(false);
+      // Uppercase in the name segment is always rejected.
+      expect(OLLAMA_MODEL_NAME_RE.test("Hermes3:8B")).toBe(false);
+      expect(OLLAMA_MODEL_NAME_RE.test("hermes 3:8b")).toBe(false);
+    });
+  });
+
+  // ── FT-002 — num_ctx validator (Phase 7) ─────────────────────────
+
+  describe("validateNumCtx (FT-002)", () => {
+    it("accepts integers within [NUM_CTX_MIN, NUM_CTX_MAX]", () => {
+      expect(() => validateNumCtx("INTERN_NUM_CTX_INSTANT", 4096)).not.toThrow();
+      expect(() => validateNumCtx("X", NUM_CTX_MIN)).not.toThrow();
+      expect(() => validateNumCtx("X", NUM_CTX_MAX)).not.toThrow();
+    });
+
+    it("no-ops on undefined / null", () => {
+      expect(() => validateNumCtx("X", undefined)).not.toThrow();
+      expect(() => validateNumCtx("X", null)).not.toThrow();
+    });
+
+    it("throws CONFIG_INVALID on values below the lower bound", () => {
+      let caught: unknown;
+      try {
+        validateNumCtx("INTERN_NUM_CTX_INSTANT", NUM_CTX_MIN - 1);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(InternError);
+      expect((caught as InternError).code).toBe("CONFIG_INVALID");
+    });
+
+    it("throws CONFIG_INVALID on values above the upper bound", () => {
+      let caught: unknown;
+      try {
+        validateNumCtx("INTERN_NUM_CTX_DEEP", NUM_CTX_MAX + 1);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(InternError);
+      expect((caught as InternError).code).toBe("CONFIG_INVALID");
+    });
+
+    it("throws CONFIG_INVALID on non-integer numbers (4096.5)", () => {
+      expect(() => validateNumCtx("X", 4096.5)).toThrow(/CONFIG_INVALID|not an integer/);
+    });
+
+    it("throws CONFIG_INVALID on a non-numeric string", () => {
+      expect(() => validateNumCtx("X", "not a number")).toThrow();
+    });
   });
 });

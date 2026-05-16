@@ -1,0 +1,48 @@
+name: Dependency Review
+
+# GitHub's dependency-review-action diffs the lockfile changes in a PR against
+# the base branch and fails the check if any newly-introduced dependency has:
+#   - a vulnerability at moderate severity or higher
+#   - a license outside the permissive allowlist below
+#
+# This is the supply-chain gate that runs in the PR-review window — earlier
+# than `npm audit` which only runs on main, and earlier than the CodeQL scan
+# which only catches code-quality findings. Together they cover three failure
+# modes (vulnerable new dep / license incompat / source-code CVE pattern).
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  # pull-requests: write — lets the action post a summary comment on the PR
+  # describing what dependencies it found and what it would have blocked.
+  # Without it the check still runs and gates merge, but the operator-facing
+  # explanation only shows up in the Checks tab.
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Dependency Review
+        # v4 — current major. Pin tracks the same convention as CodeQL.
+        uses: actions/dependency-review-action@v4
+        with:
+          # Severity floor. Any CVE at moderate / high / critical against a
+          # newly-introduced dep fails the check. `low` would be too noisy;
+          # `high` would miss meaningful moderates the project shouldn't
+          # silently absorb.
+          fail-on-severity: moderate
+          # License allowlist — the project ships under MIT. Anything more
+          # restrictive (GPL family, AGPL, SSPL) would create license-friction
+          # for downstream consumers. The five listed cover the dominant
+          # permissive-license surface in the npm ecosystem.
+          allow-licenses: MIT, BSD-2-Clause, BSD-3-Clause, ISC, Apache-2.0
+          # Post the PR comment so the operator sees the diff inline.
+          comment-summary-in-pr: on-failure

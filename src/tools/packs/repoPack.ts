@@ -34,8 +34,19 @@ import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
-import { callEvent, packStepEvent } from "../../observability.js";
+import { callEvent } from "../../observability.js";
 import type { RunContext } from "../../runContext.js";
+import {
+  withRunContext as withRunCorrelation,
+  mintRunId,
+  getRunContext as getRunCorrelation,
+} from "../../runContext.js";
+import {
+  buildPackStepEventWithCorrelation as packStepEvent,
+  withCallContext,
+  mintCallId,
+  getCallContext,
+} from "../_runContext.js";
 import { assembleEvidence } from "../briefs/common.js";
 import { loadSources, formatSourcesBlock } from "../../sources.js";
 import {
@@ -443,6 +454,25 @@ export async function handleRepoPack(
   input: RepoPackInput,
   ctx: RunContext,
 ): Promise<Envelope<RepoPackResult>> {
+  // FT-010: inherit run_id from backend-core's ALS (MCP wrap path mints
+  // it) or mint one defensively for test invocations. Pack-level
+  // call_id is the parent_call_id for every emitted pack_step event;
+  // nested runTool calls enter their own call scopes so their call_id
+  // mutations don't leak back.
+  const existingRun = getRunCorrelation();
+  if (existingRun) {
+    return withCallContext({ call_id: mintCallId() }, () => handleRepoPackInner(input, ctx));
+  }
+  const run_id = mintRunId();
+  return withRunCorrelation({ run_id, started_at: new Date().toISOString() }, () =>
+    withCallContext({ call_id: mintCallId() }, () => handleRepoPackInner(input, ctx)),
+  );
+}
+
+async function handleRepoPackInner(
+  input: RepoPackInput,
+  ctx: RunContext,
+): Promise<Envelope<RepoPackResult>> {
   const packStartedAt = Date.now();
   const steps: StepEntry[] = [];
   let tokensIn = 0;
@@ -647,6 +677,15 @@ export async function handleRepoPack(
     residency,
     ...(envelopeWarnings.length > 0 ? { warnings: envelopeWarnings } : {}),
   });
+  // FT-010: echo correlation IDs on the pack envelope (additive cast).
+  const runCtx = getRunCorrelation();
+  const callCtx = getCallContext();
+  if (runCtx?.run_id) {
+    (envelope as unknown as Record<string, unknown>).run_id = runCtx.run_id;
+  }
+  if (callCtx?.call_id) {
+    (envelope as unknown as Record<string, unknown>).call_id = callCtx.call_id;
+  }
   await ctx.logger.log(callEvent("ollama_repo_pack", envelope));
   return envelope;
 }

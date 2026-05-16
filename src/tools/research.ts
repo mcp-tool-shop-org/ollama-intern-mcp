@@ -18,13 +18,19 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
-import { parseCitations, validateCitations, type ValidatedCitation } from "../guardrails/citations.js";
-import { timestamp } from "../observability.js";
+import {
+  parseCitations,
+  validateCitations,
+  buildCitationStripEventDetails,
+  type ValidatedCitation,
+  type CitationValidationResult,
+} from "../guardrails/citations.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { detectCoverage } from "../coverage.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { normalizePath } from "../protectedPaths.js";
 import type { RunContext } from "../runContext.js";
+import { buildGuardrailEventWithCorrelation } from "./_runContext.js";
 
 export const researchSchema = z.object({
   question: z.string().min(1).describe("The question to answer."),
@@ -127,6 +133,19 @@ export async function handleResearch(
     linesByPath.set(normalizePath(s.path), lineCount);
   }
 
+  // Capture the most-recent citation validation result so we can emit
+  // per-strip event details after the runner returns. The parse closure
+  // runs once per attempt (re-runs on fallback retry use the same
+  // closure), and the final attempt's result is what the caller sees —
+  // so a single `let` mirror is enough. Initialized to an empty result
+  // so the post-runner block is safe even when the call short-circuits
+  // before parse ever runs.
+  let citationResult: CitationValidationResult = {
+    valid: [],
+    stripped: [],
+    out_of_bounds_ranges: [],
+  };
+
   const envelope = await runTool<ResearchResult>({
     tool: "ollama_research",
     tier: "deep",
@@ -141,7 +160,9 @@ export async function handleResearch(
     parse: (raw): ResearchResult => {
       const { answer, sources: sourcesBlock } = splitAnswerAndSources(raw);
       const parsed = parseCitations(sourcesBlock);
-      const { valid, stripped, out_of_bounds_ranges } = validateCitations(parsed, input.source_paths, linesByPath);
+      const validation = validateCitations(parsed, input.source_paths, linesByPath);
+      const { valid, stripped, out_of_bounds_ranges } = validation;
+      citationResult = validation;
       if (stripped.length > 0) {
         warnings.push(
           `Stripped ${stripped.length} citation(s) the model emitted that were not in source_paths: ${stripped.map((c) => c.path).join(", ")}. This is BY DESIGN — research refuses to cite anything outside the caller-declared source list, it is not a bug. If those paths matter, re-run with them included in source_paths.`,
@@ -205,14 +226,37 @@ export async function handleResearch(
 
   if (warnings.length > 0) {
     envelope.warnings = [...(envelope.warnings ?? []), ...warnings];
-    await ctx.logger.log({
-      kind: "guardrail",
-      ts: timestamp(),
-      tool: "ollama_research",
-      rule: "citations",
-      action: "stripped",
-      detail: { count: warnings.length },
-    });
+    // FT-017: emit one structured guardrail event per stripped citation
+    // (or per dropped line_range) instead of a single { count } summary.
+    // An operator grepping the NDJSON log can now answer "which path
+    // did the model fabricate?" without re-running the call. Also
+    // attaches FT-010 correlation fields (run_id, parent_call_id) via
+    // buildGuardrailEventWithCorrelation so events stitch back to the
+    // owning envelope. Falls back to a count-summary event when the
+    // per-strip details array is empty (shouldn't happen given the
+    // warnings.length>0 guard, but defensive).
+    const details = buildCitationStripEventDetails(citationResult);
+    if (details.length > 0) {
+      for (const detail of details) {
+        await ctx.logger.log(
+          buildGuardrailEventWithCorrelation({
+            tool: "ollama_research",
+            rule: "citations",
+            action: "stripped",
+            detail,
+          }),
+        );
+      }
+    } else {
+      await ctx.logger.log(
+        buildGuardrailEventWithCorrelation({
+          tool: "ollama_research",
+          rule: "citations",
+          action: "stripped",
+          detail: { count: warnings.length },
+        }),
+      );
+    }
   }
 
   return envelope;

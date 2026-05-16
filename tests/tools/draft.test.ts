@@ -1,60 +1,64 @@
+/**
+ * MIGRATED (FT-003 / Phase 7) — uses shared tests/_helpers/ instead of
+ * the per-file QueueClient + makeCtx boilerplate. The queue-based
+ * sequential-response pattern is preserved by composing `createFakeOllama`
+ * with a per-call `generateImpl` that pops from a captured array.
+ */
 import { describe, it, expect } from "vitest";
 import { handleDraft } from "../../src/tools/draft.js";
-import { PROFILES } from "../../src/profiles.js";
-import { NullLogger } from "../../src/observability.js";
 import { InternError } from "../../src/errors.js";
-import type {
-  OllamaClient,
-  GenerateRequest,
-  GenerateResponse,
-  ChatRequest,
-  ChatResponse,
-  EmbedRequest,
-  EmbedResponse,
-} from "../../src/ollama.js";
-import type { Residency } from "../../src/envelope.js";
-import type { RunContext } from "../../src/runContext.js";
+import type { FakeOllamaClient } from "../_helpers/index.js";
+import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
 
-/** Queue-based mock that returns successive responses from a list. */
-class QueueClient implements OllamaClient {
-  public callCount = 0;
-  constructor(private responses: string[]) {}
-
-  async generate(req: GenerateRequest): Promise<GenerateResponse> {
-    const idx = Math.min(this.callCount, this.responses.length - 1);
-    this.callCount += 1;
-    return {
-      model: req.model,
-      response: this.responses[idx],
-      done: true,
-      prompt_eval_count: 20,
-      eval_count: 10,
-    };
-  }
-  async chat(_req: ChatRequest): Promise<ChatResponse> {
-    throw new Error("not used");
-  }
-  async embed(_req: EmbedRequest): Promise<EmbedResponse> {
-    throw new Error("not used");
-  }
-  async residency(_model: string): Promise<Residency | null> {
-    return { in_vram: true, size_bytes: 100, size_vram_bytes: 100, evicted: false, expires_at: null };
-  }
+/**
+ * Construct a fake OllamaClient that returns successive `responses` from
+ * an internal queue. Once the queue is exhausted the LAST response is
+ * returned repeatedly (matches the legacy QueueClient behavior).
+ *
+ * Legacy parity: the old QueueClient exposed `callCount` as a flat number.
+ * The shared factory exposes a structured `callCount.generate` instead;
+ * we expose a `queueCallCount` getter on the returned wrapper so callers
+ * can read the simple-number form without shadowing the structured one.
+ */
+function makeQueue(responses: string[]): FakeOllamaClient & { callCount: number } {
+  const state = { count: 0 };
+  const client = createFakeOllama({
+    generateImpl: async (req) => {
+      const idx = Math.min(state.count, responses.length - 1);
+      state.count += 1;
+      return {
+        model: req.model,
+        response: responses[idx],
+        done: true,
+        prompt_eval_count: 20,
+        eval_count: 10,
+      };
+    },
+  });
+  // Return a Proxy so reads of `.callCount` get the flat number while
+  // every other property forwards to the underlying client (including the
+  // structured `callCount` on the factory — accessed elsewhere as
+  // `client.callCount.generate` is not used in this file's tests).
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === "callCount") return state.count;
+      return Reflect.get(target, prop);
+    },
+  }) as FakeOllamaClient & { callCount: number };
 }
 
-function makeCtx(client: OllamaClient, logger = new NullLogger()): RunContext & { logger: NullLogger } {
-  return {
-    client,
-    tiers: PROFILES["dev-rtx5080"].tiers,
-    timeouts: PROFILES["dev-rtx5080"].timeouts,
-    hardwareProfile: "dev-rtx5080",
-    logger,
-  };
+function makeCtx(client: FakeOllamaClient) {
+  return makeFakeCtx({ client });
 }
+
+// Re-export for the rare test that needs an explicit logger handle
+// (draft has one test that asserts on guardrail events fired off the
+// logger handed in). The shared helper builds a fresh NullLogger per
+// makeFakeCtx call, so the test grabs `.logger` off the returned ctx.
 
 describe("handleDraft — default (no style=doc)", () => {
   it("does NOT run the banned-phrase check when style is unset", async () => {
-    const client = new QueueClient(["this leverages seamless effortless synergy"]);
+    const client = makeQueue(["this leverages seamless effortless synergy"]);
     const env = await handleDraft({ prompt: "write something" }, makeCtx(client));
     expect(env.result.draft).toContain("seamless");
     expect(env.result.regenerations_triggered).toBeUndefined();
@@ -62,7 +66,7 @@ describe("handleDraft — default (no style=doc)", () => {
   });
 
   it("does NOT run the banned-phrase check when style=concise", async () => {
-    const client = new QueueClient(["blazing fast cutting-edge solution"]);
+    const client = makeQueue(["blazing fast cutting-edge solution"]);
     const env = await handleDraft(
       { prompt: "write something", style: "concise" },
       makeCtx(client),
@@ -75,7 +79,7 @@ describe("handleDraft — default (no style=doc)", () => {
 
 describe("handleDraft — style=doc banned-phrase rejection", () => {
   it("passes clean prose on the first attempt, no regenerations flagged", async () => {
-    const client = new QueueClient([
+    const client = makeQueue([
       "The module reads UTF-8, validates against schema, emits an envelope.",
     ]);
     const env = await handleDraft(
@@ -89,7 +93,7 @@ describe("handleDraft — style=doc banned-phrase rejection", () => {
   });
 
   it("regenerates once when the first attempt contains a banned phrase, then succeeds", async () => {
-    const client = new QueueClient([
+    const client = makeQueue([
       "Our seamless integration enables...",
       "Parses NDJSON events and writes them to SQLite.",
     ]);
@@ -104,7 +108,7 @@ describe("handleDraft — style=doc banned-phrase rejection", () => {
   });
 
   it("regenerates twice when the first two attempts both contain banned phrases, then succeeds", async () => {
-    const client = new QueueClient([
+    const client = makeQueue([
       "Seamless and effortless flow.",
       "We leverage the cache.",
       "The module caches the last 10 responses.",
@@ -122,7 +126,7 @@ describe("handleDraft — style=doc banned-phrase rejection", () => {
   });
 
   it("throws DRAFT_BANNED_PHRASE with detected phrases in hint after MAX_ATTEMPTS", async () => {
-    const client = new QueueClient([
+    const client = makeQueue([
       "Blazing fast performance.",
       "Effortless and seamless.",
       "Leverage our robust platform.",
@@ -147,7 +151,7 @@ describe("handleDraft — style=doc banned-phrase rejection", () => {
   });
 
   it("does not duplicate entries in detected_phrases when the same phrase appears multiple times", async () => {
-    const client = new QueueClient([
+    const client = makeQueue([
       "seamless seamless seamless",
       "A concrete description of the feature.",
     ]);
@@ -160,21 +164,18 @@ describe("handleDraft — style=doc banned-phrase rejection", () => {
   });
 
   it("logs a guardrail event on each regeneration and on final block", async () => {
-    const client = new QueueClient([
+    const client = makeQueue([
       "seamless",
       "effortless",
       "leverage",
     ]);
-    const logger = new NullLogger();
+    const ctx = makeCtx(client);
     try {
-      await handleDraft(
-        { prompt: "pitch", style: "doc" },
-        makeCtx(client, logger),
-      );
+      await handleDraft({ prompt: "pitch", style: "doc" }, ctx);
     } catch {
       // expected
     }
-    const guardrailEvents = logger.events.filter((e) => e.kind === "guardrail");
+    const guardrailEvents = ctx.logger.events.filter((e) => e.kind === "guardrail");
     // 2 regenerated + 1 blocked = 3 guardrail events (plus the 3 call events)
     const regenerated = guardrailEvents.filter((e) => (e as { action?: string }).action === "regenerated");
     const blocked = guardrailEvents.filter((e) => (e as { action?: string }).action === "blocked");

@@ -17,12 +17,16 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
-import { applyConfidenceThreshold, type ClassifyGuarded } from "../guardrails/confidence.js";
+import {
+  applyConfidenceThreshold,
+  buildConfidenceStripEvent,
+  type ClassifyGuarded,
+} from "../guardrails/confidence.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { loadSources } from "../sources.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
-import { timestamp } from "../observability.js";
+import { buildGuardrailEventWithCorrelation } from "./_runContext.js";
 
 export const classifySchema = z.object({
   text: z.string().min(1).optional().describe("The single text to classify. Use this OR source_path OR items — exactly one."),
@@ -199,22 +203,42 @@ export async function handleClassify(
     // names a concrete parser failure mode. Fire-and-forget — log
     // failures must never block classification.
     if (outcome.abstain_reason) {
-      void ctx.logger.log({
-        kind: "guardrail",
-        ts: timestamp(),
-        tool: "ollama_classify",
-        rule: "classify_abstain",
-        action: "abstained",
-        detail: {
-          reason: outcome.abstain_reason,
-          raw_preview: raw.slice(0, 200),
-        },
-      });
+      void ctx.logger.log(
+        buildGuardrailEventWithCorrelation({
+          tool: "ollama_classify",
+          rule: "classify_abstain",
+          action: "abstained",
+          detail: {
+            reason: outcome.abstain_reason,
+            raw_preview: raw.slice(0, 200),
+          },
+        }),
+      );
     }
     const guarded = applyConfidenceThreshold(outcome.parsed, {
       threshold: input.threshold,
       allow_none: input.allow_none,
     });
+    // FT-017: emit a structured guardrail event when the confidence
+    // guardrail stripped a weak label. `buildConfidenceStripEvent`
+    // returns null when nothing was stripped (model returned null
+    // already, or the label survived threshold), so the guard naturally
+    // suppresses the no-op cases. Captures the RAW model output
+    // alongside the threshold so an operator reading log_tail can
+    // answer "what label did the model produce before the guardrail
+    // intervened?" without re-running. Carries FT-010 correlation
+    // fields automatically via the helper.
+    const stripDetail = buildConfidenceStripEvent(outcome.parsed, guarded);
+    if (stripDetail) {
+      void ctx.logger.log(
+        buildGuardrailEventWithCorrelation({
+          tool: "ollama_classify",
+          rule: "confidence",
+          action: "strip",
+          detail: stripDetail,
+        }),
+      );
+    }
     return applyFrameAlignment(guarded, outcome.parsed, frameSupplied);
   };
 

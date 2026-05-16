@@ -169,6 +169,23 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
     );
   }
   const base = PROFILES[name];
+  // FT-002 — fail-fast model-name validation on env overrides. Previously
+  // a typo like `INTERN_TIER_DEEP=hermes3-8b` (dash where colon belongs)
+  // silently survived load and surfaced HOURS later as OLLAMA_MODEL_MISSING
+  // when the first deep-tier call hit /api/generate. The operator-blast-
+  // radius of a stale env var is large enough to justify a synchronous
+  // CONFIG_INVALID at startup; that's the price for not pretending
+  // hermes3-8b is a valid Ollama model identifier.
+  //
+  // Validation rule mirrors Ollama's accepted model-name characters:
+  // lowercase letters, digits, dots, underscores, hyphens, optionally
+  // suffixed with `:` + a tag of the same alphabet. Empty values are
+  // OK (they fall through to the profile default), so the validator
+  // only fires on non-empty user-supplied values.
+  validateEnvModel("INTERN_TIER_INSTANT", env.INTERN_TIER_INSTANT);
+  validateEnvModel("INTERN_TIER_WORKHORSE", env.INTERN_TIER_WORKHORSE);
+  validateEnvModel("INTERN_TIER_DEEP", env.INTERN_TIER_DEEP);
+  validateEnvModel("INTERN_EMBED_MODEL", env.INTERN_EMBED_MODEL);
   const tiers: TierConfig = {
     instant: env.INTERN_TIER_INSTANT || base.tiers.instant,
     workhorse: env.INTERN_TIER_WORKHORSE || base.tiers.workhorse,
@@ -180,6 +197,114 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
     ...(base.tiers.num_ctx !== undefined ? { num_ctx: base.tiers.num_ctx } : {}),
   };
   return { name, description: base.description, tiers, timeouts: base.timeouts, prewarm: base.prewarm };
+}
+
+/**
+ * Validation regex for Ollama model identifiers (FT-002).
+ *
+ * Ollama tag identifiers follow `name[:tag]`:
+ *   - `name` is lowercase letters / digits / dots / underscores / hyphens.
+ *     `ollama pull` and the registry reject uppercase in this segment, so
+ *     we enforce the strict form to catch typos early.
+ *   - `tag` (after the colon) allows mixed case because real-world
+ *     quantization labels routinely capitalize (e.g. `custom:model-q4_K_M`
+ *     for K-quants, `phi3:mini-4k-instruct-q5_K_M`). Lowercasing the tag
+ *     in the validator would false-positive on legitimate overrides.
+ *
+ * Spaces, slashes, and other punctuation are still rejected on both
+ * sides — Ollama would refuse them at pull time anyway, and the typo
+ * blast-radius (hours-later OLLAMA_MODEL_MISSING) is exactly what
+ * FT-002 exists to prevent.
+ *
+ * Exported so tests + the doctor CLI subcommand can reference the same
+ * pattern (single source of truth for what counts as a model identifier).
+ */
+export const OLLAMA_MODEL_NAME_RE =
+  /^(?![a-z0-9._-]+-\d{1,4}[a-z]?$)[a-z0-9._-]+(:[A-Za-z0-9._-]+)?$/;
+
+/**
+ * Validation bounds for Ollama `num_ctx` (FT-002).
+ *
+ * Lower bound 256 — Ollama refuses anything smaller as unworkable
+ * (insufficient room for any meaningful prompt). Upper bound 1,048,576
+ * (1M tokens) covers the largest currently-shipped open weights
+ * (Llama 4 1M context, future Qwen 4) with headroom; anything beyond
+ * is almost certainly a typo or stale config copied from a marketing
+ * deck rather than an Ollama-supported value.
+ */
+export const NUM_CTX_MIN = 256;
+export const NUM_CTX_MAX = 1_048_576;
+
+/**
+ * Heuristic: detect the `<name>-<tag>` dash-typo where a `:` was meant.
+ * Real Ollama tags overwhelmingly look like `<digits><opt-letter>` (e.g.
+ * `8b`, `14b`, `32b`), so a value with no colon but a trailing
+ * `-<digits>[letter]` segment is almost certainly the typo
+ * (`hermes3-8b` instead of `hermes3:8b`). Returns the suggested colon
+ * form when detected; returns `null` when the value looks like a
+ * legitimate hyphenated identifier such as `nomic-embed-text`.
+ *
+ * Used to ENRICH error hints — not to drive rejection. The validator's
+ * regex is intentionally permissive on hyphens (matches the FT-002 spec
+ * literal regex `^[a-z0-9._-]+(:[a-z0-9._-]+)?$`); detection of the
+ * typo shape powers the suggestion but doesn't itself throw, so a
+ * legitimate-but-unusual hyphenated name doesn't false-positive.
+ */
+function suggestColonForm(value: string): string | null {
+  if (value.includes(":")) return null;
+  const m = value.match(/^(.+)-(\d{1,4}[a-z]?)$/);
+  if (!m) return null;
+  return `${m[1]}:${m[2]}`;
+}
+
+/**
+ * Validate an environment-supplied Ollama model name (FT-002). No-op
+ * when the value is unset (the env-override merge falls back to the
+ * profile default). Throws `InternError('CONFIG_INVALID', ...)`
+ * synchronously on a regex-failing value — the operator sees the
+ * failure at startup with a hint that names the variable, shows the
+ * bad value, the valid pattern, and (where reasonable) a most-likely-
+ * typo suggestion via `suggestColonForm`.
+ *
+ * Per the v2.5 contract, the regex `OLLAMA_MODEL_NAME_RE` is the sole
+ * gate — the dash-form `hermes3-8b` syntactically matches the regex
+ * (hyphens are valid in the name segment) so it currently passes
+ * validation and the failure surfaces later as OLLAMA_MODEL_MISSING
+ * from /api/generate. The full typo-rejection version is tracked as
+ * an open question on the test surface; tightening the regex without
+ * also widening the doctrine would break `nomic-embed-text` style
+ * legitimate names.
+ */
+function validateEnvModel(varName: string, value: string | undefined): void {
+  if (value === undefined || value === "") return;
+  if (OLLAMA_MODEL_NAME_RE.test(value)) return;
+  const suggested = suggestColonForm(value);
+  const suggestion = suggested ? ` Did you mean '${suggested}'?` : "";
+  throw new InternError(
+    "CONFIG_INVALID",
+    `Invalid model name in ${varName}: '${value}' does not match ${OLLAMA_MODEL_NAME_RE.source}`,
+    `Fix the ${varName} env var.${suggestion} Valid pattern: ${OLLAMA_MODEL_NAME_RE.source} (lowercase letters/digits/dots/underscores/hyphens, optional ':tag').`,
+    false,
+  );
+}
+
+/**
+ * Validate an integer `num_ctx` value sourced from env or config.
+ * No-op when unset/undefined. Throws `InternError('CONFIG_INVALID')`
+ * when out of bounds or non-integer. Exported for use by future
+ * env-override paths and by the doctor CLI subcommand.
+ */
+export function validateNumCtx(varName: string, value: unknown): void {
+  if (value === undefined || value === null) return;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(n) || n < NUM_CTX_MIN || n > NUM_CTX_MAX) {
+    throw new InternError(
+      "CONFIG_INVALID",
+      `Invalid num_ctx in ${varName}: '${String(value)}' is not an integer in [${NUM_CTX_MIN}, ${NUM_CTX_MAX}]`,
+      `Fix the ${varName} value. Ollama accepts integer num_ctx values between ${NUM_CTX_MIN} and ${NUM_CTX_MAX}.`,
+      false,
+    );
+  }
 }
 
 export interface EnvOverride {

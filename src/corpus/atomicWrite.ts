@@ -38,10 +38,77 @@ import { dirname } from "node:path";
  * to find the leak (path + the underlying cleanup error message).
  *
  * Callers wiring an NDJSON logger should map this to a structured event
- * (e.g. `{ kind: "atomic_write_orphan", path, cleanup_error }`) so the
- * operator can grep their log for `atomic_write_orphan`.
+ * built via `buildAtomicWriteOrphanEvent` so the resulting log line
+ * carries the canonical Phase 7 / FT-001 shape (`op: 'pack_step'` is
+ * the closest fit on the closed CorrelationOp enum — corpus writes are
+ * pack-step-adjacent operations, not user-facing guardrails). The
+ * NDJSON logger auto-merges `run_id` from the active AsyncLocalStorage
+ * `CorrelationContext` at write time.
  */
 export type OrphanCallback = (info: { path: string; cleanup_error: string }) => void;
+
+/**
+ * Detail payload for an operator-facing structured event emitted when
+ * a `.tmp` file orphan was left behind because cleanup itself failed.
+ *
+ * Phase 7 / FT-001: `op` and `rule` are stamped so jq filtering is
+ * uniform. The corpus atomicWrite path is a pack-step-adjacent
+ * operation (it fires from index/refresh/amend pipelines), so we tag
+ * it as `op: 'pack_step'` rather than minting a new op value — this
+ * keeps the closed enum tight per the corpus-guards lock. If a future
+ * integration surfaces standalone atomic-write events outside any pack
+ * pipeline, that's the moment to revisit; today every reachable call
+ * site is inside a pack-style multi-step operation.
+ *
+ * Wiring (callers with a logger should use this pattern):
+ *
+ *   await atomicWriteFile(path, payload, (info) => {
+ *     void ctx.logger.log({
+ *       kind: 'pack_step',
+ *       ts: new Date().toISOString(),
+ *       pack: '<incident|repo|change>',
+ *       step: 'corpus_write',
+ *       step_index: <n>,
+ *       total_steps: <N>,
+ *       // additive fields — NDJSON serializer accepts them, full
+ *       // typing lands when backend-core widens LogEvent:
+ *       ...buildAtomicWriteOrphanEvent(info),
+ *     } as any);
+ *   });
+ *
+ * For a corpus operation that's NOT inside a pack (e.g., a direct
+ * corpus_index call from a non-pack tool), use `op: 'pack_step'` on a
+ * synthetic step to keep filterability uniform. The closed-enum
+ * discipline matters more than perfect semantic fit at this layer.
+ */
+export interface AtomicWriteOrphanEventDetail {
+  /** Closed-enum op tag from observability.CorrelationOp. */
+  op: "pack_step";
+  /** Stable rule identifier — greppable. */
+  rule: "atomic_write_orphan";
+  /** Path of the .tmp file that could not be cleaned up. */
+  path: string;
+  /** Error message from the failed cleanup. */
+  cleanup_error: string;
+}
+
+/**
+ * Build the structured-event detail for an operator log entry when
+ * `.tmp` cleanup failed. Pure shaping — does NOT call the logger
+ * itself (atomicWrite is intentionally logger-free; the orphan
+ * callback is the integration point).
+ */
+export function buildAtomicWriteOrphanEvent(info: {
+  path: string;
+  cleanup_error: string;
+}): AtomicWriteOrphanEventDetail {
+  return {
+    op: "pack_step",
+    rule: "atomic_write_orphan",
+    path: info.path,
+    cleanup_error: info.cleanup_error,
+  };
+}
 
 /**
  * Write `payload` to `path` atomically:

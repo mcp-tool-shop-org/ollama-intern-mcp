@@ -22,6 +22,25 @@
  * Behavior change callout: existing callers that never passed `allow_none`
  * will now see `label: null` on below-threshold classifications instead of
  * the weak label. The `below_threshold: true` flag tells them why.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ * Phase 7 / FT-001 event-emission pattern (corpus-guards lock):
+ * ─────────────────────────────────────────────────────────────────────
+ * `buildConfidenceStripEvent(raw, guarded)` returns a self-describing
+ * event detail carrying `op: 'guardrail'` + `rule: 'confidence_strip'`
+ * (closed enum from observability.CorrelationOp). It does NOT carry
+ * `run_id` directly — the NDJSON logger auto-merges that from the active
+ * AsyncLocalStorage `CorrelationContext` at write time
+ * (see observability.withCorrelation). Callers should NOT thread run_id
+ * by hand; the pattern is:
+ *
+ *   const detail = buildConfidenceStripEvent(raw, guarded);
+ *   if (detail) await ctx.logger.log({ kind: 'guardrail', ts: ...,
+ *     tool: 'ollama_classify', rule: detail.rule, action: 'strip',
+ *     detail });
+ *
+ * Wiring this into the call site is the tools agent's job (see
+ * src/tools/classify.ts). This module only builds the detail shape.
  */
 
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.7;
@@ -41,12 +60,23 @@ export interface ClassifyGuarded {
 /**
  * Detail payload for an operator-facing structured event emitted when the
  * confidence guardrail strips a weak label. Callers with a logger should
- * wrap this in `{ kind: "guardrail", rule: "confidence", action: "strip",
+ * wrap this in `{ kind: "guardrail", rule: detail.rule, action: "strip",
  * detail: buildConfidenceStripEvent(...) }` so an operator grepping the
  * NDJSON log can see WHY a label was stripped (the raw model output) and
  * not just THAT one was stripped.
+ *
+ * Phase 7 / FT-001: `op` and `rule` are stamped on the detail so that
+ * every guardrail event in the NDJSON log can be filtered uniformly with
+ * `jq 'select(.op=="guardrail" and .detail.rule=="confidence_strip")'`
+ * regardless of which call site emitted it. The wrapper event still
+ * carries its own `kind`/`rule`/`action` for back-compat with existing
+ * log_tail consumers; the new fields are additive.
  */
 export interface ConfidenceStripEventDetail {
+  /** Closed-enum op tag from observability.CorrelationOp. Always 'guardrail' here. */
+  op: "guardrail";
+  /** Stable rule identifier — greppable. */
+  rule: "confidence_strip";
   raw_label: string | null;
   raw_confidence: number;
   threshold: number;
@@ -91,6 +121,8 @@ export function buildConfidenceStripEvent(
   if (guarded.label !== null) return null; // not stripped
   if (raw.label === null) return null; // model emitted null; not a strip
   return {
+    op: "guardrail",
+    rule: "confidence_strip",
     raw_label: raw.label,
     raw_confidence: raw.confidence,
     threshold: guarded.threshold,

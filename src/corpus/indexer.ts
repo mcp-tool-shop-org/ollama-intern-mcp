@@ -8,6 +8,14 @@
  *
  * This means `index` can be called repeatedly in daily use without
  * burning the embed tier on unchanged content.
+ *
+ * Phase 7 / FT-001 event-emission policy: this module does NOT call
+ * the logger directly — the report return value is the operator-facing
+ * surface. Tool handlers (src/tools/corpusIndex.ts) build their own
+ * `kind: "call"` event from the report; if a future call site needs to
+ * emit a corpus-step event, use `buildCorpusIndexStepEvent` below
+ * (op: 'pack_step', rule: 'corpus_index_step') so the closed
+ * CorrelationOp enum stays tight.
  */
 
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
@@ -415,5 +423,64 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     embed_model_resolved: embedModelResolved,
     ...(withinRefreshDrift ? { embed_model_resolved_drift_within_refresh: withinRefreshDrift } : {}),
     failed_paths: failedPaths,
+  };
+}
+
+/**
+ * Detail payload for an operator-facing structured event a tool handler
+ * can emit when it wraps a corpus index in a pack-step pipeline.
+ *
+ * Phase 7 / FT-001: tagged `op: 'pack_step'` so it slots into the
+ * existing closed CorrelationOp enum (corpus indexing is a structured
+ * multi-step operation; a separate corpus_step op would be redundant).
+ * The NDJSON logger auto-merges `run_id` from ALS at write time.
+ *
+ * Carries the headline counters from the index report so a log-only
+ * consumer can build a "indexing throughput" view without capturing
+ * envelopes.
+ */
+export interface CorpusIndexStepEventDetail {
+  /** Closed-enum op tag from observability.CorrelationOp. */
+  op: "pack_step";
+  /** Stable rule identifier — greppable. */
+  rule: "corpus_index_step";
+  /** Corpus name. */
+  name: string;
+  /** Documents (unique paths) in the resulting corpus. */
+  documents: number;
+  /** Total chunks in the resulting corpus. */
+  chunks: number;
+  /** Chunks reused verbatim from the existing corpus. */
+  reused_chunks: number;
+  /** Chunks newly embedded this run. */
+  newly_embedded_chunks: number;
+  /** Files that were in the prior corpus but dropped from the input. */
+  dropped_file_count: number;
+  /** True when Ollama bumped `:latest` mid-index (within a single run). */
+  embed_model_drift_within_refresh: boolean;
+  /** Number of paths that failed this run (read errors, size cap, symlink, etc.). */
+  failed_path_count: number;
+}
+
+/**
+ * Build the pack-step event detail for a completed index run. Pure
+ * shaping — does NOT call the logger itself.
+ */
+export function buildCorpusIndexStepEvent(
+  report: IndexReport,
+): CorpusIndexStepEventDetail {
+  return {
+    op: "pack_step",
+    rule: "corpus_index_step",
+    name: report.name,
+    documents: report.documents,
+    chunks: report.chunks,
+    reused_chunks: report.reused_chunks,
+    newly_embedded_chunks: report.newly_embedded_chunks,
+    dropped_file_count: report.dropped_files.length,
+    embed_model_drift_within_refresh:
+      Array.isArray(report.embed_model_resolved_drift_within_refresh) &&
+      report.embed_model_resolved_drift_within_refresh.length > 0,
+    failed_path_count: report.failed_paths.length,
   };
 }

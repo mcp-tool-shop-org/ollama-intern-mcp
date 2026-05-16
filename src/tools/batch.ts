@@ -31,6 +31,16 @@ import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
 import { countTokens } from "../ollama.js";
 import { InternError, toErrorShape, type ErrorShape } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import {
+  withRunContext as withRunCorrelation,
+  mintRunId,
+  getRunContext as getRunCorrelation,
+} from "../runContext.js";
+import {
+  withCallContext,
+  mintCallId,
+  getCallContext,
+} from "./_runContext.js";
 
 export interface BatchItem {
   /** Caller-provided, stable, unique within the batch. Required. */
@@ -104,6 +114,23 @@ function assertUniqueIds(items: BatchItem[]): void {
 }
 
 export async function runBatch<I extends BatchItem, R>(
+  input: RunBatchInput<I, R>,
+): Promise<Envelope<BatchResult<R>>> {
+  // FT-010 correlation: inherit existing run_id from backend-core's ALS
+  // when present; otherwise mint one (test invocations that skip the
+  // outer wrap). Mint a fresh call_id at THIS scope so per-item nested
+  // events see the batch's call_id as their parent_call_id.
+  const existingRun = getRunCorrelation();
+  if (existingRun) {
+    return withCallContext({ call_id: mintCallId() }, () => runBatchInner(input));
+  }
+  const run_id = mintRunId();
+  return withRunCorrelation({ run_id, started_at: new Date().toISOString() }, () =>
+    withCallContext({ call_id: mintCallId() }, () => runBatchInner(input)),
+  );
+}
+
+async function runBatchInner<I extends BatchItem, R>(
   input: RunBatchInput<I, R>,
 ): Promise<Envelope<BatchResult<R>>> {
   assertUniqueIds(input.items);
@@ -200,6 +227,16 @@ export async function runBatch<I extends BatchItem, R>(
   envelope.batch_count = input.items.length;
   envelope.ok_count = okCount;
   envelope.error_count = errorCount;
+
+  // FT-010: echo run_id + call_id on the batch envelope (additive).
+  const runCtx = getRunCorrelation();
+  const callCtx = getCallContext();
+  if (runCtx?.run_id) {
+    (envelope as unknown as Record<string, unknown>).run_id = runCtx.run_id;
+  }
+  if (callCtx?.call_id) {
+    (envelope as unknown as Record<string, unknown>).call_id = callCtx.call_id;
+  }
 
   await ctx.logger.log(callEvent(input.tool, envelope));
   return envelope;

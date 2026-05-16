@@ -7,64 +7,32 @@
  * empty/whitespace overrides). The chat handler does not engage the timeout
  * fallback cascade, so semantics for "override + fallback" don't apply
  * here — that's exercised in the runner-backed atoms.
+ *
+ * MIGRATION (FT-003 / Phase 7): replaced the in-file MockClient and
+ * makeCtx boilerplate with the shared `createFakeOllama` + `makeFakeCtx`
+ * helpers from tests/_helpers/. Behavior under test is unchanged; only
+ * boilerplate is reduced.
  */
 
 import { describe, it, expect } from "vitest";
 import { handleChat, chatSchema } from "../../src/tools/chat.js";
 import { PROFILES } from "../../src/profiles.js";
-import { NullLogger } from "../../src/observability.js";
-import type {
-  OllamaClient,
-  GenerateRequest,
-  GenerateResponse,
-  ChatRequest,
-  ChatResponse,
-  EmbedRequest,
-  EmbedResponse,
-} from "../../src/ollama.js";
-import type { Residency } from "../../src/envelope.js";
-import type { RunContext } from "../../src/runContext.js";
-
-class MockClient implements OllamaClient {
-  public lastChat?: ChatRequest;
-  constructor(private reply: string = "ok") {}
-  async generate(_req: GenerateRequest): Promise<GenerateResponse> {
-    throw new Error("not used");
-  }
-  async chat(req: ChatRequest): Promise<ChatResponse> {
-    this.lastChat = req;
-    return {
-      model: req.model,
-      message: { role: "assistant", content: this.reply },
-      done: true,
-      prompt_eval_count: 10,
-      eval_count: 5,
-    };
-  }
-  async embed(_r: EmbedRequest): Promise<EmbedResponse> {
-    throw new Error("not used");
-  }
-  async residency(_m: string): Promise<Residency | null> {
-    return { in_vram: true, size_bytes: 1, size_vram_bytes: 1, evicted: false, expires_at: null };
-  }
-}
-
-function makeCtx(client: OllamaClient): RunContext & { logger: NullLogger } {
-  return {
-    client,
-    tiers: PROFILES["dev-rtx5080"].tiers,
-    timeouts: PROFILES["dev-rtx5080"].timeouts,
-    hardwareProfile: "dev-rtx5080",
-    logger: new NullLogger(),
-  };
-}
+import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
 
 describe("handleChat — baseline", () => {
   it("returns reply + last_resort marker", async () => {
-    const client = new MockClient("hello back");
+    const client = createFakeOllama({
+      chatImpl: async (req) => ({
+        model: req.model,
+        message: { role: "assistant", content: "hello back" },
+        done: true,
+        prompt_eval_count: 10,
+        eval_count: 5,
+      }),
+    });
     const env = await handleChat(
       { messages: [{ role: "user", content: "hello" }] },
-      makeCtx(client),
+      makeFakeCtx({ client }),
     );
     expect(env.result.reply).toBe("hello back");
     expect(env.result.last_resort).toBe(true);
@@ -74,13 +42,21 @@ describe("handleChat — baseline", () => {
 
 describe("handleChat — per-call model override (v2.3.0)", () => {
   it("input.model is passed to the underlying Ollama chat call", async () => {
-    const client = new MockClient("ok");
+    const client = createFakeOllama({
+      chatImpl: async (req) => ({
+        model: req.model,
+        message: { role: "assistant", content: "ok" },
+        done: true,
+        prompt_eval_count: 10,
+        eval_count: 5,
+      }),
+    });
     const env = await handleChat(
       {
         messages: [{ role: "user", content: "hi" }],
         model: "hermes3:8b-q5_K_M",
       },
-      makeCtx(client),
+      makeFakeCtx({ client }),
     );
     expect(client.lastChat?.model).toBe("hermes3:8b-q5_K_M");
     expect(env.model).toBe("hermes3:8b-q5_K_M");
@@ -88,10 +64,18 @@ describe("handleChat — per-call model override (v2.3.0)", () => {
   });
 
   it("input.model omitted falls through to tier-resolved workhorse model", async () => {
-    const client = new MockClient("ok");
+    const client = createFakeOllama({
+      chatImpl: async (req) => ({
+        model: req.model,
+        message: { role: "assistant", content: "ok" },
+        done: true,
+        prompt_eval_count: 10,
+        eval_count: 5,
+      }),
+    });
     const env = await handleChat(
       { messages: [{ role: "user", content: "hi" }] },
-      makeCtx(client),
+      makeFakeCtx({ client }),
     );
     expect(client.lastChat?.model).toBe(PROFILES["dev-rtx5080"].tiers.workhorse);
     expect(env.model).toBe(PROFILES["dev-rtx5080"].tiers.workhorse);

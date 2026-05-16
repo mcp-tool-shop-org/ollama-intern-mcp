@@ -1,60 +1,27 @@
+/**
+ * MIGRATED (FT-003 / Phase 7) — uses shared tests/_helpers/ instead of
+ * the per-file MockClient + makeCtx boilerplate. Behavior under test is
+ * unchanged. The local `mock()` factory is a tiny adapter over
+ * `createFakeOllama` and `makeCtx` calls into `makeFakeCtx`.
+ */
 import { describe, it, expect } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleClassify, classifySchema } from "../../src/tools/classify.js";
 import { PROFILES } from "../../src/profiles.js";
-import { NullLogger } from "../../src/observability.js";
-import type {
-  OllamaClient,
-  GenerateRequest,
-  GenerateResponse,
-  ChatRequest,
-  ChatResponse,
-  EmbedRequest,
-  EmbedResponse,
-} from "../../src/ollama.js";
-import type { Residency } from "../../src/envelope.js";
-import type { RunContext } from "../../src/runContext.js";
+import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
 
-class MockClient implements OllamaClient {
-  public lastGenerate?: GenerateRequest;
-  constructor(private raw: string, private tokens = { in: 50, out: 10 }) {}
-
-  async generate(req: GenerateRequest): Promise<GenerateResponse> {
-    this.lastGenerate = req;
-    return {
-      model: req.model,
-      response: this.raw,
-      done: true,
-      prompt_eval_count: this.tokens.in,
-      eval_count: this.tokens.out,
-    };
-  }
-  async chat(_req: ChatRequest): Promise<ChatResponse> {
-    throw new Error("not used");
-  }
-  async embed(_req: EmbedRequest): Promise<EmbedResponse> {
-    throw new Error("not used");
-  }
-  async residency(_model: string): Promise<Residency | null> {
-    return { in_vram: true, size_bytes: 100, size_vram_bytes: 100, evicted: false, expires_at: null };
-  }
+function makeCtx(client: ReturnType<typeof createFakeOllama>) {
+  return makeFakeCtx({ client });
 }
-
-function makeCtx(client: OllamaClient, logger = new NullLogger()): RunContext & { logger: NullLogger } {
-  return {
-    client,
-    tiers: PROFILES["dev-rtx5080"].tiers,
-    timeouts: PROFILES["dev-rtx5080"].timeouts,
-    hardwareProfile: "dev-rtx5080",
-    logger,
-  };
+function mock(raw: string) {
+  return createFakeOllama({ defaultGenerateResponse: raw });
 }
 
 describe("handleClassify", () => {
   it("returns label/confidence on instant tier with dev-rtx5080 model and stamps hardware_profile", async () => {
-    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const client = mock(JSON.stringify({ label: "fix", confidence: 0.9 }));
     const ctx = makeCtx(client);
     const env = await handleClassify(
       { text: "patch null pointer in auth", labels: ["feat", "fix", "chore"] },
@@ -74,7 +41,7 @@ describe("handleClassify", () => {
   });
 
   it("nulls the label when below threshold and allow_none=true", async () => {
-    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.4 }));
+    const client = mock(JSON.stringify({ label: "fix", confidence: 0.4 }));
     const ctx = makeCtx(client);
     const env = await handleClassify(
       { text: "ambiguous", labels: ["feat", "fix"], allow_none: true },
@@ -85,7 +52,7 @@ describe("handleClassify", () => {
   });
 
   it("gracefully handles non-JSON output with zero confidence", async () => {
-    const client = new MockClient("garbage not json");
+    const client = mock("garbage not json");
     const env = await handleClassify(
       { text: "x", labels: ["a", "b"] },
       makeCtx(client),
@@ -95,7 +62,7 @@ describe("handleClassify", () => {
   });
 
   it("sends format=json to Ollama (triggers structured output mode)", async () => {
-    const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+    const client = mock(JSON.stringify({ label: "a", confidence: 1 }));
     await handleClassify(
       { text: "x", labels: ["a", "b"] },
       makeCtx(client),
@@ -110,7 +77,7 @@ describe("handleClassify — source_path mode", () => {
     const filePath = join(dir, "commit.txt");
     try {
       await writeFile(filePath, "patch null pointer in auth", "utf8");
-      const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+      const client = mock(JSON.stringify({ label: "fix", confidence: 0.9 }));
       const env = await handleClassify(
         { source_path: filePath, labels: ["feat", "fix", "chore"] },
         makeCtx(client),
@@ -123,7 +90,7 @@ describe("handleClassify — source_path mode", () => {
   });
 
   it("rejects missing files with a clear SOURCE_PATH_NOT_FOUND error", async () => {
-    const client = new MockClient(JSON.stringify({ label: "x", confidence: 1 }));
+    const client = mock(JSON.stringify({ label: "x", confidence: 1 }));
     await expect(
       handleClassify(
         { source_path: "F:/definitely/does/not/exist.txt", labels: ["a", "b"] },
@@ -133,7 +100,7 @@ describe("handleClassify — source_path mode", () => {
   });
 
   it("throws SCHEMA_INVALID when both text and source_path are passed", async () => {
-    const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+    const client = mock(JSON.stringify({ label: "a", confidence: 1 }));
     await expect(
       handleClassify(
         { text: "x", source_path: "anywhere.txt", labels: ["a", "b"] },
@@ -143,7 +110,7 @@ describe("handleClassify — source_path mode", () => {
   });
 
   it("throws SCHEMA_INVALID when none of text/source_path/items are passed", async () => {
-    const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+    const client = mock(JSON.stringify({ label: "a", confidence: 1 }));
     await expect(
       handleClassify({ labels: ["a", "b"] } as Parameters<typeof handleClassify>[0], makeCtx(client)),
     ).rejects.toThrow(/exactly one of "text", "source_path", or "items"/);
@@ -155,7 +122,7 @@ describe("handleClassify — source_path mode", () => {
     try {
       const content = "ABCDEFGHIJ".repeat(5000); // 50,000 chars
       await writeFile(filePath, content, "utf8");
-      const client = new MockClient(JSON.stringify({ label: "a", confidence: 1 }));
+      const client = mock(JSON.stringify({ label: "a", confidence: 1 }));
       await handleClassify(
         { source_path: filePath, labels: ["a", "b"], per_file_max_chars: 2000 },
         makeCtx(client),
@@ -171,7 +138,7 @@ describe("handleClassify — source_path mode", () => {
 
 describe("handleClassify — frame contract", () => {
   it("back-compat: no frame input → no off_topic / off_topic_reason in result", async () => {
-    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const client = mock(JSON.stringify({ label: "fix", confidence: 0.9 }));
     const env = await handleClassify(
       { text: "patch null pointer", labels: ["feat", "fix"] },
       makeCtx(client),
@@ -183,7 +150,7 @@ describe("handleClassify — frame contract", () => {
   });
 
   it("frame supplied + model says off_topic:false → off_topic is false, label kept", async () => {
-    const client = new MockClient(
+    const client = mock(
       JSON.stringify({ label: "fix", confidence: 0.9, off_topic: false, off_topic_reason: null }),
     );
     const env = await handleClassify(
@@ -197,7 +164,7 @@ describe("handleClassify — frame contract", () => {
   });
 
   it("frame supplied + model says off_topic:true → label is forced null", async () => {
-    const client = new MockClient(
+    const client = mock(
       JSON.stringify({
         label: "fix",
         confidence: 0.95,
@@ -216,7 +183,7 @@ describe("handleClassify — frame contract", () => {
 
   it("off_topic and below_threshold are independent concepts", async () => {
     // High-confidence label, but off-topic → label nulled because of frame, not threshold.
-    const client = new MockClient(
+    const client = mock(
       JSON.stringify({ label: "fix", confidence: 0.99, off_topic: true, off_topic_reason: "wrong frame" }),
     );
     const env = await handleClassify(
@@ -231,7 +198,7 @@ describe("handleClassify — frame contract", () => {
 
 describe("handleClassify — per-call model override (v2.3.0)", () => {
   it("input.model is passed to the underlying Ollama generate call", async () => {
-    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const client = mock(JSON.stringify({ label: "fix", confidence: 0.9 }));
     const env = await handleClassify(
       { text: "x", labels: ["feat", "fix"], model: "hermes3:8b" },
       makeCtx(client),
@@ -242,7 +209,7 @@ describe("handleClassify — per-call model override (v2.3.0)", () => {
   });
 
   it("input.model omitted falls through to tier-resolved instant model", async () => {
-    const client = new MockClient(JSON.stringify({ label: "fix", confidence: 0.9 }));
+    const client = mock(JSON.stringify({ label: "fix", confidence: 0.9 }));
     const env = await handleClassify(
       { text: "x", labels: ["feat", "fix"] },
       makeCtx(client),
@@ -275,7 +242,7 @@ describe("handleClassify — per-call model override (v2.3.0)", () => {
 
 describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () => {
   it("model returning literal 'null' does NOT crash — abstains with label:null, confidence:0", async () => {
-    const client = new MockClient("null");
+    const client = mock("null");
     const ctx = makeCtx(client);
     const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     expect(env.result.label).toBeNull();
@@ -283,7 +250,7 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
   });
 
   it("model returning '[]' (array literal) does NOT crash — abstains cleanly", async () => {
-    const client = new MockClient("[]");
+    const client = mock("[]");
     const ctx = makeCtx(client);
     const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     expect(env.result.label).toBeNull();
@@ -291,7 +258,7 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
   });
 
   it("model returning bare number '42' does NOT crash — abstains cleanly", async () => {
-    const client = new MockClient("42");
+    const client = mock("42");
     const ctx = makeCtx(client);
     const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     expect(env.result.label).toBeNull();
@@ -299,7 +266,7 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
   });
 
   it('model returning a bare JSON string \'"label"\' does NOT crash — abstains cleanly', async () => {
-    const client = new MockClient('"label"');
+    const client = mock('"label"');
     const ctx = makeCtx(client);
     const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     expect(env.result.label).toBeNull();
@@ -307,7 +274,7 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
   });
 
   it("model returning an object with missing label field abstains with structured reason", async () => {
-    const client = new MockClient(JSON.stringify({ confidence: 0.95 }));
+    const client = mock(JSON.stringify({ confidence: 0.95 }));
     const ctx = makeCtx(client);
     const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     expect(env.result.label).toBeNull();
@@ -322,7 +289,7 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
   });
 
   it("emits structured guardrail event with reason='parse_error' on non-JSON output", async () => {
-    const client = new MockClient("totally not json at all");
+    const client = mock("totally not json at all");
     const ctx = makeCtx(client);
     await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     const guardrail = ctx.logger.events.find(
@@ -338,7 +305,7 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
   });
 
   it("emits guardrail event with reason='non_object' when model returns null literal", async () => {
-    const client = new MockClient("null");
+    const client = mock("null");
     const ctx = makeCtx(client);
     await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
     const guardrail = ctx.logger.events.find(

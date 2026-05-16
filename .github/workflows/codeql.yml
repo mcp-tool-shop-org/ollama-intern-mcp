@@ -1,0 +1,69 @@
+name: CodeQL
+
+# Static-analysis security scan via GitHub CodeQL.
+# Stage-A audit flagged the absence of this workflow. The `javascript` language
+# pack analyses both JavaScript and TypeScript sources, which is what this repo
+# ships. Triggered on push to main, every PR into main, and weekly so that
+# CVE-class findings against the analyzer queries themselves get re-evaluated
+# against the codebase even when the codebase hasn't changed.
+#
+# Action versions are pinned to SHA for the same supply-chain reasons the rest
+# of the workflows pin (matches the ci.yml + publish.yml convention).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly — Sunday 09:00 UTC. Off-peak for both US + EU CI capacity.
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # security-events: write — required for CodeQL to upload SARIF results
+      # to the repo's Security tab. contents: read for the checkout.
+      contents: read
+      security-events: write
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript']
+
+    steps:
+      # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      # v3 — github/codeql-action/init pinned to current major. CodeQL bumps
+      # the analyzer queries on its own cadence; pinning to a SHA here would
+      # mean we never get query updates without a manual bump. @v3 is the
+      # documented stability surface.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # `security-and-quality` is the broader query suite — catches
+          # security issues AND maintainability smells. `security-extended`
+          # would be tighter. We pick the broader suite because the audit
+          # gap was "no static analysis at all."
+          queries: security-and-quality
+
+      # No autobuild step — pure TypeScript/JavaScript needs no compile for
+      # CodeQL to analyse. Skipping autobuild shaves several minutes off the
+      # job and avoids spurious compile failures driven by build-tool drift.
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

@@ -14,6 +14,28 @@ import type { Logger } from "./observability.js";
 import { timestamp } from "./observability.js";
 import type { Tier } from "./tiers.js";
 
+/**
+ * Mint a fresh `call_id` for a single Ollama HTTP attempt (Phase 7 /
+ * FT-001). `call_id` is the SUB-ID for HTTP-call events — narrower than
+ * `run_id` (one per tool call) so that a tool issuing N HTTP calls (a
+ * pack step running extract twice, a retry ladder firing on 5xx) can
+ * have each attempt distinctly identified in the log.
+ *
+ * Format: `call_<8-hex>`. Shorter than `run_id` because call_ids appear
+ * many-to-one under a run_id and the join key for human-grep is run_id.
+ * Local-only correlation handle, not security-bearing — Math.random is
+ * sufficient, no need to pay the crypto.randomUUID() cost on every
+ * HTTP attempt.
+ */
+function mintCallId(): string {
+  // 32-bit random → 8 lowercase hex chars. Same padStart guard as run_id
+  // mint to handle the case where the leading random byte was 0.
+  const hex = Math.floor(Math.random() * 0xffffffff)
+    .toString(16)
+    .padStart(8, "0");
+  return `call_${hex}`;
+}
+
 const API_TIMEOUT_MS = 10_000;
 
 /**
@@ -339,6 +361,19 @@ export class HttpOllamaClient implements OllamaClient {
     signal?: AbortSignal,
     tier?: Tier,
   ): Promise<TRes> {
+    // Mint a per-HTTP-attempt `call_id` (Phase 7 / FT-001). One mint per
+    // post() entry — retry attempts inside postWithRetry share the same
+    // call_id because they target the same logical "call" (the retry
+    // ladder is an implementation detail of one user-initiated attempt).
+    // Routing the call_id through the semaphore:wait event lets an
+    // operator join "the wait that happened" with "the call that was
+    // queued waiting" without timestamp guesswork.
+    const callId = mintCallId();
+    // Map endpoint path → OTel `op` value (Phase 7 / FT-001). The
+    // mapping is deterministic from the path so callers don't need to
+    // pass an `op` parameter. /api/embed → embeddings; everything else
+    // (generate, chat) → chat per the OTel GenAI convention.
+    const op = path === "/api/embed" ? "embeddings" : "chat";
     // Before acquiring, peek at the gate. If we'd block, emit a single
     // semaphore:wait event with queue depth + rough wait estimate so an
     // operator debugging "why was this slow?" has the context they need.
@@ -347,11 +382,19 @@ export class HttpOllamaClient implements OllamaClient {
     // sees a meaningful label (instant/workhorse/deep/embed) instead of
     // 'unknown'. Call sites that haven't been updated yet still default
     // to 'unknown' (backward-compat); the SourceOfTruth is the caller.
+    //
+    // FT-001 — `op` + `call_id` are added as top-level fields so the
+    // semaphore_wait event for this HTTP attempt joins to the
+    // corresponding `chat`/`embeddings` event by call_id. The legacy
+    // `kind: 'semaphore:wait'` discriminator is preserved (callers
+    // filtering on kind keep working); the new fields are additive.
     if (sideLogger !== null && ollamaSemaphore.wouldBlock) {
       const snap = ollamaSemaphore.snapshot();
       void sideLogger.log({
         kind: "semaphore:wait",
         ts: timestamp(),
+        op: "semaphore_wait",
+        call_id: callId,
         tier: tier ?? "unknown",
         queue_depth: snap.queue_depth,
         in_flight: snap.in_flight,

@@ -14,6 +14,16 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent, timestamp } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
 import type { RunContext } from "../runContext.js";
+import {
+  withRunContext as withRunCorrelation,
+  mintRunId,
+  getRunContext as getRunCorrelation,
+} from "../runContext.js";
+import {
+  withCallContext,
+  mintCallId,
+  getCallContext,
+} from "./_runContext.js";
 
 /**
  * Order-of-magnitude prompt-size estimator.
@@ -86,6 +96,28 @@ export interface RunToolInput<T> {
 }
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
+  // FT-010 correlation:
+  //   - run_id lives in backend-core's ALS (src/runContext.js). Backend-
+  //     core's MCP wrap path mints it at every tool-call entry. If we
+  //     somehow run outside that wrap (tests, direct handler invocation),
+  //     mint here so the envelope is never id-less.
+  //   - call_id lives in this module's ALS. Pack handlers mint a
+  //     pack-level call_id BEFORE calling nested runTool; each nested
+  //     runTool enters its OWN call scope so its call_id mutation
+  //     doesn't leak back into the pack's scope, leaving the pack's
+  //     subsequent pack_step events still pointing at the pack call_id.
+  const existingRun = getRunCorrelation();
+  if (existingRun) {
+    return withCallContext({ call_id: mintCallId() }, () => runToolInner(input));
+  }
+  // No outer run scope — mint one. Wrap both contexts.
+  const run_id = mintRunId();
+  return withRunCorrelation({ run_id, started_at: new Date().toISOString() }, () =>
+    withCallContext({ call_id: mintCallId() }, () => runToolInner(input)),
+  );
+}
+
+async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   const startedAt = Date.now();
   const { ctx } = input;
   const initialTier = input.tier;
@@ -179,6 +211,20 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
     ...(lastNumCtx !== undefined ? { numCtxUsed: lastNumCtx } : {}),
     ...(input.warnings ? { warnings: input.warnings } : {}),
   });
+
+  // FT-010: echo run_id + call_id on the envelope (additive — neither
+  // field is declared on Envelope<T> yet; cast through Record so the
+  // serializer picks them up. Once backend-core widens the envelope
+  // type the cast can drop. Both IDs pulled from their respective ALS;
+  // the outer runTool wrapper guarantees both scopes are active.
+  const runCtx = getRunCorrelation();
+  const callCtx = getCallContext();
+  if (runCtx?.run_id) {
+    (envelope as unknown as Record<string, unknown>).run_id = runCtx.run_id;
+  }
+  if (callCtx?.call_id) {
+    (envelope as unknown as Record<string, unknown>).call_id = callCtx.call_id;
+  }
 
   await ctx.logger.log(callEvent(input.tool, envelope));
   return envelope;

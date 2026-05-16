@@ -8,6 +8,7 @@
  */
 
 import type { Tier } from "./tiers.js";
+import { getRunContext } from "./runContext.js";
 
 export interface Residency {
   in_vram: boolean;
@@ -48,6 +49,21 @@ export interface Envelope<T> {
    * when unset" contract is what preserves v2.3.0 backward-compat.
    */
   num_ctx_used?: number;
+  /**
+   * Server-minted correlation ID for this tool call (Phase 7 / FT-001).
+   * Added v2.5.0 via the same Option A additive pattern as
+   * `num_ctx_used`: PRESENT when the call ran inside an active
+   * `withRunContext` scope (every MCP tool-call entry from index.ts
+   * does this), ABSENT when no scope is active (startup paths, prewarm,
+   * tests that don't wrap). Callers correlating envelope back to NDJSON
+   * events join on this field — same value lands on every event line
+   * via `runContext` lookup in `observability.ts` and `ollama.ts`.
+   *
+   * Format: `run_<ISO-date-with-hyphens>_<6-hex>` — see `mintRunId()`.
+   * The "absent when unset" contract preserves v2.4.0 backward-compat
+   * for callers that build envelopes outside a tool-call scope.
+   */
+  run_id?: string;
   /** Non-fatal warnings — e.g. "2 citations stripped (paths not in source_paths)". */
   warnings?: string[];
   /** Total items in the batch. Only set on batch-mode calls. */
@@ -83,6 +99,16 @@ export interface EnvelopeBuilderInput<T> {
    * MCP server let Ollama choose the default.
    */
   numCtxUsed?: number;
+  /**
+   * Server-minted correlation ID (Phase 7 / FT-001). Normally OMITTED by
+   * the caller — `buildEnvelope` auto-populates from the active
+   * `CorrelationContext` via `getRunContext()`. Explicit override is
+   * supported for tests that want to assert a known value without
+   * wrapping the call in `withRunContext`. When the active context is
+   * missing AND no override is supplied, the envelope field is absent
+   * (preserves v2.4.0 backward-compat).
+   */
+  runId?: string;
   warnings?: string[];
 }
 
@@ -100,6 +126,12 @@ export function buildEnvelope<T>(input: EnvelopeBuilderInput<T>): Envelope<T> {
   if (input.fallbackFrom) env.fallback_from = input.fallbackFrom;
   if (input.modelRequested) env.model_requested = input.modelRequested;
   if (input.numCtxUsed !== undefined) env.num_ctx_used = input.numCtxUsed;
+  // run_id propagation (Phase 7 / FT-001) — prefer caller-supplied value
+  // (tests) over the ALS lookup so deterministic envelopes remain easy
+  // to assert. Production paths always go through the ALS read because
+  // tools don't pass `runId` explicitly through `runTool`.
+  const runId = input.runId ?? getRunContext()?.run_id;
+  if (runId) env.run_id = runId;
   if (input.warnings && input.warnings.length > 0) env.warnings = input.warnings;
   return env;
 }

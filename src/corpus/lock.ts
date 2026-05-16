@@ -16,6 +16,14 @@
  * Implementation: one Promise<void> per corpus name. Each caller awaits
  * the prior promise, then registers its own. Released in a `finally` so a
  * throw inside `fn` doesn't strand the lock.
+ *
+ * Phase 7 / FT-001 event-emission policy: `withCorpusLock` is silent
+ * by default. A future wave can wire an optional `onWait` callback for
+ * operators who want lock-contention visibility; today the only
+ * structured surface is `buildCorpusLockWaitEvent` below for consumers
+ * that detect contention through other means (timing on a wrapped
+ * call). Tagged `op: 'pack_step'` to keep the closed CorrelationOp
+ * enum tight; corpus mutation is pack-step-adjacent.
  */
 
 const LOCKS = new Map<string, Promise<unknown>>();
@@ -43,4 +51,48 @@ export async function withCorpusLock<T>(name: string, fn: () => Promise<T>): Pro
       LOCKS.delete(name);
     }
   }
+}
+
+/**
+ * Detail payload for an operator-facing structured event emitted when
+ * a corpus lock acquire had to wait (a prior mutator was in flight on
+ * the same name). Lock contention is rare in single-process operation
+ * but nonzero — concurrent index/refresh on the same corpus serializes
+ * here, and an operator debugging "why was this slow?" benefits from
+ * a wait_ms readout.
+ *
+ * Phase 7 / FT-001: tagged `op: 'pack_step'` (corpus mutation is
+ * pack-step-adjacent; a separate corpus_lock op would inflate the
+ * closed CorrelationOp enum). The NDJSON logger auto-merges `run_id`
+ * from ALS at write time.
+ *
+ * `withCorpusLock` does NOT call this helper itself — wiring is the
+ * caller's responsibility (a tool handler that times the lock and
+ * emits the event when wait_ms exceeds its threshold).
+ */
+export interface CorpusLockWaitEventDetail {
+  /** Closed-enum op tag from observability.CorrelationOp. */
+  op: "pack_step";
+  /** Stable rule identifier — greppable. */
+  rule: "corpus_lock_wait";
+  /** Corpus name being acquired. */
+  name: string;
+  /** Wait duration in milliseconds. */
+  wait_ms: number;
+}
+
+/**
+ * Build the structured-event detail for a corpus lock wait. Pure
+ * shaping — does NOT call the logger itself.
+ */
+export function buildCorpusLockWaitEvent(args: {
+  name: string;
+  wait_ms: number;
+}): CorpusLockWaitEventDetail {
+  return {
+    op: "pack_step",
+    rule: "corpus_lock_wait",
+    name: args.name,
+    wait_ms: args.wait_ms,
+  };
 }

@@ -7,6 +7,20 @@ sidebar:
 
 Tools are grouped into four tiers. **At-a-glance:** 28 atoms (15 original + 13 added in v2.1.0) + 3 briefs + 3 packs + 7 artifact tools = **41 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
 
+## Per-tool deep-dives
+
+The most-used tools have dedicated reference pages with schema, examples, common pitfalls, and related-tool guidance:
+
+- [`ollama_doctor`](./tools/doctor/) — first-run prereqs + status snapshot (no LLM calls)
+- [`ollama_classify`](./tools/classify/) — single-label classification with confidence
+- [`ollama_extract`](./tools/extract/) — schema-constrained JSON extraction
+- [`ollama_corpus_answer`](./tools/corpus-answer/) — chunk-grounded synthesis (flagship)
+- [`ollama_chat`](./tools/chat/) — last-resort catch-all
+
+The remaining 36 tools are documented inline below — open an issue if you'd like a specific tool to get its own page next.
+
+---
+
 ## Atoms (28 total)
 
 ### Original atoms (15)
