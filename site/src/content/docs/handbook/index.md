@@ -1,6 +1,6 @@
 ---
 title: Ollama Intern MCP — Handbook
-description: The local intern for Claude Code. 41 job-shaped tools, evidence-first briefs, durable artifacts.
+description: The local intern for Claude Code. 42 job-shaped tools, evidence-first briefs, durable artifacts.
 sidebar:
   order: 0
   label: Overview
@@ -12,7 +12,7 @@ No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ## The shape
 
-Four tiers, 41 tools total.
+Four tiers, 42 tools total.
 
 | Tier | Count | Purpose |
 |---|---|---|

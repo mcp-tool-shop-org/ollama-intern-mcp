@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**Claude Code 的本地实习生。** 41 个工具，基于证据的简报，持久的成果。
+**Claude Code 的本地实习项目。** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> 个工具，基于证据的简报，持久的成果。
 
 一个 MCP 服务器，为 Claude Code 提供一个**本地实习生**，它具有规则、层级、办公桌和文件柜。Claude 选择 _工具_；工具选择 _层级_（即时/工作马/深度/嵌入）；层级会生成一个文件，您可以在下周打开。
 
@@ -27,18 +27,18 @@
 
 ---
 
-## 新功能，版本 2.3.0
+## 新功能，版本 2.4.0
 
-在配置文件系统中，可以对每个层级进行 `num_ctx`（上下文窗口）的控制。这是一个小幅的增量更新，v2.3.0 的调用者未发生变化。详细信息请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md)。
+在配置文件系统中，可以对每个层级进行 `num_ctx`（上下文窗口）的控制。这是一个小幅的增量更新，不会影响 2.3.0 版本的调用者。详细信息请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md)。
 
-- **`TierConfig.num_ctx` 映射 (新)** — 配置文件中的可选参数，包括 `{ instant?, workhorse?, deep?, embed? }`。如果为某个层级设置了该参数，MCP 服务器将在发送到该层级的每个 Ollama 生成/聊天请求中，添加 `options.num_ctx = <value>`。如果未设置，则请求将完全省略 `num_ctx` 字段，Ollama 将使用其模型加载时的默认值。这与 v2.3.0 的行为完全一致。
-- **新的数据包字段 `num_ctx_used?: number`** — 仅在 MCP 服务器实际发送了 `num_ctx` 时才存在。如果请求允许 Ollama 选择，则该字段不存在。不要尝试推断默认值，因为 MCP 服务器不会向 Ollama 查询实际值。
-- **配置文件默认值**: `dev-rtx5080` / `dev-rtx5080-qwen3` 配置文件中，`instant` 设置为 4096，`workhorse` 设置为 8192，`deep`/`embed` 未设置。这些设置是为了确保 `hermes3:8b` 模型能够完全加载到 RTX 5080 的 16GB 显存中，以提高工具的运行速度。`m5-max` 配置中，所有层级都未设置，因为 128GB 的统一内存不会出现内存溢出问题。
-- **解决了 v0.8.0 阶段 1 的诊断问题** — 在 RTX 5080 上，使用默认的 32K 上下文时，`hermes3:8b` 模型的数据会溢出到 CPU，导致 `ollama_extract` 调用超时。v2.4.0 在配置文件层解决了这个问题。
+- **`TierConfig.num_ctx` 映射 (新)** — 在配置文件中，可以选择性地设置 `{ instant?, workhorse?, deep?, embed? }`。如果为某个层级设置了 `num_ctx`，MCP 服务器会在每个发送到该层级的 Ollama `generate/chat` 请求中添加 `options.num_ctx = <value>` (初始值和备用值)。如果未设置，则请求中完全省略 `num_ctx` 字段，Ollama 将使用其模型加载的默认值——这与 2.3.0 版本的行为完全一致。
+- **新的 Envelope 字段 `num_ctx_used?: number`** — 仅当 MCP 服务器实际发送了 `num_ctx` 时才会出现。如果请求允许 Ollama 选择，则该字段将不存在。不要推断默认值，因为 MCP 服务器不会向 Ollama 查询实际值。
+- **默认配置**: `dev-rtx5080` / `dev-rtx5080-qwen3` 配置文件中，`instant` 设置为 4096，`workhorse` 设置为 8192，`deep`/`embed` 未设置。配置为确保 `hermes3:8b` 模型可以运行在 RTX 5080 的 16GB VRAM 内存中，以实现快速工具的使用。`m5-max` 的所有层级都未设置，128GB 的统一内存不会出现内存溢出问题。
+- **解决了 v0.8.0 阶段 1 的诊断问题** — 在 RTX 5080 上，使用默认的 32K 上下文的 `hermes3:8b` 模型会溢出到 CPU，并导致 `ollama_extract` 调用超时。v2.4.0 在配置文件层解决了这个问题。
 
-### 每个层级的 `num_ctx` 控制（v2.4.0 的新功能）
+### 每个层级的 `num_ctx` 控制 (新功能，版本 2.4.0)
 
-配置文件（摘自 `src/profiles.ts`）：
+配置文件 (摘自 `src/profiles.ts`):
 
 ```ts
 "dev-rtx5080": {
@@ -58,7 +58,7 @@
 }
 ```
 
-在 `workhorse` 层级的调用中的数据包（例如 `ollama_extract`）：
+工作层级的调用中的 Envelope (例如 `ollama_extract`):
 
 ```jsonc
 {
@@ -70,13 +70,13 @@
 }
 ```
 
-在 `m5-max`（或任何未设置层级的配置文件）中，`num_ctx_used` 不会出现在数据包中，并且发送到 Ollama 的请求中不包含 `num_ctx` 字段。Ollama 将使用其模型加载时的默认值。
+在 `m5-max` (或任何未设置层级的配置文件) 中，`num_ctx_used` 不会出现在 Envelope 中，并且发送到 Ollama 的请求中不包含 `num_ctx` 字段——Ollama 将使用其模型加载的默认值。
 
-操作员可以通过选择/编辑配置文件来调整参数。工具模式中没有针对每个调用的 `num_ctx` 输入。如果未来出现需要该功能的情况，可以遵循 v2.3.0 中 `model` 的覆盖方式。
+操作员可以通过选择/编辑配置文件来调整参数；工具模式中没有针对每个调用的 `num_ctx` 输入。如果未来需要，可以遵循 v2.3.0 版本的 `model` 覆盖机制。
 
-### 历史 — v2.2.0 的功能
+### 历史版本 — v2.3.0 的功能
 
-请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md)，以获取完整的 v2.3.0 版本信息（关于每个调用的模型覆盖）。
+请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md)，以获取 v2.3.0 版本的完整信息 (每个调用的模型覆盖)。
 
 ## 新功能，版本 2.3.0
 
@@ -136,6 +136,32 @@ Envelope:
 ### 历史版本 — v2.1.0 的交付成果
 
 请参阅 [CHANGELOG.md](./CHANGELOG.md) 以获取 v2.1.0 的完整更新内容（功能更新：13 个新工具 + 4 个改进 + 冻结版本）。
+
+---
+
+## 架构概览
+
+```mermaid
+flowchart LR
+  Claude["Claude Code<br/>(MCP client)"]
+  MCP["ollama-intern-mcp<br/>server (stdio)"]
+  Ollama["Ollama daemon<br/>(127.0.0.1:11434)"]
+  Models[("Hermes 3 / Qwen 3<br/>nomic-embed-text")]
+  Corpus[("~/.ollama-intern/<br/>corpora/")]
+  Artifacts[("~/.ollama-intern/<br/>artifacts/")]
+  NDJSON[("~/.ollama-intern/<br/>log.ndjson")]
+  Guards{{"Guardrails<br/>citations · banned phrases<br/>protected paths · confidence"}}
+
+  Claude -- "JSON-RPC over stdio" --> MCP
+  MCP --> Guards
+  MCP -- "/api/generate · /api/chat<br/>/api/embed · /api/ps · /api/tags" --> Ollama
+  Ollama --> Models
+  MCP --- Corpus
+  MCP --- Artifacts
+  MCP --> NDJSON
+```
+
+每个 Claude 工具的调用都会通过 stdio JSON-RPC 进入 MCP 服务器。服务器会根据工具的 [zod](https://zod.dev) 模式验证调用，运行配置的防护措施 (引用验证、禁止短语过滤、保护路径强制执行、置信度阈值)，然后将调用路由到确定性渲染器 (成果层级) 或 Ollama HTTP 调用 (其他层级)。Ollama 守护进程永远不会看到用户提供的路径，只会看到模型层级和准备好的提示。每个调用都会将一个结构化的事件追加到 `~/.ollama-intern/log.ndjson` 中的 NDJSON 日志中，`ollama_log_tail` 和您的 shell 可以读取它。
 
 ---
 
@@ -231,23 +257,23 @@ Envelope:
 
 ---
 
-## 这里包含的内容：四个层级，41 个工具
+## 这里有什么 — 四个层级，<!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> 个工具
 
 **任务型**：这意味着每个工具都代表一个您可以交给实习生的任务，例如：对这进行分类，提取那，对这些日志进行分级，起草这份发布说明，打包这个事件。工具的输入是任务规范，输出是交付成果。没有通用的 `run_model` / `chat_with_llm` 基础功能。
 
 | 层级 | 数量 | 包含的内容 |
 |---|---|---|
-| **Atoms** | 15 | 任务型基础功能。`classify`（分类），`extract`（提取），`triage_logs`（日志分级），`summarize_fast` / `deep`（快速/深度摘要），`draft`（起草），`research`（研究），`corpus_search`（语料库搜索），`answer`（回答），`index`（索引），`refresh`（刷新），`list`（列表），`embed_search`（嵌入搜索），`embed`（嵌入），`chat`（聊天）。支持批量处理的基础功能（`classify`、`extract`、`triage_logs`）接受 `items: [{id, text}]` 格式的输入。 |
+| **Atoms** | 28 | 任务型基本组件。**最初的 15 个:** `classify` (分类), `extract` (提取), `triage_logs` (日志分类), `summarize_fast` / `deep` (快速/深度摘要), `draft` (草稿), `research` (研究), `corpus_search` (语料库搜索) / `answer` (回答) / `index` (索引) / `refresh` (刷新) / `list` (列表), `embed_search` (嵌入搜索), `embed` (嵌入), `chat` (聊天)。**v2.1.0 添加的 13 个:** `doctor` (诊断), `log_tail` (日志跟踪), `batch_proof_check` (批量代码检查) (运维); `code_map` (代码映射), `code_citation` (代码引用), `multi_file_refactor_propose` (多文件重构建议), `refactor_plan` (重构计划) (重构); `artifact_prune` (成果清理), `hypothesis_drill` (假设验证) (成果/简报); `corpus_health` (语料库健康状况), `corpus_amend` (语料库修改), `corpus_amend_history` (语料库修改历史), `corpus_rerank` (语料库重新排序) (语料库)。支持批量操作的组件 (`classify`, `extract`, `triage_logs`) 接受 `items: [{id, text}]`。 |
 | **Briefs** | 3 | 基于证据的结构化操作说明。`incident_brief`（事件说明），`repo_brief`（仓库说明），`change_brief`（变更说明）。每个声明都引用一个证据 ID；未知信息在服务器端被移除。弱证据会显示 `weak: true`，而不是虚构的叙述。 |
 | **Packs** | 3 | 将持久的 Markdown + JSON 写入到 `~/.ollama-intern/artifacts/` 目录中的复合任务。`incident_pack`（事件打包），`repo_pack`（仓库打包），`change_pack`（变更打包）。具有确定性的渲染器，不会在生成结果时调用任何模型。 |
 | **Artifacts** | 7 | 在打包结果之上构建的连续性界面。`artifact_list`（工件列表），`read`（读取），`diff`（差异），`export_to_path`（导出到路径），以及三个确定性的片段：`incident_note`（事件说明），`onboarding_section`（入职部分），`release_note`（发布说明）。 |
 
-总计：**18 个基础功能 + 3 个打包工具 + 7 个工件工具 = 28 个**。
+总计: **28 个组件 + 3 个简报 + 3 个包 + 7 个成果工具 = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**。
 
-冻结的组件：
-- 基础功能冻结在 18 个（基础功能 + 说明）。没有新的基础功能工具。
-- 打包工具冻结在 3 个。没有新的打包工具类型。
-- 工件层级冻结在 7 个。
+冻结状态：
+- 原子：**自 v2.1.0 版本起已解除冻结**（今天已有 28 个；v2.1.0 版本新增了 13 个）。 新增原子仍然需要经过审核，并需要有合理的理由、测试、手册页面以及 CHANGELOG 记录——不允许随意添加。
+- 组包：已冻结在 3。 不允许新增组包类型。
+- 物品等级：已冻结在 7。
 
 完整的工具参考文档位于 [手册](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/)。
 
@@ -460,7 +486,7 @@ Packs 将数据写入到 `~/.ollama-intern/artifacts/{incident,repo,change}/<slu
 - **第四阶段 — 采用核心** ✓ v2.0.1：三阶段健康检查，强化语料库（TOCTOU，50 MB 文件大小限制，符号链接拒绝，原子写入，每个文件失败捕获），工具路径遍历，可观察性（信号量等待事件，超时错误上下文，配置文件覆盖日志，预热冷启动信号），测试安全性（跨 10 个文件进行模块加载环境快照，`tools/call` 端到端测试）。 为操作员添加了故障排除手册和硬件最低要求。
 - **第五阶段 — M5 Max 基准测试** — 在硬件到位后发布可公开的指标（预计 2026 年 4 月 24 日）。
 
-按加强层级进行。 原子/pack/artifact 表面保持不变。
+分阶段进行，按强化层级进行。 组包和物品等级仍然保持在 3 和 7 的冻结状态。 原子冻结状态已在 v2.1.0 版本解除——新增原子需要经过审核，并需要有合理的理由、测试、手册页面以及 CHANGELOG 记录。
 
 ---
 

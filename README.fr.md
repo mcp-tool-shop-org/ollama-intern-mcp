@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**L'assistant local pour Claude Code.** 41 outils structurés, rapports basés sur des preuves, artefacts durables.
+> **L'assistant local pour Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> outils, briefs basés sur des preuves, artefacts durables.
 
 Un serveur MCP qui fournit à Claude Code un **assistant local**, avec des règles, des niveaux de complexité, un bureau et un classeur. Claude choisit l' _outil_ ; l'outil choisit le _niveau_ (Instant / Travail intensif / Approfondi / Intégré) ; le niveau génère un fichier que vous pourrez ouvrir la semaine prochaine.
 
@@ -27,16 +27,16 @@ Pas de cloud. Pas de télémétrie. Rien d' "autonome". Chaque appel montre son 
 
 ---
 
-## Nouveau dans la version 2.2.0
+## Nouveautés dans la version 2.4.0
 
-Contrôle de `num_ctx` (fenêtre de contexte) par niveau dans le système de profil. Amélioration mineure additive — les appels inchangés en v2.3.0. Détails dans [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
+Contrôle individuel de `num_ctx` (fenêtre de contexte) pour chaque niveau dans le système de profil. Amélioration mineure, les appels inchangés dans la version 2.3.0. Détails dans [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
 
-- **Carte `TierConfig.num_ctx` (nouvelle)** — optionnel `{ instant?, workhorse?, deep?, embed? }` dans le profil. Lorsqu'elle est définie pour un niveau, le serveur MCP ajoute `options.num_ctx = <valeur>` à chaque requête de génération/chat Ollama dirigée vers ce niveau (initiale + solution de repli). Lorsqu'elle n'est pas définie, la requête omet complètement `num_ctx`, ce qui permet à Ollama d'utiliser sa valeur par défaut chargée avec le modèle — le comportement de v2.3.0 est conservé exactement.
-- **Nouveau champ d'enveloppe `num_ctx_used?: number`** — présent uniquement lorsque le serveur MCP a réellement envoyé `num_ctx`. Absent lorsque la requête a permis à Ollama de choisir. Ne pas déduire de valeur par défaut — le serveur MCP ne demande pas à Ollama la valeur effective.
-- **Valeurs par défaut du profil**: `dev-rtx5080` / `dev-rtx5080-qwen3` sont livrés avec `instant: 4096`, `workhorse: 8192`, `deep`/`embed` non définis. Les tailles sont choisies pour maintenir `hermes3:8b` dans la mémoire VRAM de 16 Go de la RTX 5080, ce qui permet d'utiliser rapidement des outils. `m5-max` laisse tous les niveaux non définis — la mémoire unifiée de 128 Go n'a aucun problème de débordement.
-- **Résout le diagnostic de la phase 1 de v0.8.0** — `hermes3:8b` avec le contexte par défaut de 32 Ko sur la RTX 5080 débordait vers le CPU et commençait à provoquer des délais d'attente pour les appels `ollama_extract` du type "workhorse". La version 2.4.0 empêche cela au niveau du profil.
+- **Carte `TierConfig.num_ctx` (nouveau)** : optionnel `{ instant?, workhorse?, deep?, embed? }` dans le profil. Lorsqu'elle est définie pour un niveau, le serveur MCP ajoute `options.num_ctx = <valeur>` à chaque requête de génération/chat Ollama dirigée vers ce niveau (initiale + de secours). Lorsqu'elle n'est pas définie, la requête omet complètement `num_ctx`, ce qui permet à Ollama d'utiliser sa valeur par défaut chargée dans le modèle, comme dans la version 2.3.0.
+- **Nouveau champ de l'enveloppe `num_ctx_used?: number`** : présent uniquement lorsque le serveur MCP a réellement envoyé `num_ctx`. Absent lorsque la requête a permis à Ollama de choisir. Ne pas déduire de valeur par défaut : le serveur MCP ne demande pas à Ollama la valeur effective.
+- **Valeurs par défaut du profil** : `dev-rtx5080` / `dev-rtx5080-qwen3` sont livrés avec `instant: 4096`, `workhorse: 8192`, `deep`/`embed` non définis. Dimensionnés pour maintenir `hermes3:8b` dans la mémoire VRAM de 16 Go de la RTX 5080, ce qui permet d'utiliser rapidement les outils. `m5-max` laisse tous les niveaux non définis : les 128 Go de mémoire unifiée ne présentent aucun problème de débordement.
+- **Résout le diagnostic de la phase 1 de la version 0.8.0** : `hermes3:8b` avec le contexte par défaut de 32 Ko sur la RTX 5080 provoquait un débordement vers le CPU et des délais d'attente pour les appels `ollama_extract` du niveau "workhorse". La version 2.4.0 empêche cela au niveau du profil.
 
-### Contrôle de `num_ctx` par niveau (nouveau dans v2.4.0)
+### Contrôle individuel de `num_ctx` (nouveau dans la version 2.4.0)
 
 Profil (extrait de `src/profiles.ts`) :
 
@@ -58,7 +58,7 @@ Profil (extrait de `src/profiles.ts`) :
 }
 ```
 
-Enveloppe pour un appel de niveau "workhorse" (par exemple, `ollama_extract`) :
+Enveloppe pour un appel au niveau "workhorse" (par exemple, `ollama_extract`) :
 
 ```jsonc
 {
@@ -70,15 +70,15 @@ Enveloppe pour un appel de niveau "workhorse" (par exemple, `ollama_extract`) :
 }
 ```
 
-Sur `m5-max` (ou tout profil qui laisse un niveau non défini), `num_ctx_used` est absent de l'enveloppe et la requête envoyée à Ollama ne comprend pas le champ `num_ctx` — Ollama utilise sa valeur par défaut chargée avec le modèle.
+Sur `m5-max` (ou tout profil qui laisse un niveau non défini), `num_ctx_used` est absent de l'enveloppe et la requête envoyée à Ollama ne contient pas le champ `num_ctx` : Ollama utilise sa valeur par défaut chargée dans le modèle.
 
-Les opérateurs configurent les paramètres en sélectionnant/modifiant le profil ; il n'y a pas de saisie `num_ctx` par appel dans les schémas des outils. Si un appel futur révèle un besoin, le modèle suit le mécanisme de remplacement du modèle de v2.3.0.
+Les opérateurs configurent les paramètres en sélectionnant ou en modifiant le profil ; il n'y a pas de saisie `num_ctx` par appel dans les schémas des outils. Si un appel futur révèle la nécessité, le modèle suit le `model` de la version 2.3.0.
 
-### Historique — livrables de la version 2.1.0
+### Historique — livrables de la version 2.3.0
 
-Consultez [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) pour l'intégralité de l'entrée v2.3.0 (remplacement du modèle par appel).
+Consultez [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) pour l'intégralité de la version 2.3.0 (surcharge de modèle par appel).
 
-## Nouveau dans la version 2.2.0
+## Nouveautés dans la version 2.3.0
 
 Modification du modèle par appel pour les outils atomiques basés sur les LLM. Amélioration mineure additive — les appelants de la version v2.2.0 restent inchangés. Détails dans [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
 
@@ -114,7 +114,7 @@ Enveloppe :
 
 Si le niveau "workhorse/deep" a expiré et que l'appel a été redirigé vers le niveau "instant", `env.model` serait le modèle utilisé par le niveau "instant" et `env.fallback_from` serait `"workhorse"` — `env.model_requested` serait toujours `"hermes3:8b"`, et `env.model !== env.model_requested` indique le remplacement. Le modèle spécifié par l'appelant n'est *délibérément* pas transmis au niveau le moins coûteux ; le modèle choisi peut ne pas correspondre à la fonction de ce niveau.
 
-### Historique — livrables de la version 2.1.0
+### Historique — livrables de la version 2.2.0
 
 Consultez [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) pour l'intégralité de l'entrée de la version v2.2.0 (pertinence contextuelle et abstention structurée).
 
@@ -136,6 +136,32 @@ Le contrat de la tranche est vérifié par rapport à l'échec du paquet "fresh-
 ### Historique — livrables de la version 2.1.0
 
 Consultez [CHANGELOG.md](./CHANGELOG.md) pour l'intégralité de l'entrée de la version 2.1.0 (ensemble de fonctionnalités : 13 nouveaux outils + 4 améliorations + mise à jour).
+
+---
+
+## Architecture en bref
+
+```mermaid
+flowchart LR
+  Claude["Claude Code<br/>(MCP client)"]
+  MCP["ollama-intern-mcp<br/>server (stdio)"]
+  Ollama["Ollama daemon<br/>(127.0.0.1:11434)"]
+  Models[("Hermes 3 / Qwen 3<br/>nomic-embed-text")]
+  Corpus[("~/.ollama-intern/<br/>corpora/")]
+  Artifacts[("~/.ollama-intern/<br/>artifacts/")]
+  NDJSON[("~/.ollama-intern/<br/>log.ndjson")]
+  Guards{{"Guardrails<br/>citations · banned phrases<br/>protected paths · confidence"}}
+
+  Claude -- "JSON-RPC over stdio" --> MCP
+  MCP --> Guards
+  MCP -- "/api/generate · /api/chat<br/>/api/embed · /api/ps · /api/tags" --> Ollama
+  Ollama --> Models
+  MCP --- Corpus
+  MCP --- Artifacts
+  MCP --> NDJSON
+```
+
+Chaque appel d'outil Claude passe par le serveur MCP via JSON-RPC sur stdio. Le serveur valide l'appel par rapport au schéma [zod](https://zod.dev) de l'outil, exécute les règles de sécurité configurées (validation des citations, suppression des phrases interdites, application des chemins protégés, seuils de confiance), puis le dirige vers soit un moteur de rendu déterministe (niveau des artefacts) soit un appel HTTP à Ollama (tous les autres niveaux). Le démon Ollama ne voit jamais les chemins fournis par l'utilisateur, mais uniquement le niveau du modèle et l'invite préparée. Chaque appel ajoute un événement structuré au journal NDJSON à l'emplacement `~/.ollama-intern/log.ndjson`, que `ollama_log_tail` et votre shell peuvent lire.
 
 ---
 
@@ -231,23 +257,23 @@ Si le `frame` est omis, le comportement ne change pas par rapport à la version 
 
 ---
 
-## Ce qu'il y a ici : quatre niveaux, 41 outils
+## Ce qu'il y a ici : quatre niveaux, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> outils
 
 **Conçu pour des tâches** signifie que chaque outil décrit une tâche que vous confieriez à un apprenti : classifiez ceci, extrayez cela, triez ces journaux, rédigez cette note de publication, emballez cet incident. L'entrée de l'outil est la spécification de la tâche ; la sortie est le résultat. Pas de primitive générique `run_model` / `chat_with_llm` au sommet.
 
 | Niveau | Nombre | Ce qui se trouve ici |
 |---|---|---|
-| **Atoms** | 15 | Primitives conçues pour des tâches. `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. Les atomes capables de traiter des lots (`classify`, `extract`, `triage_logs`) acceptent `items: [{id, text}]`. |
+| **Atoms** | 28 | Primitives adaptées aux tâches. **15 originaux :** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 ajoutés dans la version 2.1.0 :** `doctor`, `log_tail`, `batch_proof_check` (opérations) ; `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactorisation) ; `artifact_prune`, `hypothesis_drill` (artefact/brief) ; `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). Les atomes capables de traiter par lots (`classify`, `extract`, `triage_logs`) acceptent `items: [{id, text}]`. |
 | **Briefs** | 3 | Brefs structurés basés sur des preuves. `incident_brief`, `repo_brief`, `change_brief`. Chaque affirmation cite un identifiant de preuve ; les inconnus sont supprimés côté serveur. Les preuves faibles affichent "faible : vrai" plutôt qu'une narration fausse. |
 | **Packs** | 3 | Les tâches composites utilisent un pipeline fixe et écrivent des données Markdown et JSON durables dans le répertoire `~/.ollama-intern/artifacts/`.  `incident_pack`, `repo_pack`, `change_pack`.  Rendu déterministe : aucune requête de modèle n'est effectuée sur la forme de l'artefact. |
 | **Artifacts** | 7 | Interface cohérente basée sur les résultats des tâches. `artifact_list` / `read` / `diff` / `export_to_path`, plus trois extraits déterministes : `incident_note`, `onboarding_section`, `release_note`. |
 
-Total : **18 éléments primitifs + 3 tâches + 7 outils d'artefact = 28**.
+Total : **28 atomes + 3 ensembles + 3 paquets + 7 outils d'artefacts = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
 
-Éléments figés :
-- 18 éléments (éléments + résumés). Aucun nouvel outil d'élément.
-- 3 tâches. Aucun nouveau type de tâche.
-- Niveau d'artefact figé à 7.
+Fonctionnalités bloquées :
+- Atomes : la restriction a été **levée dans la version 2.1.0** (28 aujourd'hui ; +13 ajoutés dans la version 2.1.0). Les nouveaux atomes nécessitent toujours une justification basée sur une analyse, des tests, une page dans le manuel et une entrée dans le CHANGELOG ; aucune modification ne peut être apportée de manière informelle.
+- Les ensembles sont bloqués à 3. Aucun nouveau type d'ensemble.
+- Le niveau des artefacts est bloqué à 7.
 
 La référence complète des outils est disponible dans le [manuel](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
@@ -460,7 +486,7 @@ Conforme aux normes [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck).
 - **Phase 4 — Infrastructure d'adoption (du produit)** ✓ v2.0.1 : corpus de sécurité renforcé en trois étapes (TOCTOU, limite de taille des fichiers à 50 Mo, rejet des liens symboliques, écritures atomiques, capture des échecs par fichier), exploration des chemins des outils, observabilité (journalisation des événements d'attente de sémaphores, contexte d'erreur de délai d'attente, journalisation des remplacements d'environnement, signal de pré-échauffement pour le démarrage à froid), sécurité des tests (instantané de l'environnement de chargement des modules pour 10 fichiers, `tools/call` test de bout en bout). Guide de dépannage et exigences matérielles minimales ajoutés pour les administrateurs.
 - **Phase 5 — Benchmarks M5 Max** — Chiffres publiables une fois le matériel disponible (environ 2026-04-24).
 
-Phase par couche de renforcement de la sécurité. L'interface atom/pack/artefact reste figée.
+Phase par couche de durcissement. Les niveaux des ensembles et des artefacts restent bloqués à 3 et 7. La restriction sur les atomes a été levée dans la version 2.1.0 ; les nouveaux atomes nécessitent une justification basée sur une analyse, des tests, une page dans le manuel et une entrée dans le CHANGELOG.
 
 ---
 

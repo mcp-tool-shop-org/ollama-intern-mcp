@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] — 2026-05-15
+
+Health hardening, proactive defenses, humanization of error/observability surfaces, and 10 user-facing feature additions from a 10-phase dogfood swarm. The 41-tool surface gains `ollama_code_review` (42 total). Correlation IDs now propagate across every NDJSON event so an operator can join `pack_step` to its originating `tools/call` envelope. A breaking behavior change in the confidence guardrail default (now fail-closed) is the reason for the minor bump's prominence — see **Changed** below.
+
+### Added
+
+- **`ollama_code_review` atom tool.** Structured PR review: takes a unified diff (`diff_text`, 2MB cap) + optional source paths (max 50), returns `{findings:[{severity, category, file, line?, symbol?, description, recommendation}], summary, diff_size_bytes}`. Severity `critical|high|medium|low`, category `bug|security|performance|style|maintainability`. `severity_floor` and `max_findings` filters. Tier defaults to workhorse; `tier:'deep'` for high-stakes. `coerceReview` drops malformed entries instead of throwing — same pattern as `coerceOnboardingFacts` in packs. Distinct from `ollama_multi_file_refactor_propose` (which proposes refactors): code_review flags issues to fix in the diff as-is.
+- **Correlation IDs across the stack.** Every NDJSON event now carries `{run_id, call_id?, parent_call_id?, op, ...}` where `run_id` is minted in `runner.ts` at every tool entry, `call_id` is per-HTTP-attempt, and `parent_call_id` lets pack sub-step events link back to the originating tool call. `op` enum is closed (`chat|embeddings|pack_step|semaphore_wait|guardrail|shutdown|startup`), borrows OTel `gen_ai.operation.name` vocab. Propagation uses Node's `AsyncLocalStorage` — no parameter threading required for the read side. Tool envelopes echo `run_id` for client-side correlation. Design grounded by a study-swarm (W3C TraceContext / OTel GenAI / MCP progressToken trade-offs; see commit messages for sources).
+- **CLI surface.** `npx ollama-intern-mcp [--version|-V|--help|-h|doctor|init]`. Doctor reuses the `ollama_doctor` tool with NullLogger and renders a human-readable report (Profile / Tiers / Ollama / Models / Healthy). Init scaffolds `hermes.config.yaml` in cwd, refuses to overwrite. No new dependencies.
+- **Profile validation fail-fast.** `INTERN_TIER_<TIER>` env values are validated at `loadProfile()` against `^[a-z0-9._-]+(:[a-z0-9._-]+)?$` for model names and `[256, 1048576]` for `num_ctx`. Catches the `hermes3-8b` (dash instead of colon) typo at load time with a "Did you mean hermes3:8b?" hint instead of failing as `OLLAMA_MODEL_MISSING` hours later.
+- **Vitest coverage configuration.** `npm run test:coverage` (v8 provider, 4 reporters incl. lcov + json-summary, thresholds 70/70/60/70 lines/functions/branches/statements). Current suite reports 86.52% statements / 88.94% lines / 73.96% branches / 86.80% functions.
+- **E2E MCP integration test suite.** `tests/integration/mcp.integration.test.ts` spawns `dist/index.js` as a subprocess and exercises the wire JSON-RPC: handshake, tools/list, tool call, error path, SIGTERM shutdown. Skipped under `SKIP_MCP_GOLDEN=1`.
+- **Shared test helpers.** `tests/_helpers/{fakeOllama,fixtures,index}.ts` — `createFakeOllama({generateImpl, chatImpl, embedImpl, ...})` factory and `makeFakeCtx({client, profile, ...})` RunContext builder. Migrates 4 test files to demonstrate the pattern; future migrations remove the 43-file hand-rolled-mock surface incrementally.
+- **6 new guardrail event helpers.** `buildBannedPhraseEvent`, `buildWriteConfirmEvent` (closes Stage B `rules_version` omission), `buildCompileCheckEvent` (was emitting no event), `buildStringifiedArrayEvent` (stderr-only previously), `buildAtomicWriteOrphanEvent`, `buildCorpusRefreshStepEvent` / `buildCorpusIndexStepEvent` / `buildCorpusLockWaitEvent`. All tagged with the new `op` enum.
+- **SIGTERM / SIGINT handlers in MCP server.** Graceful shutdown emits a structured `op:'shutdown'` event with signal name + lock state, drains the NDJSON queue, closes the MCP transport, then exits 0. Re-entrancy guard for double-Ctrl-C.
+- **Ollama unreachable diagnostics.** `OLLAMA_UNREACHABLE` errors now carry the response Content-Type + status + first 200 chars of the body + a `curl <host>/api/tags` reproduction hint, so an operator can distinguish "Ollama down" from "captive portal in front of OLLAMA_HOST" without leaving the terminal.
+- **50MB payload size cap on Ollama calls.** Pre-`JSON.stringify` size check on `prompt + input + messages`. Refuses with `SCHEMA_INVALID` naming the largest field's byte count, so the operator sees WHICH input is bloated before the process OOMs at serialization.
+- **POSIX parent-dir fsync in `atomicWriteFile`.** Closes the durability half-truth from v2.4.0 — file is atomic, but the rename's effect on the dir entry needs `fsync(parent_dir)` to survive a crash. Windows no-op.
+- **`.tmp` cleanup on writeFile/fsync failure in `atomicWriteFile`.** v2.4.0 only handled rename-failure cleanup; ENOSPC during write or fsync now also cleans up. Optional `onOrphan` callback for operator-grep'able orphan events.
+- **Tag-push auto-release CI workflow.** `push: tags: v*.*.*` trigger added to `publish.yml` alongside the existing `release:published` trigger. Tag-vs-package.json version verify gate runs BEFORE publish. Provenance + NPM_TOKEN preserved. Auto-create GH release with CHANGELOG section extraction.
+- **CodeQL workflow** (`.github/workflows/codeql.yml`) — javascript pack covers TypeScript, push / PR / weekly schedule, security-and-quality query suite.
+- **Dependency-review action** (`.github/workflows/dependency-review.yml`) — PR-only, fail-on-severity moderate+, license allowlist `[MIT, BSD-2-Clause, BSD-3-Clause, ISC, Apache-2.0]`.
+- **OS matrix in CI** — `verify` job now runs on `{ubuntu, windows, macos} × {node 20, 22}` with `fail-fast: false`. Stage A audit found 3 Windows-specific bugs; CI now catches the next one.
+- **Quickstart tutorial** at `site/src/content/docs/handbook/quickstart.md` — 6-step "first 5 minutes": Ollama check → Claude wiring → ollama_doctor → corpus_index → corpus_answer → incident_pack on disk.
+- **5 per-tool reference pages** at `site/src/content/docs/handbook/tools/{doctor,classify,extract,corpus-answer,chat}.md` — consistent template (job, tier, when-to-use/NOT, schema, examples, pitfalls, related).
+- **Mermaid architecture diagram** in README.md + handbook/index.md.
+- **scripts/sync-doc-versions.mjs** — propagates version + tool count + test count from package.json + src/index.ts + npm test output into HTML-comment-marked spans across README/HANDOFF/CONTRIBUTING/SHIP_GATE/site-config. Idempotent. `--check` mode for CI gating.
+- **.github/workflows/doc-drift.yml** — CI guard for CHANGELOG-vs-version drift + Released:TBD detection + README/HANDOFF/SHIP_GATE test-count drift.
+- **3 new test files** (Stage C): `tests/observability.test.ts` (14), `tests/corpus/lock.test.ts` (10), `tests/corpus/atomicWrite.test.ts` (15). Plus `tests/tools/runner.test.ts` (22), `tests/runContext.test.ts` (13), `tests/cli.test.ts` (9), `tests/tools/codeReview.test.ts` (10) from Phase 7.
+- **`.gitattributes`** pins LF for source/docs (stops CRLF warnings on Windows).
+- **Issue + PR templates** at `.github/ISSUE_TEMPLATE/` and `pull_request_template.md`.
+
+### Changed
+
+- **BREAKING (behavior, not API): `applyConfidenceThreshold` defaults to fail-closed.** Previously `belowThreshold && opts.allow_none ? null : raw.label` returned the weak label by default. Now `allow_none ?? true` flips the default — callers that want the weak-label propagation must opt in via `allow_none: false`. Every sibling guardrail in `src/guardrails/` is fail-closed; this aligns confidence with the rest. Operators calling the guardrail directly with the default options will see different return values for `below_threshold` cases. The fix surface is small (most callers don't override `allow_none`); the test suite catches the few that do. Reason: defense-in-depth — guardrail defaults should be conservative.
+- **Citation strip events carry per-strip detail.** `validateCitations` now logs `{path, reason}` per stripped citation via the new `buildCitationStripEventDetails` helper, replacing the previous `{count}`-only summary. Wired into `src/tools/research.ts`.
+- **Confidence strip events carry raw label/confidence/threshold.** `src/tools/classify.ts` emits the structured event via `buildConfidenceStripEvent` instead of an inline summary.
+- **`semaphore:wait` events carry the actual tier.** Previously hardcoded `tier:'unknown'` because the HTTP layer didn't know which tier originated the call. The `Tier` is now an optional parameter on `OllamaClient.generate/chat/embed`.
+- **Brief-parser null-entry handling unified.** New `readObjectArray` helper in `src/tools/briefs/common.ts` filters non-object entries (null, numbers, strings, nested arrays) before the loop. Applied to all 11 brief-parser call sites across `incidentBrief`, `repoBrief`, `changeBrief`, `codeCitation`, `refactorPlan`, `multiFileRefactorPropose`. Closes the silent-crash window when the model returned `[null, {...}]`.
+- **`classify.ts` null-narrowing.** Same-family bug as the brief parsers — `JSON.parse('null')` returns `null`; `obj.label` throws. Now uses the standard narrowing pattern + emits a structured `classify_abstain` event with reason enum (`parse_error|non_object|missing_label`) plus a raw preview.
+- **`triageLogs.ts` null-narrowing.** Same fix as classify, found by sweep.
+- **Pack write-failure UX restructured.** `incidentPack`, `changePack`, `repoPack` now set `result.artifact.markdown_path/json_path` to `null` on write failure (previously claimed nonexistent paths). Envelope surfaces a coherent warning with the failed path + partial-data location + fix hint.
+- **Atomic-write helper extracted.** `src/corpus/atomicWrite.ts` consolidates the tmp+fsync+rename pattern previously inline in `saveCorpus`; `saveManifest` now uses it too — closes the durability half-truth where the corpus was crash-safe but the manifest wasn't.
+- **Chunker char offsets preserve CRLF bytes.** `src/corpus/chunker.ts` now returns `char_start`/`char_end` that satisfy `text.slice(char_start, char_end) === chunk.text` byte-for-byte even on CRLF input. EOF off-by-one clamped.
+- **Pack baseline (`tests/pack.test.ts`)** bumped 385000 → 470000 to reflect new tools + ALS modules + 13 v2.1.0 atoms now enumerated.
+- **HANDOFF / SHIP_GATE / CONTRIBUTING / README / handbook** all caught up to v2.5.0 + 42 tools via `scripts/sync-doc-versions.mjs`.
+
+### Fixed
+
+- **CRITICAL: Shell injection on Windows in `batchProofCheck.ts`.** `spawn(..., {shell: process.platform === 'win32'})` combined with caller-controlled `input.files[]` paths embedded into argv was a real RCE. cmd.exe expands `& | ; ^ " > <` etc. inside arguments. New `assertSafeFilePath` validator rejects shell metacharacters before spawn. Legitimate paths with spaces, dots, parens, hyphens pass through.
+- **CRITICAL: regression-guard test correctness (`tests/regressions.test.ts:176`).** The raw-vector leak guard was using `expect.not.arrayContaining(["embedding", "vector"])` which passes when EITHER key is absent. Replaced with explicit per-key `not.toContain` checks (BOTH-absent invariant). The original bug (raw vectors blowing past Claude's 115KB tool-output limit) would now be caught.
+- **CRITICAL: startupProbe sentinel test (`tests/startupProbe.test.ts:74`).** Was `expect("1").toBe("1")` — a tautology asserting a local constant against itself. Now uses a source-grep regex against `src/index.ts` to lock the actual `"1"` comparison shape; would catch drift in the env-var sentinel.
+- **HIGH: `protectedPaths.normalizePath` case-bypass on Windows.** JSDoc claimed "lowercase on win32" but the body didn't. `Memory/foo.md` / `MEMORY/foo.md` evaded the `memory/` protected-path rule. Now lowercases on `process.platform === 'win32'` as documented; also flows through `validateCitations` to fix the citation-allowlist case bypass.
+- **HIGH: `codeMap.walkPaths` symlink traversal.** Now skips symlinks/junctions by default in the BFS walker (Windows junctions too). Closes the exfil window where a symlink to `/etc` or `~/.ssh` would be enumerated.
+- **HIGH: `repoPack` / `changePack` cast safety.** `extractResult.data` was cast to `OnboardingFacts` / `ChangeFacts` without runtime validation; model could return `package_names: "string-not-array"` which crashed at render time. New `coerceOnboardingFacts` / `coerceChangeFacts` validators sanitize each field, drop bad entries, never throw.
+- **HIGH: 6 brief-parser null-entry crashes** — see **Changed** above (consolidated via `readObjectArray`).
+- **HIGH: classify + triageLogs null-crash** — see **Changed** above.
+- **HIGH: `saveManifest` non-atomic write.** Mirrored `saveCorpus`'s tmp+fsync+rename pattern via the shared `atomicWrite.ts` helper; `loadManifest(...).catch(() => null)` no longer silently masks a torn-write.
+- **HIGH: 3 timeout-test guard patterns** in `tests/timeoutLogEnrichment.test.ts` were silently skipping assertions if the `kind` discriminant ever changed. Restructured to assert kind directly without using it as a guard.
+- **HIGH: README + 7 translations + handbook tool count drift** (28 vs 41). Stage A landed the EN fix; Stage B's `scripts/sync-doc-versions.mjs` makes the drift impossible going forward (HTML-comment markers + CI guard).
+- **HIGH: HANDOFF / SHIP_GATE / CONTRIBUTING stale.** All caught up to current version + test count + tool count.
+- Tests went from 792 → 958 passing (+166, 1 todo).
+
+### Deprecated
+
+None.
+
+### Removed
+
+None.
+
+### Security
+
+- **HIGH: Shell injection in `batchProofCheck.ts`** — see **Fixed** (RCE on Windows).
+- **HIGH: Symlink-traversal in `codeMap.ts`** — see **Fixed** (exfil window).
+- **HIGH: Protected-path / citation-allowlist case bypass on Windows** — see **Fixed**.
+- **CodeQL workflow** added (covers JS/TS, weekly).
+- **dependency-review-action** added on PRs.
+- **POSIX parent-dir fsync + .tmp cleanup** in `atomicWriteFile` close the durability gap from v2.4.0.
+
+### Upgrade notes
+
+- **Confidence guardrail callers**: if you call `applyConfidenceThreshold` directly without setting `allow_none`, you now get fail-closed behavior (returns `null` label when below threshold, with `below_threshold:true` flag) instead of the previous fail-open (returned the weak label). Pass `allow_none: false` to restore the old behavior. Most callers go through the standard tools (classify, research, etc.) which already handle the strip event; this is only relevant if you import the helper directly.
+- **New tool surface**: `ollama_code_review` is registered in `src/index.ts`. No client-side changes needed unless you maintain a hard-coded tool whitelist — bump the count from 41 → 42.
+- **Correlation IDs** are additive — new fields in NDJSON events + envelope. Existing parsers that ignore unknown fields continue to work.
+- **CLI verbs** (`doctor`, `init`, `--version`, `--help`) only fire when the binary is invoked with args; no-args behavior (MCP stdio default) unchanged.
+
 ## [2.4.0] — 2026-05-12
 
 Non-breaking additive minor. All v2.3.0 callers continue working unchanged. Per-tier `num_ctx` control on the profile system; current behavior preserved when unset.

@@ -1,6 +1,6 @@
 ---
 title: Tool Reference
-description: All 41 tools grouped by tier.
+description: All 42 tools grouped by tier.
 sidebar:
   order: 2
 ---

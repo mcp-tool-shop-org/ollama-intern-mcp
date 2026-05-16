@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**El agente local para Claude Code.** 41 herramientas, informes basados en evidencia, artefactos duraderos.
+**El becario local para Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> herramientas diseñadas para tareas específicas, informes basados en evidencia, artefactos duraderos.
 
 Un servidor MCP que proporciona a Claude Code un **agente local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / Potente / Profundo / Integrado); el nivel escribe un archivo que puedes abrir la semana que viene.
 
@@ -27,7 +27,7 @@ Sin nube. Sin telemetría. Nada de "autonomía". Cada llamada muestra su trabajo
 
 ---
 
-## Novedades en v2.2.0
+## Novedades en la versión 2.4.0
 
 Control individual `num_ctx` (tamaño de la ventana de contexto) por nivel en el sistema de perfiles. Pequeña mejora adicional: los usuarios de la versión v2.3.0 no se ven afectados. Detalles en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
 
@@ -74,11 +74,11 @@ En `m5-max` (o cualquier perfil que deje un nivel sin establecer), `num_ctx_used
 
 Los operadores configuran ajustando o editando el perfil; no hay una entrada de `num_ctx` por llamada en los esquemas de las herramientas. Si una llamada futura revela la necesidad, el patrón sigue la sobreescritura de `model` de la versión v2.3.0.
 
-### Histórico — entregables de v2.1.0
+### Versiones anteriores — Entregables de la versión 2.3.0
 
 Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) para la entrada completa de la versión v2.3.0 (sobreescritura de modelo por llamada).
 
-## Novedades en v2.2.0
+## Novedades en la versión 2.3.0
 
 Sobreescritura de modelo por llamada en herramientas basadas en LLM. Pequeña mejora adicional: los usuarios de la versión v2.2.0 no se ven afectados. Detalles en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
 
@@ -114,7 +114,7 @@ Envolvente:
 
 Si el servidor principal o la capa de procesamiento intensivo hubiera alcanzado su límite de tiempo y la solicitud se hubiera redirigido a la capa de respuesta rápida, `env.model` sería el modelo asignado por la capa de respuesta rápida, y `env.fallback_from` sería "workhorse" (servidor principal). `env.model_requested` seguiría siendo "hermes3:8b", y la condición `env.model !== env.model_requested` indica que se ha realizado una sustitución. Esta sustitución se realiza deliberadamente y no se aplica a la capa de menor costo, ya que el modelo elegido podría no ser adecuado para el rol de esa capa.
 
-### Histórico — entregables de v2.1.0
+### Versiones anteriores — Entregables de la versión 2.2.0
 
 Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para ver la entrada completa de la versión 2.2.0 (relevancia temática contextual + abstención estructurada).
 
@@ -136,6 +136,32 @@ El contrato de la sección se verifica contra el fallo literal de la nueva insta
 ### Histórico — entregables de v2.1.0
 
 Consulta [CHANGELOG.md](./CHANGELOG.md) para ver la entrada completa de v2.1.0 (paquete de funciones: 13 nuevas herramientas + 4 mejoras + actualización).
+
+---
+
+## Arquitectura general
+
+```mermaid
+flowchart LR
+  Claude["Claude Code<br/>(MCP client)"]
+  MCP["ollama-intern-mcp<br/>server (stdio)"]
+  Ollama["Ollama daemon<br/>(127.0.0.1:11434)"]
+  Models[("Hermes 3 / Qwen 3<br/>nomic-embed-text")]
+  Corpus[("~/.ollama-intern/<br/>corpora/")]
+  Artifacts[("~/.ollama-intern/<br/>artifacts/")]
+  NDJSON[("~/.ollama-intern/<br/>log.ndjson")]
+  Guards{{"Guardrails<br/>citations · banned phrases<br/>protected paths · confidence"}}
+
+  Claude -- "JSON-RPC over stdio" --> MCP
+  MCP --> Guards
+  MCP -- "/api/generate · /api/chat<br/>/api/embed · /api/ps · /api/tags" --> Ollama
+  Ollama --> Models
+  MCP --- Corpus
+  MCP --- Artifacts
+  MCP --> NDJSON
+```
+
+Cada llamada a una herramienta de Claude se envía al servidor MCP a través de JSON-RPC estándar. El servidor valida la llamada según el esquema [zod](https://zod.dev) de la herramienta, ejecuta las restricciones configuradas (validación de citas, eliminación de frases prohibidas, aplicación de rutas protegidas, umbrales de confianza) y luego la dirige a un renderizador determinista (nivel de artefacto) o a una llamada HTTP a Ollama (todos los demás niveles). El demonio de Ollama nunca ve las rutas proporcionadas por el usuario, solo el nivel del modelo y la solicitud preparada. Cada llamada agrega un evento estructurado al registro NDJSON en `~/.ollama-intern/log.ndjson`, donde `ollama_log_tail` y su shell pueden leerlo.
 
 ---
 
@@ -231,23 +257,23 @@ Si se omite el `frame`, el comportamiento no cambia con respecto a la versión 2
 
 ---
 
-## ¿Qué hay aquí? Cuatro niveles, 41 herramientas
+## ¿Qué hay aquí? — Cuatro niveles, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> herramientas
 
 **Con forma de tarea** significa que cada herramienta define una tarea que se le asignaría a un becario: clasifica esto, extrae eso, triaje estos registros, redacta esta nota de lanzamiento, empaqueta este incidente. La entrada de la herramienta es la especificación de la tarea; la salida es el resultado. No hay una función primitiva genérica `run_model` / `chat_with_llm` en la parte superior.
 
 | Nivel | Cantidad | Qué hay aquí |
 |---|---|---|
-| **Atoms** | 15 | Primitivas con forma de tarea. `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. Los elementos por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
+| **Atoms** | 28 | Elementos básicos diseñados para tareas específicas. **Originales (15):** `classify` (clasificar), `extract` (extraer), `triage_logs` (triaje de registros), `summarize_fast` / `deep` (resumir, rápido / profundo), `draft` (borrador), `research` (investigación), `corpus_search` (búsqueda en corpus) / `answer` (responder) / `index` (indexar) / `refresh` (actualizar) / `list` (listar), `embed_search` (búsqueda de incrustaciones), `embed` (incrustar), `chat` (chat). **+13 añadidos en la versión 2.1.0:** `doctor` (diagnóstico), `log_tail` (seguimiento de registros), `batch_proof_check` (verificación por lotes) (operaciones); `code_map` (mapa de código), `code_citation` (cita de código), `multi_file_refactor_propose` (proponer refactorización de varios archivos), `refactor_plan` (plan de refactorización) (refactorización); `artifact_prune` (poda de artefactos), `hypothesis_drill` (análisis de hipótesis) (artefacto/informe); `corpus_health` (salud del corpus), `corpus_amend` (modificación del corpus), `corpus_amend_history` (historial de modificaciones del corpus), `corpus_rerank` (reordenación del corpus) (corpus). Los elementos básicos que admiten procesamiento por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
 | **Briefs** | 3 | Resúmenes estructurados con respaldo de evidencia. `incident_brief`, `repo_brief`, `change_brief`. Cada afirmación cita un identificador de evidencia; los desconocidos se eliminan en el servidor. La evidencia débil muestra `weak: true` en lugar de una narrativa falsa. |
 | **Packs** | 3 | Tareas compuestas con un flujo de trabajo fijo que escriben datos duraderos en formato Markdown y JSON en el directorio `~/.ollama-intern/artifacts/`. Incluyen `incident_pack`, `repo_pack` y `change_pack`. Renderizadores deterministas: no se realizan llamadas a modelos en la estructura de los artefactos. |
 | **Artifacts** | 7 | Interfaz de consistencia sobre las salidas de los paquetes. Incluye `artifact_list`, `read`, `diff`, `export_to_path`, y tres fragmentos deterministas: `incident_note`, `onboarding_section` y `release_note`. |
 
-Total: **18 elementos básicos + 3 paquetes + 7 herramientas de artefactos = 28**.
+Total: **28 elementos básicos + 3 informes + 3 paquetes + 7 herramientas de artefactos = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
 
-Elementos congelados:
-- Elementos básicos congelados en 18 (elementos básicos + resúmenes). No hay nuevas herramientas de elementos básicos.
-- Paquetes congelados en 3. No hay nuevos tipos de paquetes.
-- Nivel de artefacto congelado en 7.
+Líneas congeladas:
+- Elementos básicos: congelados, **levantada en la versión 2.1.0** (28 actualmente; +13 añadidos en la versión 2.1.0). Los nuevos elementos básicos aún requieren una justificación auditada, pruebas, una página del manual y una entrada en el CHANGELOG; no se permiten adiciones casuales.
+- Los paquetes están congelados en 3. No hay nuevos tipos de paquetes.
+- El nivel de artefacto está congelado en 7.
 
 La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
@@ -460,7 +486,7 @@ Construido según el estándar de [Shipcheck](https://github.com/mcp-tool-shop-o
 - **Fase 4 — Núcleo de Adopción** ✓ v2.0.1: corpus de salud endurecido en tres etapas (protección contra ataques TOCTOU, límite de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido de rutas de herramientas, observabilidad (registro de eventos de espera de semáforos, contexto de error de tiempo de espera, registro de anulación de entorno, señal de precalentamiento para inicio en frío), seguridad de pruebas (instantánea del entorno de carga de módulos en 10 archivos, `tools/call` de extremo a extremo). Se agregó un manual de solución de problemas y los requisitos mínimos de hardware para los operadores.
 - **Fase 5 — Pruebas de rendimiento en M5 Max** — Números publicables una vez que se disponga del hardware (aproximadamente 24 de abril de 2026).
 
-Fase por capa de endurecimiento. La interfaz de Atom/paquete/artefacto permanece inalterada.
+Fase por capa de endurecimiento. Los niveles de paquete y artefacto permanecen congelados en 3 y 7. La congelación de los elementos básicos se levantó en la versión 2.1.0; los nuevos elementos básicos requieren una justificación auditada, pruebas, una página del manual y una entrada en el CHANGELOG.
 
 ---
 
