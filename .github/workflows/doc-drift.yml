@@ -123,18 +123,29 @@ jobs:
       - name: Run tests and capture pass count
         id: tests
         shell: bash
+        env:
+          # vitest still emits ANSI in CI by default; CI=1 + NO_COLOR=1 both
+          # required by different code paths in the vitest reporter chain.
+          NO_COLOR: "1"
+          FORCE_COLOR: "0"
         run: |
           # Capture both streams; vitest writes the summary to stdout.
           set +e
           OUTPUT="$(npm test --silent 2>&1)"
           STATUS=$?
+          # Strip ANSI escape codes before grepping — if any survive, "Tests"
+          # won't match because ESC isn't whitespace and the regex then fails
+          # under bash -o pipefail (GH Actions default), aborting the step.
+          CLEAN="$(printf '%s' "$OUTPUT" | sed -E 's/\x1b\[[0-9;]*m//g')"
           set -e
-          echo "$OUTPUT" | tail -20
+          printf '%s\n' "$CLEAN" | tail -20
           if [ "$STATUS" -ne 0 ]; then
             echo "::warning::Tests failed; doc-drift count check will use the partial-pass count if parseable."
           fi
           # vitest 4.x summary line: "Tests  N passed (M)" or "Tests  X failed | N passed (M)"
-          PASSED="$(echo "$OUTPUT" | grep -E "^\s*Tests\s+" | tail -1 | sed -E 's/.*\b([0-9]+)\s+passed.*/\1/')"
+          # `|| true` keeps pipefail from killing the step on no-match — we
+          # check the empty result explicitly below.
+          PASSED="$(printf '%s\n' "$CLEAN" | grep -E "^\s*Tests\s+" | tail -1 | sed -E 's/.*\b([0-9]+)\s+passed.*/\1/' || true)"
           if [ -z "$PASSED" ]; then
             echo "::error::Could not parse passing-test count from vitest output. Fix the doc-drift workflow or the test runner."
             exit 1
