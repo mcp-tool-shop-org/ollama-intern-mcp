@@ -264,3 +264,88 @@ describe("handleClassify — per-call model override (v2.3.0)", () => {
     ).toThrow();
   });
 });
+
+// ── Stage C — parseClassify null-safety + structured abstain  ─
+// The model can legitimately return valid-JSON-of-wrong-shape (e.g.
+// 'null', '[]', '42', '"string"'). Before Stage C, parseClassify
+// blew up on `obj.label` against a null parsedJson value. The Stage C
+// fix narrows on object-ness FIRST, then reads fields, and emits a
+// structured guardrail event so an operator can see WHY classify
+// abstained instead of looking at an indistinguishable label=null.
+
+describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () => {
+  it("model returning literal 'null' does NOT crash — abstains with label:null, confidence:0", async () => {
+    const client = new MockClient("null");
+    const ctx = makeCtx(client);
+    const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    expect(env.result.label).toBeNull();
+    expect(env.result.confidence).toBe(0);
+  });
+
+  it("model returning '[]' (array literal) does NOT crash — abstains cleanly", async () => {
+    const client = new MockClient("[]");
+    const ctx = makeCtx(client);
+    const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    expect(env.result.label).toBeNull();
+    expect(env.result.confidence).toBe(0);
+  });
+
+  it("model returning bare number '42' does NOT crash — abstains cleanly", async () => {
+    const client = new MockClient("42");
+    const ctx = makeCtx(client);
+    const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    expect(env.result.label).toBeNull();
+    expect(env.result.confidence).toBe(0);
+  });
+
+  it('model returning a bare JSON string \'"label"\' does NOT crash — abstains cleanly', async () => {
+    const client = new MockClient('"label"');
+    const ctx = makeCtx(client);
+    const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    expect(env.result.label).toBeNull();
+    expect(env.result.confidence).toBe(0);
+  });
+
+  it("model returning an object with missing label field abstains with structured reason", async () => {
+    const client = new MockClient(JSON.stringify({ confidence: 0.95 }));
+    const ctx = makeCtx(client);
+    const env = await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    expect(env.result.label).toBeNull();
+    // Guardrail event should fire — log it so operators can diagnose
+    // the missing-label vs parse-error vs non-object cases distinctly.
+    const guardrail = ctx.logger.events.find(
+      (e) => e.kind === "guardrail" && (e as { rule?: string }).rule === "classify_abstain",
+    );
+    expect(guardrail, "missing-label should emit a classify_abstain guardrail event").toBeDefined();
+    const detail = (guardrail as { detail?: { reason?: string } }).detail;
+    expect(detail?.reason).toBe("missing_label");
+  });
+
+  it("emits structured guardrail event with reason='parse_error' on non-JSON output", async () => {
+    const client = new MockClient("totally not json at all");
+    const ctx = makeCtx(client);
+    await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    const guardrail = ctx.logger.events.find(
+      (e) => e.kind === "guardrail" && (e as { rule?: string }).rule === "classify_abstain",
+    );
+    expect(guardrail).toBeDefined();
+    const detail = (guardrail as { detail?: { reason?: string; raw_preview?: string } }).detail;
+    expect(detail?.reason).toBe("parse_error");
+    // raw_preview is bounded for log hygiene — must not be the full
+    // raw payload if it's very long. 200 chars is the documented cap.
+    expect(typeof detail?.raw_preview).toBe("string");
+    expect(detail!.raw_preview!.length).toBeLessThanOrEqual(200);
+  });
+
+  it("emits guardrail event with reason='non_object' when model returns null literal", async () => {
+    const client = new MockClient("null");
+    const ctx = makeCtx(client);
+    await handleClassify({ text: "x", labels: ["a", "b"] }, ctx);
+    const guardrail = ctx.logger.events.find(
+      (e) => e.kind === "guardrail" && (e as { rule?: string }).rule === "classify_abstain",
+    );
+    expect(guardrail).toBeDefined();
+    const detail = (guardrail as { detail?: { reason?: string } }).detail;
+    expect(detail?.reason).toBe("non_object");
+  });
+});

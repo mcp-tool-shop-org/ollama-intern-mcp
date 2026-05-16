@@ -1,0 +1,35 @@
+# Normalize line endings across platforms.
+# Stops the "LF will be replaced by CRLF" warnings on Windows checkouts
+# and keeps the working tree consistent regardless of contributor OS.
+* text=auto eol=lf
+
+# Source — always LF.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+
+# Docs — always LF.
+*.md text eol=lf
+
+# Config — always LF.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.example.yaml text eol=lf
+
+# Shell scripts must be LF or they break on Linux runners.
+*.sh text eol=lf
+
+# Binary assets — never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tgz binary

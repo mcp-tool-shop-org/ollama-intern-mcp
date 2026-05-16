@@ -12,8 +12,24 @@ import { InternError } from "./errors.js";
 import type { Residency } from "./envelope.js";
 import type { Logger } from "./observability.js";
 import { timestamp } from "./observability.js";
+import type { Tier } from "./tiers.js";
 
 const API_TIMEOUT_MS = 10_000;
+
+/**
+ * Maximum aggregate size (bytes/chars) of dominant payload fields for a
+ * single Ollama POST. JSON.stringify on a 2GB body roughly doubles peak
+ * memory at serialization time and can OOM-kill the process before
+ * fetch() ever sees the request. 50MB is conservative — local Ollama is
+ * VRAM-bound, not bandwidth-bound, and a real call that big has almost
+ * certainly already exceeded the model's context window. Bumping this
+ * cap requires evidence of a legitimate workload that needs it.
+ *
+ * Field set scanned: `prompt` (generate), `input` (embed; string or
+ * string[]), `messages[].content` (chat). Other fields are small
+ * primitives whose contribution is negligible.
+ */
+const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024;
 
 /**
  * Transient-failure retry policy. Local Ollama normally responds in a few ms;
@@ -209,9 +225,17 @@ export interface PsResponse {
 }
 
 export interface OllamaClient {
-  generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResponse>;
-  chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse>;
-  embed(req: EmbedRequest, signal?: AbortSignal): Promise<EmbedResponse>;
+  /**
+   * `tier` (added Stage C / F-004) is OPTIONAL context that lets the HTTP
+   * layer label `semaphore:wait` events with the originating tier
+   * (instant/workhorse/deep/embed). Without it, operators reading the
+   * log_tail see `tier: 'unknown'` on every queued call — defeating the
+   * "this MCP is slow because the deep tier is queueing" diagnosis.
+   * Backward-compat: omitting `tier` preserves the prior call shape.
+   */
+  generate(req: GenerateRequest, signal?: AbortSignal, tier?: Tier): Promise<GenerateResponse>;
+  chat(req: ChatRequest, signal?: AbortSignal, tier?: Tier): Promise<ChatResponse>;
+  embed(req: EmbedRequest, signal?: AbortSignal, tier?: Tier): Promise<EmbedResponse>;
   residency(model: string): Promise<Residency | null>;
   /** Reachability probe — no retry, short timeout. Used at startup. */
   probe(timeoutMs?: number): Promise<{ ok: boolean; reason?: string }>;
@@ -268,16 +292,16 @@ export class HttpOllamaClient implements OllamaClient {
     this.baseUrl = normalizeOllamaHost(baseUrl ?? process.env.OLLAMA_HOST);
   }
 
-  async generate(req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResponse> {
-    return this.post<GenerateRequest, GenerateResponse>("/api/generate", { ...req, stream: false }, signal);
+  async generate(req: GenerateRequest, signal?: AbortSignal, tier?: Tier): Promise<GenerateResponse> {
+    return this.post<GenerateRequest, GenerateResponse>("/api/generate", { ...req, stream: false }, signal, tier);
   }
 
-  async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
-    return this.post<ChatRequest, ChatResponse>("/api/chat", { ...req, stream: false }, signal);
+  async chat(req: ChatRequest, signal?: AbortSignal, tier?: Tier): Promise<ChatResponse> {
+    return this.post<ChatRequest, ChatResponse>("/api/chat", { ...req, stream: false }, signal, tier);
   }
 
-  async embed(req: EmbedRequest, signal?: AbortSignal): Promise<EmbedResponse> {
-    return this.post<EmbedRequest, EmbedResponse>("/api/embed", req, signal);
+  async embed(req: EmbedRequest, signal?: AbortSignal, tier?: Tier): Promise<EmbedResponse> {
+    return this.post<EmbedRequest, EmbedResponse>("/api/embed", req, signal, tier);
   }
 
   async residency(model: string): Promise<Residency | null> {
@@ -309,16 +333,26 @@ export class HttpOllamaClient implements OllamaClient {
     }
   }
 
-  private async post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal): Promise<TRes> {
+  private async post<TReq, TRes>(
+    path: string,
+    body: TReq,
+    signal?: AbortSignal,
+    tier?: Tier,
+  ): Promise<TRes> {
     // Before acquiring, peek at the gate. If we'd block, emit a single
     // semaphore:wait event with queue depth + rough wait estimate so an
     // operator debugging "why was this slow?" has the context they need.
+    //
+    // F-004 — `tier` is now threaded from the call site so the operator
+    // sees a meaningful label (instant/workhorse/deep/embed) instead of
+    // 'unknown'. Call sites that haven't been updated yet still default
+    // to 'unknown' (backward-compat); the SourceOfTruth is the caller.
     if (sideLogger !== null && ollamaSemaphore.wouldBlock) {
       const snap = ollamaSemaphore.snapshot();
       void sideLogger.log({
         kind: "semaphore:wait",
         ts: timestamp(),
-        tier: "unknown",
+        tier: tier ?? "unknown",
         queue_depth: snap.queue_depth,
         in_flight: snap.in_flight,
         expected_wait_ms: snap.expected_wait_ms,
@@ -392,6 +426,46 @@ export class HttpOllamaClient implements OllamaClient {
 
   /** One HTTP attempt — raises InternError for definitive 4xx, TransientHttpError for 5xx/429, raw for network. */
   private async postOnce<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal): Promise<TRes> {
+    // F-003 — payload size guard. JSON.stringify on a multi-MB body
+    // doubles memory usage at serialization time and can OOM-kill the
+    // process before fetch() ever sees it. We pre-check the dominant
+    // fields (prompt + input + messages) and refuse loudly with the
+    // operator-actionable field sizes; the threshold is conservative
+    // because local Ollama is already constrained by VRAM, not bandwidth.
+    //
+    // We name the payload fields a generic Ollama POST might carry; the
+    // shape is duck-typed because postOnce is generic over TReq.
+    const probe = body as Partial<{
+      prompt: string;
+      input: string | string[];
+      messages: Array<{ content?: string }>;
+    }>;
+    const promptLen = typeof probe.prompt === "string" ? probe.prompt.length : 0;
+    let inputLen = 0;
+    if (typeof probe.input === "string") {
+      inputLen = probe.input.length;
+    } else if (Array.isArray(probe.input)) {
+      for (const s of probe.input) {
+        if (typeof s === "string") inputLen += s.length;
+      }
+    }
+    const messagesCount = Array.isArray(probe.messages) ? probe.messages.length : 0;
+    let messagesLen = 0;
+    if (Array.isArray(probe.messages)) {
+      for (const m of probe.messages) {
+        if (m && typeof m.content === "string") messagesLen += m.content.length;
+      }
+    }
+    const dominantSize = promptLen + inputLen + messagesLen;
+    if (dominantSize > MAX_PAYLOAD_BYTES) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `Request payload exceeds ${MAX_PAYLOAD_BYTES} bytes (computed ~${dominantSize} bytes from prompt+input+messages).`,
+        `Reduce the input size or split into multiple calls. Largest fields: prompt=${promptLen}, input=${inputLen}, messages=${messagesCount} items (~${messagesLen} content chars). Local Ollama is VRAM-bound; a payload this large will OOM before inference starts.`,
+        false,
+      );
+    }
+
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -421,7 +495,25 @@ export class HttpOllamaClient implements OllamaClient {
         true,
       );
     }
-    return (await res.json()) as TRes;
+    // F-002 — guard JSON parse on 200 OK responses. A corp proxy /
+    // captive portal / misconfigured load balancer that returns 200 +
+    // HTML used to surface as a bare SyntaxError ("Unexpected token <
+    // in JSON"), bypassing OLLAMA_UNREACHABLE mapping. Read as text
+    // first, then try to parse; on failure raise an InternError with
+    // the response Content-Type, status, and a first-200-char preview
+    // so the operator can see exactly what came back instead of JSON.
+    const text = await res.text();
+    try {
+      return JSON.parse(text) as TRes;
+    } catch {
+      const contentType = res.headers.get("content-type") ?? "unknown";
+      throw new InternError(
+        "OLLAMA_UNREACHABLE",
+        `Ollama returned non-JSON response (Content-Type: ${contentType}, status ${res.status}). First 200 chars: ${text.slice(0, 200)}`,
+        `Check that OLLAMA_HOST points to an Ollama server and not a proxy/captive portal that intercepts requests. Run: curl ${this.baseUrl}/api/tags to verify the host responds with JSON.`,
+        true,
+      );
+    }
   }
 
   /**

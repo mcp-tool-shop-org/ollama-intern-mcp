@@ -504,6 +504,60 @@ async function main(): Promise<void> {
   const server = createServer(ctx);
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Install graceful-shutdown handlers (Stage C / F-001). The MCP server
+  // runs under stdio transport; without these, SIGTERM/SIGINT tears the
+  // process down immediately — leaving NDJSON log writes mid-append and
+  // any in-flight corpus mutations unfinished. Operators reading the
+  // log_tail after a kill should see a clear breadcrumb explaining what
+  // stopped the server, not just an abrupt end-of-file.
+  //
+  // The corpus lock module (src/corpus/lock.ts) is in-process only and
+  // does not expose a hasLock() / isLocked() predicate today. We log
+  // best-effort and document the gap as a follow-up — adding a predicate
+  // is corpus-guards' domain, not ours.
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    // Re-entrancy guard: a second SIGINT (^C twice impatient operator)
+    // must not race a half-completed first shutdown. The first invocation
+    // owns the cleanup; subsequent ones are no-ops.
+    if (shuttingDown) return;
+    shuttingDown = true;
+    try {
+      // 1. Structured breadcrumb FIRST so log_tail shows what happened
+      //    even if later steps wedge.
+      await ctx.logger.log({
+        kind: "guardrail",
+        ts: timestamp(),
+        tool: "shutdown",
+        rule: "signal_received",
+        action: "graceful_shutdown",
+        detail: {
+          signal,
+          // lock_held is best-effort — corpus/lock.ts owns the predicate
+          // and does not export one yet. Surface "unknown" honestly so an
+          // operator reading the event knows it wasn't asserted clean.
+          lock_held: "unknown",
+          note: "corpus lock state not introspected; release on process exit",
+        },
+      });
+      // 2. Close the MCP server so transport flushes any pending response.
+      //    server.close() is provided by @modelcontextprotocol/sdk; guarded
+      //    with optional-chaining in case a future SDK rev removes it.
+      await server.close?.();
+    } catch {
+      // Shutdown path must never throw — if logging or close() fails the
+      // operator already pressed Ctrl-C; just continue to exit.
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
 }
 
 /**

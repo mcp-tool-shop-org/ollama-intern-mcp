@@ -100,6 +100,11 @@ export async function runPrewarm(ctx: RunContext, tiers: Tier[]): Promise<number
           keep_alive: -1,
         },
         controller.signal,
+        // F-004 — tag the call with the tier being prewarmed so any
+        // semaphore:wait event emitted at startup (rare; prewarm runs
+        // before tool calls arrive, but possible if INTERN_MAX_CONCURRENT=1
+        // and a request races in) shows the real tier instead of 'unknown'.
+        tier,
       );
       success = true;
       successes++;

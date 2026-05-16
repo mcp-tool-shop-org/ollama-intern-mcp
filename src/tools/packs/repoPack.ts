@@ -213,8 +213,29 @@ export interface RepoPackSummary {
 
 export interface RepoPackResult {
   artifact: {
-    markdown_path: string;
-    json_path: string;
+    /**
+     * Path to the written markdown artifact. `null` when the artifact
+     * write failed — the pack still ran successfully, but the caller
+     * MUST NOT pass this to artifact_read (which would surface a
+     * confusing SOURCE_PATH_NOT_FOUND with no link back to the original
+     * write error). When `null`, see `artifact.error` for the operator-
+     * facing reason, and `summary` for the data that would have been
+     * persisted.
+     */
+    markdown_path: string | null;
+    /** Path to the written JSON artifact. `null` on write failure — same contract as `markdown_path`. */
+    json_path: string | null;
+    /**
+     * Populated only when the write failed. Names the path the pack
+     * attempted to write to and the underlying filesystem error, so the
+     * caller can surface a single coherent error instead of a
+     * write-failure → later-read-failure chain.
+     */
+    error?: {
+      attempted_markdown_path: string;
+      attempted_json_path: string;
+      reason: string;
+    };
   };
   summary: RepoPackSummary;
   steps: StepEntry[];
@@ -563,25 +584,41 @@ export async function handleRepoPack(
   };
 
   let artifactWritten = true;
-  let artifactWarnings: string[] | undefined;
+  let writeErrorReason: string | null = null;
   try {
     await mkdir(artifactDir, { recursive: true });
     await writeFile(mdPath, markdown, "utf8");
     await writeFile(jsonPath, JSON.stringify(jsonArtifact, null, 2), "utf8");
   } catch (err) {
     artifactWritten = false;
-    artifactWarnings = [err instanceof Error ? err.message : String(err)];
+    writeErrorReason = err instanceof Error ? err.message : String(err);
   }
   steps.push({
     tool: "artifact_write",
     ok: artifactWritten,
     elapsed_ms: Date.now() - writeStart,
     artifact_written: artifactWritten,
-    ...(artifactWarnings ? { warnings: artifactWarnings } : {}),
+    ...(writeErrorReason ? { warnings: [writeErrorReason] } : {}),
   });
 
+  // Paths land in `result.artifact` ONLY after the write succeeded —
+  // when the write fails the envelope signals "no artifact on disk"
+  // via null paths + an embedded error shape naming the attempted path
+  // and filesystem reason. Prevents the write-failure → later-read-
+  // failure chain Stage B surfaced.
+  const artifactBlock: RepoPackResult["artifact"] = artifactWritten
+    ? { markdown_path: mdPath, json_path: jsonPath }
+    : {
+        markdown_path: null,
+        json_path: null,
+        error: {
+          attempted_markdown_path: mdPath,
+          attempted_json_path: jsonPath,
+          reason: writeErrorReason ?? "unknown write failure",
+        },
+      };
   const result: RepoPackResult = {
-    artifact: { markdown_path: mdPath, json_path: jsonPath },
+    artifact: artifactBlock,
     summary: {
       key_surfaces_count: brief.key_surfaces.length,
       risk_areas_count: brief.risk_areas.length,
@@ -594,6 +631,11 @@ export async function handleRepoPack(
   };
 
   const residency = await ctx.client.residency(briefEnv.model);
+  const envelopeWarnings: string[] = artifactWritten
+    ? []
+    : [
+        `ollama_repo_pack: artifact write failed for "${mdPath}" (${writeErrorReason}). Pack ran successfully — see result.summary for the data that would have been persisted, and result.artifact.error for the filesystem reason. Common fixes: check that artifact_dir is writable, or pass an explicit artifact_dir to override the default ~/.ollama-intern/artifacts/repo.`,
+      ];
   const envelope = buildEnvelope<RepoPackResult>({
     result,
     tier: "deep",
@@ -603,6 +645,7 @@ export async function handleRepoPack(
     tokensOut,
     startedAt: packStartedAt,
     residency,
+    ...(envelopeWarnings.length > 0 ? { warnings: envelopeWarnings } : {}),
   });
   await ctx.logger.log(callEvent("ollama_repo_pack", envelope));
   return envelope;

@@ -22,6 +22,7 @@ import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { loadSources } from "../sources.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { timestamp } from "../observability.js";
 
 export const classifySchema = z.object({
   text: z.string().min(1).optional().describe("The single text to classify. Use this OR source_path OR items — exactly one."),
@@ -96,20 +97,60 @@ interface ClassifyRawFromModel {
   off_topic_reason?: string | null;
 }
 
-function parseClassify(raw: string): ClassifyRawFromModel {
+/**
+ * Reasons parseClassify can fail to extract a label. Surfaced as a
+ * guardrail event so the operator sees WHY classify abstained instead of
+ * a silent null return that looks identical to a low-confidence answer.
+ *
+ * - parse_error : JSON.parse threw (non-JSON output from model)
+ * - non_object  : raw parsed to a non-object literal (null, array, number,
+ *                 string) — model returned valid JSON of the wrong shape
+ * - missing_label : object had no string `label` field
+ */
+type ClassifyAbstainReason = "parse_error" | "non_object" | "missing_label";
+
+interface ParseClassifyOutcome {
+  parsed: ClassifyRawFromModel;
+  /** Set when the parser had to fall back to (label=null, confidence=0). */
+  abstain_reason?: ClassifyAbstainReason;
+}
+
+function parseClassify(raw: string): ParseClassifyOutcome {
+  let parsedJson: unknown;
   try {
-    const obj = JSON.parse(raw.trim());
-    const label = typeof obj.label === "string" ? obj.label : null;
-    const confidence = typeof obj.confidence === "number" ? obj.confidence : 0;
-    const out: ClassifyRawFromModel = { label, confidence: Math.max(0, Math.min(1, confidence)) };
-    if (typeof obj.off_topic === "boolean") out.off_topic = obj.off_topic;
-    if (typeof obj.off_topic_reason === "string" || obj.off_topic_reason === null) {
-      out.off_topic_reason = obj.off_topic_reason ?? null;
-    }
-    return out;
+    parsedJson = JSON.parse(raw.trim());
   } catch {
-    return { label: null, confidence: 0 };
+    // Model returned non-JSON output. Same-family bug as Stage A's brief
+    // null-crash — JSON.parse('null') is valid JSON, but JSON.parse('not
+    // json at all') throws. Both paths lead to the same null-label
+    // abstention; the reason tag distinguishes them downstream.
+    return { parsed: { label: null, confidence: 0 }, abstain_reason: "parse_error" };
   }
+  // Narrow to non-null object literal before reading fields. Without this,
+  // a model that legitimately returns 'null', '[]', '42', or '"string"'
+  // crashes on the next line with "Cannot read property 'label' of null"
+  // (or .label on a non-object returns undefined and silently abstains).
+  if (!parsedJson || typeof parsedJson !== "object" || Array.isArray(parsedJson)) {
+    return { parsed: { label: null, confidence: 0 }, abstain_reason: "non_object" };
+  }
+  const obj = parsedJson as Record<string, unknown>;
+  const label = typeof obj.label === "string" ? obj.label : null;
+  const confidenceRaw = typeof obj.confidence === "number" ? obj.confidence : 0;
+  const out: ClassifyRawFromModel = {
+    label,
+    confidence: Math.max(0, Math.min(1, confidenceRaw)),
+  };
+  if (typeof obj.off_topic === "boolean") out.off_topic = obj.off_topic;
+  if (typeof obj.off_topic_reason === "string" || obj.off_topic_reason === null) {
+    out.off_topic_reason = (obj.off_topic_reason as string | null) ?? null;
+  }
+  // Missing-label is its own reason — distinguishes "model produced
+  // off-topic JSON" from "model produced no parseable JSON at all". Both
+  // result in null label but the operator's fix is different.
+  if (label === null) {
+    return { parsed: out, abstain_reason: "missing_label" };
+  }
+  return { parsed: out };
 }
 
 function applyFrameAlignment(
@@ -151,12 +192,30 @@ export async function handleClassify(
   assertExactlyOneInput(input);
   const frameSupplied = input.frame !== undefined;
   const parseOne = (raw: string): ClassifyGuardedWithFrame => {
-    const rawParsed = parseClassify(raw);
-    const guarded = applyConfidenceThreshold(rawParsed, {
+    const outcome = parseClassify(raw);
+    // Emit a guardrail event when the parser abstained — operator-facing
+    // observability for "why did classify return null?" debugging. The
+    // guardrail kind already exists in observability.LogEvent; rule
+    // names a concrete parser failure mode. Fire-and-forget — log
+    // failures must never block classification.
+    if (outcome.abstain_reason) {
+      void ctx.logger.log({
+        kind: "guardrail",
+        ts: timestamp(),
+        tool: "ollama_classify",
+        rule: "classify_abstain",
+        action: "abstained",
+        detail: {
+          reason: outcome.abstain_reason,
+          raw_preview: raw.slice(0, 200),
+        },
+      });
+    }
+    const guarded = applyConfidenceThreshold(outcome.parsed, {
       threshold: input.threshold,
       allow_none: input.allow_none,
     });
-    return applyFrameAlignment(guarded, rawParsed, frameSupplied);
+    return applyFrameAlignment(guarded, outcome.parsed, frameSupplied);
   };
 
   if (input.items) {

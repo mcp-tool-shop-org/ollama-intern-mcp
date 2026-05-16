@@ -1,0 +1,162 @@
+name: Doc Drift
+
+# Catches the failure mode where docs and source-of-truth drift apart between
+# releases — a CHANGELOG entry is missing for the package.json version, a
+# release-notes file still says "Released: TBD" weeks after the tag, or the
+# README's stated test count no longer matches what the suite actually runs.
+# All three have shipped in past releases; this gate makes the next instance
+# fail loudly in CI instead of silently going public.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "CHANGELOG.md"
+      - "README.md"
+      - "HANDOFF.md"
+      - "CONTRIBUTING.md"
+      - "SHIP_GATE.md"
+      - "docs/release-notes/**"
+      - "site/src/site-config.ts"
+      - "site/src/content/docs/**"
+      - ".github/workflows/doc-drift.yml"
+  pull_request:
+    paths:
+      - "package.json"
+      - "CHANGELOG.md"
+      - "README.md"
+      - "HANDOFF.md"
+      - "CONTRIBUTING.md"
+      - "SHIP_GATE.md"
+      - "docs/release-notes/**"
+      - "site/src/site-config.ts"
+      - "site/src/content/docs/**"
+      - ".github/workflows/doc-drift.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Resolve package.json version
+        id: pkg
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved package.json version: $VERSION"
+
+      # ----------------------------------------------------------------------
+      # Check 1: CHANGELOG.md has an entry for the current package.json version.
+      # The Keep-a-Changelog convention is `## [<version>] — YYYY-MM-DD`. We
+      # only require the heading shape to exist; we don't enforce the date
+      # format (the project keeps several historical-date variants).
+      # ----------------------------------------------------------------------
+      - name: Check CHANGELOG entry exists for current version
+        shell: bash
+        run: |
+          VERSION="${{ steps.pkg.outputs.version }}"
+          if ! grep -E "^## \[?${VERSION}\]?" CHANGELOG.md > /dev/null; then
+            echo "::error file=CHANGELOG.md::No CHANGELOG entry found for version ${VERSION}. Expected a heading like '## [${VERSION}] — YYYY-MM-DD'."
+            echo ""
+            echo "Most recent CHANGELOG headings:"
+            grep -E "^## " CHANGELOG.md | head -5 || true
+            exit 1
+          fi
+          echo "ok — CHANGELOG entry found for v${VERSION}"
+
+      # ----------------------------------------------------------------------
+      # Check 2: docs/release-notes/*.md never ship with 'TBD' dates. A
+      # release-notes file with 'Released: TBD' that's already on main is a
+      # public artifact that says "we forgot." Catch it before merge.
+      # ----------------------------------------------------------------------
+      - name: Check release notes do not contain TBD dates
+        shell: bash
+        run: |
+          if [ ! -d docs/release-notes ]; then
+            echo "ok — no docs/release-notes/ directory"
+            exit 0
+          fi
+          # Match 'Released: TBD' or 'Released:**TBD' or 'TBD' alone on a date line
+          if grep -RnE "Released:\s*\*?\*?\s*TBD" docs/release-notes/; then
+            echo "::error::Found 'Released: TBD' in docs/release-notes/. Replace with the actual release date before merge."
+            exit 1
+          fi
+          echo "ok — no TBD dates in release notes"
+
+      # ----------------------------------------------------------------------
+      # Check 3: README / HANDOFF stated test count matches reality.
+      # We install + run the suite so the count is real (not cached). The
+      # parsed line is vitest's summary: "Tests N passed". If README or
+      # HANDOFF mentions a test count that disagrees, fail.
+      # ----------------------------------------------------------------------
+      # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        shell: bash
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
+
+      - name: Run tests and capture pass count
+        id: tests
+        shell: bash
+        run: |
+          # Capture both streams; vitest writes the summary to stdout.
+          set +e
+          OUTPUT="$(npm test --silent 2>&1)"
+          STATUS=$?
+          set -e
+          echo "$OUTPUT" | tail -20
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::warning::Tests failed; doc-drift count check will use the partial-pass count if parseable."
+          fi
+          # vitest 4.x summary line: "Tests  N passed (M)" or "Tests  X failed | N passed (M)"
+          PASSED="$(echo "$OUTPUT" | grep -E "^\s*Tests\s+" | tail -1 | sed -E 's/.*\b([0-9]+)\s+passed.*/\1/')"
+          if [ -z "$PASSED" ]; then
+            echo "::error::Could not parse passing-test count from vitest output. Fix the doc-drift workflow or the test runner."
+            exit 1
+          fi
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "Resolved passing test count: $PASSED"
+
+      - name: Check README/HANDOFF test count matches reality
+        shell: bash
+        run: |
+          ACTUAL="${{ steps.tests.outputs.passed }}"
+          DRIFT=0
+
+          # README: look for "<N> tests" or "<N> passing" near the badge / header.
+          # We only scan files that are likely to make a load-bearing claim.
+          for file in README.md HANDOFF.md SHIP_GATE.md; do
+            if [ ! -f "$file" ]; then continue; fi
+            # Match patterns like '792 tests', '792 passing', 'Tests: 792'.
+            STATED="$(grep -oE '[0-9]{2,5}\s+(tests|passing)|Tests:\s*[0-9]{2,5}|tests:\s*[0-9]{2,5}' "$file" | head -3 || true)"
+            if [ -z "$STATED" ]; then continue; fi
+            while IFS= read -r line; do
+              NUM="$(echo "$line" | grep -oE '[0-9]+')"
+              if [ -z "$NUM" ]; then continue; fi
+              if [ "$NUM" != "$ACTUAL" ]; then
+                echo "::error file=$file::Stated test count '$line' (parsed: $NUM) does not match actual count ($ACTUAL). Run 'npm run sync-docs' to refresh."
+                DRIFT=1
+              fi
+            done <<< "$STATED"
+          done
+
+          if [ "$DRIFT" -ne 0 ]; then
+            exit 1
+          fi
+          echo "ok — stated test counts match actual ($ACTUAL passing)"

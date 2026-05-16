@@ -8,6 +8,14 @@
  * check the cited range falls within the actual file. Out-of-bounds
  * ranges are silently dropped from the citation (path is kept) and a
  * warning is appended to the result envelope.
+ *
+ * Humanization (Stage C): callers that emit a `kind: "guardrail"` event
+ * after a strip should use `buildCitationStripEventDetails` to attach
+ * per-path detail (path + reason) rather than a single { count } field.
+ * Currently research.ts logs only `{ count: warnings.length }` which is
+ * useless for grep — an operator can't find WHICH path the model
+ * fabricated without re-running. The per-strip detail makes log_tail
+ * actionable.
  */
 
 import { normalizePath } from "../protectedPaths.js";
@@ -87,6 +95,51 @@ export function validateCitations(
     valid.push({ path: c.path, ...(line_range ? { line_range } : {}) });
   }
   return { valid, stripped, out_of_bounds_ranges };
+}
+
+/**
+ * Per-strip detail payload for an operator-facing structured event.
+ * Callers that emit `{ kind: "guardrail", rule: "citations", action:
+ * "strip", detail: ... }` should use this to surface WHICH path was
+ * stripped and why, instead of an opaque `{ count }`.
+ */
+export interface CitationStripEventDetail {
+  /** Reason buckets are closed; an operator can grep for "not_in_source_paths". */
+  reason: "not_in_source_paths" | "line_range_past_eof";
+  path: string;
+  /** Only set for line_range_past_eof — the offending range. */
+  line_range?: string;
+  /** Only set for line_range_past_eof — the file's actual line count. */
+  file_lines?: number;
+}
+
+/**
+ * Build per-strip event details from a CitationValidationResult so a
+ * caller with a logger can emit one structured event per stripped item
+ * rather than a single count. Returns an empty array when nothing was
+ * stripped so callers can iterate without a branch.
+ *
+ * Two reason buckets: `not_in_source_paths` (the model fabricated a
+ * citation outside the caller-declared source list — full strip) and
+ * `line_range_past_eof` (the path is real but the range pointed past
+ * EOF — only the range was dropped, path was preserved).
+ */
+export function buildCitationStripEventDetails(
+  result: CitationValidationResult,
+): CitationStripEventDetail[] {
+  const details: CitationStripEventDetail[] = [];
+  for (const s of result.stripped) {
+    details.push({ reason: "not_in_source_paths", path: s.path });
+  }
+  for (const r of result.out_of_bounds_ranges) {
+    details.push({
+      reason: "line_range_past_eof",
+      path: r.path,
+      line_range: r.line_range,
+      file_lines: r.file_lines,
+    });
+  }
+  return details;
 }
 
 /**

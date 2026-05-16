@@ -103,16 +103,28 @@ function buildPromptFor(logText: string, patterns?: string[]): string {
 }
 
 function parse(raw: string): TriageLogsResult {
+  let parsedJson: unknown;
   try {
-    const obj = JSON.parse(raw.trim());
-    return {
-      errors: Array.isArray(obj.errors) ? obj.errors.filter((x: unknown) => typeof x === "string") : [],
-      warnings: Array.isArray(obj.warnings) ? obj.warnings.filter((x: unknown) => typeof x === "string") : [],
-      ...(typeof obj.suspected_root_cause === "string" ? { suspected_root_cause: obj.suspected_root_cause } : {}),
-    };
+    parsedJson = JSON.parse(raw.trim());
   } catch {
+    // Model returned non-JSON output. Empty triage is the honest fallback —
+    // a hallucinated "root cause" from non-JSON text would be worse than a
+    // null result the operator can react to.
     return { errors: [], warnings: [] };
   }
+  // Narrow before reading fields. Without this, JSON.parse('null') /
+  // '[]' / '42' / '"string"' would crash on `.errors` access with
+  // "Cannot read property 'errors' of null". Same-family bug as the
+  // brief null-crashes Stage A fixed and classify.ts here in Stage C.
+  if (!parsedJson || typeof parsedJson !== "object" || Array.isArray(parsedJson)) {
+    return { errors: [], warnings: [] };
+  }
+  const obj = parsedJson as Record<string, unknown>;
+  return {
+    errors: Array.isArray(obj.errors) ? obj.errors.filter((x: unknown): x is string => typeof x === "string") : [],
+    warnings: Array.isArray(obj.warnings) ? obj.warnings.filter((x: unknown): x is string => typeof x === "string") : [],
+    ...(typeof obj.suspected_root_cause === "string" ? { suspected_root_cause: obj.suspected_root_cause } : {}),
+  };
 }
 
 function assertExactlyOneInput(input: TriageLogsInput): void {

@@ -3,7 +3,7 @@ import type { SiteConfig } from '@mcptoolshop/site-theme';
 export const config: SiteConfig = {
   title: 'Ollama Intern MCP',
   description:
-    'The local intern for Claude Code — 28 job-shaped tools, evidence-first briefs, durable artifacts.',
+    'The local intern for Claude Code — 41 job-shaped tools, evidence-first briefs, durable artifacts.',
   logoBadge: 'OI',
   brandName: 'ollama-intern-mcp',
   repoUrl: 'https://github.com/mcp-tool-shop-org/ollama-intern-mcp',
@@ -16,7 +16,7 @@ export const config: SiteConfig = {
     headline: 'The local intern',
     headlineAccent: 'for Claude Code.',
     description:
-      '28 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. v2.0.0 ships a validated Hermes Agent integration path on hermes3:8b. No cloud. No telemetry. Every call shows its work.',
+      '41 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. Ships a validated Hermes Agent integration path on hermes3:8b. No cloud. No telemetry. Every call shows its work.',
     primaryCta: { href: '#example', label: 'See a pack run' },
     secondaryCta: { href: 'handbook/', label: 'Read the Handbook' },
     previews: [
@@ -63,12 +63,12 @@ export const config: SiteConfig = {
     {
       kind: 'features',
       id: 'shape',
-      title: 'The shape — four tiers, 28 tools',
+      title: 'The shape — four tiers, 41 tools',
       subtitle: 'Job-shaped, not model-shaped. Pick the job; the tier follows.',
       features: [
         {
-          title: 'Atoms · 18',
-          desc: 'Primitives. classify, extract, triage_logs, summarize_fast/deep, draft, research, corpus_* (search/answer/index/refresh/list), embed(_search), chat. Plus 3 briefs — incident, repo, change — each evidence-backed.',
+          title: 'Atoms · 28',
+          desc: 'Primitives. The original 15 — classify, extract, triage_logs, summarize_fast/deep, draft, research, corpus_* (search/answer/index/refresh/list), embed(_search), chat — plus 13 added in the v2.1.0 feature pass: doctor, log_tail, batch_proof_check, code_map, code_citation, multi_file_refactor_propose, refactor_plan, artifact_prune, hypothesis_drill, corpus_health/amend/amend_history/rerank.',
         },
         {
           title: 'Briefs · 3',
@@ -174,7 +174,7 @@ weak: false · evidence_count: 6
 }`,
         },
         {
-          title: 'Hermes Agent (v2.0.0+ validated path)',
+          title: 'Hermes Agent (validated path)',
           code: `# Nous Research Hermes Agent + hermes3:8b on Ollama
 # Validated end-to-end 2026-04-19 — full config in
 # hermes.config.example.yaml in the repo root.

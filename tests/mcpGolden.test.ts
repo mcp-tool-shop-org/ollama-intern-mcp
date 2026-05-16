@@ -238,14 +238,83 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
         "ollama_chat",
       ]),
     );
-    // Tool surface contract: at LEAST the 28 canonical tools above must
-    // be present (any growth is fine — feature-pass tools land
-    // continuously and currently bring the live total to ~41). The
-    // previous `>= 28` alone admitted duplicate registrations silently
-    // (the same name twice still satisfied arrayContaining + length>=28);
-    // add a Set-size == length check to catch dup registrations
-    // explicitly. Names are unique per MCP spec, so any drift here is
-    // either a typo in src/index.ts or a router bug.
+    // Tool surface contract — F-004 / Stage C tightening.
+    //
+    // BEFORE: `>= 28` floor + Set-size dedup. That admitted SILENT
+    // REMOVAL of any tool above the 28 baseline (e.g. doctor, log_tail,
+    // codeMap) — count drops 41→40, test still passes, Claude no longer
+    // sees the tool. This is the exact failure mode Stage B audit
+    // surfaced.
+    //
+    // NOW: assert the EXACT-known-list contract for the current full
+    // surface (41 tools at v2.4.0). Floor + Set-size dedup are kept as
+    // backups, but the exact-match is the primary gate.
+    //
+    // TODO: src/index.ts does not export the tool registry today; the
+    // EXPECTED list below is hand-maintained. A small refactor to
+    // export `const TOOL_NAMES: readonly string[]` from src/index.ts
+    // would let this test import the single source of truth. Flagged
+    // for backend-core (out of `tests` domain).
+    const EXPECTED_TOOL_NAMES = [
+      "ollama_research",
+      "ollama_corpus_search",
+      "ollama_corpus_answer",
+      "ollama_incident_brief",
+      "ollama_repo_brief",
+      "ollama_change_brief",
+      "ollama_incident_pack",
+      "ollama_repo_pack",
+      "ollama_change_pack",
+      "ollama_artifact_list",
+      "ollama_artifact_read",
+      "ollama_artifact_diff",
+      "ollama_artifact_export_to_path",
+      "ollama_artifact_incident_note_snippet",
+      "ollama_artifact_onboarding_section_snippet",
+      "ollama_artifact_release_note_snippet",
+      "ollama_embed_search",
+      "ollama_corpus_index",
+      "ollama_corpus_refresh",
+      "ollama_corpus_list",
+      "ollama_corpus_health",
+      "ollama_corpus_amend",
+      "ollama_corpus_amend_history",
+      "ollama_corpus_rerank",
+      "ollama_embed",
+      "ollama_classify",
+      "ollama_triage_logs",
+      "ollama_summarize_fast",
+      "ollama_summarize_deep",
+      "ollama_draft",
+      "ollama_extract",
+      "ollama_doctor",
+      "ollama_artifact_prune",
+      "ollama_log_tail",
+      "ollama_code_map",
+      "ollama_multi_file_refactor_propose",
+      "ollama_batch_proof_check",
+      "ollama_refactor_plan",
+      "ollama_code_citation",
+      "ollama_hypothesis_drill",
+      "ollama_chat",
+    ];
+    // Primary contract — exact-set equality. Failure message lists the
+    // diff (missing-from-live vs unexpected-on-live) so a regression
+    // names the specific drift, not just "set mismatch".
+    const liveSet = new Set(names);
+    const expectedSet = new Set(EXPECTED_TOOL_NAMES);
+    const missingFromLive = [...expectedSet].filter((n) => !liveSet.has(n));
+    const unexpectedOnLive = [...liveSet].filter((n) => !expectedSet.has(n));
+    expect(
+      { missingFromLive, unexpectedOnLive },
+      `tool registry drift — expected exact set match. Missing from live: [${missingFromLive.join(", ")}]; unexpected on live: [${unexpectedOnLive.join(", ")}]. Update EXPECTED_TOOL_NAMES in tests/mcpGolden.test.ts when intentionally adding/removing tools.`,
+    ).toEqual({ missingFromLive: [], unexpectedOnLive: [] });
+    // Pin the exact count too — a duplicate registration would slip
+    // past arrayContaining but get caught here.
+    expect(names.length).toBe(EXPECTED_TOOL_NAMES.length);
+    // Backup floor + Set-size dedup — kept so a future relaxation of
+    // the exact contract still catches the original "<28 tools" and
+    // "duplicate name" regressions cheaply.
     expect(names.length).toBeGreaterThanOrEqual(28);
     expect(new Set(names).size).toBe(names.length);
 

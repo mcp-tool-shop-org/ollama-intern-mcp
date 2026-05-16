@@ -11,9 +11,49 @@ import type { Tier } from "../tiers.js";
 import { resolveTier, resolveNumCtx } from "../tiers.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
-import { callEvent } from "../observability.js";
+import { callEvent, timestamp } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
 import type { RunContext } from "../runContext.js";
+
+/**
+ * Order-of-magnitude prompt-size estimator.
+ *
+ * Ollama silently truncates prompts that exceed num_ctx, producing
+ * confidently-wrong answers with no operator signal. This estimator
+ * lets us emit a guardrail warning BEFORE the wire call when the
+ * prompt is plausibly over budget. The estimate is intentionally
+ * conservative (rounds up) — we want a false-positive warning more
+ * than a false-negative silent truncation.
+ *
+ * Heuristic: chars/4 is the standard rough rule for prose (one token
+ * ≈ 4 chars in BPE tokenizers for English prose). Code is denser
+ * (chars/3) because identifier names and operators tokenize finer.
+ * Ollama's actual tokenizer differs by model, but for the "are we
+ * blowing past num_ctx by an order of magnitude" check this is enough.
+ *
+ * Returns a single integer estimate in tokens.
+ */
+function estimatePromptTokens(prompt: string): number {
+  // Cheap code-vs-prose split: density of non-alphanumerics is a decent
+  // proxy. >25% non-alphanum suggests code (operators, brackets, punct).
+  if (prompt.length === 0) return 0;
+  let nonAlnum = 0;
+  // Sample at most 4000 chars to keep this O(1) for huge prompts. The
+  // sampled ratio is good enough for the order-of-magnitude check.
+  const sampleSize = Math.min(prompt.length, 4000);
+  for (let i = 0; i < sampleSize; i++) {
+    const c = prompt.charCodeAt(i);
+    // ASCII alphanumeric range check — skips the Unicode/locale tax.
+    const isAlnum =
+      (c >= 48 && c <= 57) || // 0-9
+      (c >= 65 && c <= 90) || // A-Z
+      (c >= 97 && c <= 122); // a-z
+    if (!isAlnum) nonAlnum++;
+  }
+  const codeLike = nonAlnum / sampleSize > 0.25;
+  const divisor = codeLike ? 3 : 4;
+  return Math.ceil(prompt.length / divisor);
+}
 
 export interface RunToolInput<T> {
   tool: string;
@@ -86,6 +126,34 @@ export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
           ? { ...built, options: { ...(built.options ?? {}), num_ctx: numCtx } }
           : built;
       const req: GenerateRequest = input.think === undefined ? withNumCtx : { ...withNumCtx, think: input.think };
+      // Pre-flight context-window check — emit a guardrail event when
+      // the estimated prompt tokens exceed the active num_ctx. Ollama
+      // silently truncates over-budget prompts (no error, no warning)
+      // and synthesizes a confidently-wrong answer from the tail; this
+      // gives the operator a fighting chance to spot the truncation
+      // in observability before chasing a hallucinated answer. Fire-
+      // and-forget — call proceeds either way (operator may have set
+      // num_ctx deliberately tight). Only checks when num_ctx is set
+      // by the profile, because absent means "let Ollama choose" and
+      // we have no number to compare against.
+      if (numCtx !== undefined) {
+        const estimatedTokens = estimatePromptTokens(req.prompt);
+        if (estimatedTokens > numCtx) {
+          void ctx.logger.log({
+            kind: "guardrail",
+            ts: timestamp(),
+            tool: input.tool,
+            rule: "context_window_estimate",
+            action: "exceeded_estimated",
+            detail: {
+              estimated_tokens: estimatedTokens,
+              num_ctx: numCtx,
+              tier,
+              prompt_chars: req.prompt.length,
+            },
+          });
+        }
+      }
       const resp = await ctx.client.generate(req, signal);
       lastNumCtx = numCtx;
       return { resp, model };

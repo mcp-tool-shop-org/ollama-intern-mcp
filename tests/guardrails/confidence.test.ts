@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyConfidenceThreshold,
+  buildConfidenceStripEvent,
   DEFAULT_CONFIDENCE_THRESHOLD,
 } from "../../src/guardrails/confidence.js";
 
@@ -12,13 +13,26 @@ describe("applyConfidenceThreshold", () => {
     expect(r.threshold).toBe(DEFAULT_CONFIDENCE_THRESHOLD);
   });
 
-  it("keeps weak labels by default (no allow_none)", () => {
+  it("Stage C fail-closed default: weak labels return null when allow_none is omitted", () => {
+    // Behavior change (Stage C / corpus-guards): allow_none now
+    // defaults to TRUE, so the default treatment of a below-threshold
+    // result is "null out the label". Previous behavior (label kept)
+    // was the lone fail-open guardrail in this directory.
     const r = applyConfidenceThreshold({ label: "bug", confidence: 0.3 });
+    expect(r.label).toBeNull();
+    expect(r.below_threshold).toBe(true);
+  });
+
+  it("explicit allow_none:false opts back into the legacy fail-open behavior (weak label kept)", () => {
+    // The pre-Stage-C default. Callers that NEED the weak label
+    // propagated must now opt in explicitly. The below_threshold
+    // signal still tells them why.
+    const r = applyConfidenceThreshold({ label: "bug", confidence: 0.3 }, { allow_none: false });
     expect(r.label).toBe("bug");
     expect(r.below_threshold).toBe(true);
   });
 
-  it("nulls out weak labels when allow_none=true", () => {
+  it("explicit allow_none:true matches the new default — weak labels return null", () => {
     const r = applyConfidenceThreshold({ label: "bug", confidence: 0.3 }, { allow_none: true });
     expect(r.label).toBeNull();
     expect(r.below_threshold).toBe(true);
@@ -123,5 +137,91 @@ describe("applyConfidenceThreshold", () => {
       expect(justUnder.below_threshold).toBe(true);
       expect(justUnder.label).toBeNull();
     });
+  });
+
+  // ── Stage C — fail-closed default coverage ─────────────────
+  // Specifically pins the new default behavior so a future revert
+  // (back to fail-open) breaks loud rather than silently shipping
+  // weak labels into operator workflows again.
+  describe("Stage C fail-closed default — no allow_none supplied", () => {
+    it("below-threshold weak label is stripped (label=null) under the default", () => {
+      const r = applyConfidenceThreshold({ label: "fix", confidence: 0.4 });
+      expect(r).toMatchObject({
+        label: null,
+        below_threshold: true,
+        confidence: 0.4,
+        threshold: DEFAULT_CONFIDENCE_THRESHOLD,
+      });
+    });
+
+    it("above-threshold label is kept under the default", () => {
+      const r = applyConfidenceThreshold({ label: "fix", confidence: 0.9 });
+      expect(r).toMatchObject({
+        label: "fix",
+        below_threshold: false,
+        confidence: 0.9,
+      });
+    });
+
+    it("at-threshold exact value passes (strict <) under the default", () => {
+      const r = applyConfidenceThreshold({ label: "x", confidence: DEFAULT_CONFIDENCE_THRESHOLD });
+      expect(r.label).toBe("x");
+      expect(r.below_threshold).toBe(false);
+    });
+
+    it("explicit allow_none:false restores legacy weak-label-kept behavior (opt-out path)", () => {
+      const r = applyConfidenceThreshold({ label: "x", confidence: 0.3 }, { allow_none: false });
+      expect(r).toMatchObject({
+        label: "x",
+        below_threshold: true,
+        confidence: 0.3,
+      });
+    });
+  });
+});
+
+// ── Stage C — buildConfidenceStripEvent helper ───────────────
+// The new helper produces a structured NDJSON detail payload so an
+// operator reading log_tail can see WHY a label got stripped and what
+// the raw model output was. Returns null when nothing was stripped, so
+// callers can branch cheaply.
+
+describe("buildConfidenceStripEvent", () => {
+  it("returns the detail when a weak label was stripped", () => {
+    const raw = { label: "fix", confidence: 0.3 };
+    const guarded = applyConfidenceThreshold(raw); // fail-closed default
+    const detail = buildConfidenceStripEvent(raw, guarded);
+    expect(detail).toMatchObject({
+      raw_label: "fix",
+      raw_confidence: 0.3,
+      threshold: DEFAULT_CONFIDENCE_THRESHOLD,
+      decision: "below_threshold",
+    });
+  });
+
+  it("returns null when no strip occurred (above threshold)", () => {
+    const raw = { label: "fix", confidence: 0.95 };
+    const guarded = applyConfidenceThreshold(raw);
+    expect(buildConfidenceStripEvent(raw, guarded)).toBeNull();
+  });
+
+  it("returns null when the model itself emitted null (not a strip)", () => {
+    const raw = { label: null, confidence: 0.2 };
+    const guarded = applyConfidenceThreshold(raw);
+    expect(buildConfidenceStripEvent(raw, guarded)).toBeNull();
+  });
+
+  it("returns null when allow_none:false kept the weak label (no strip happened)", () => {
+    const raw = { label: "fix", confidence: 0.3 };
+    const guarded = applyConfidenceThreshold(raw, { allow_none: false });
+    expect(guarded.label).toBe("fix");
+    expect(buildConfidenceStripEvent(raw, guarded)).toBeNull();
+  });
+
+  it("captures a custom threshold verbatim on the detail", () => {
+    const raw = { label: "x", confidence: 0.4 };
+    const guarded = applyConfidenceThreshold(raw, { threshold: 0.5 });
+    const detail = buildConfidenceStripEvent(raw, guarded);
+    expect(detail?.threshold).toBe(0.5);
   });
 });
