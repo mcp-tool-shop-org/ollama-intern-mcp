@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.2] — 2026-05-16
+
+Patch — completes the v2.5.1 macOS fix. v2.5.1 made `allowedRoots()` realpath each entry, but the INPUT path passed to `assertSafePath()` was still un-realpath'd by `corpusAmend.ts` (and any other caller that doesn't go through the indexer's `realpath → assertSafePath` pipeline). On macOS that left `/var/folders/...` (input) vs `/private/var/folders/...` (root) asymmetric — paths were still rejected as outside-roots. This patch realpaths inside `assertSafePath` itself so both sides match, with an OR-fallback to the normalized form so non-existent paths still validate against the literal allowed-roots string (preserves the historical pre-realpath behavior for the indexer's "file recorded in manifest but no longer on disk" case).
+
+Also fixes the Doc Drift workflow to `npm run build` before `npm test` — without it, tests that spawn `dist/index.js` (cli, mcpGolden, mcp.integration, pack) error at `beforeAll`, making the parseable pass count artificially low and exit code 1.
+
+### Fixed
+
+- **`src/corpus/manifest.ts:assertSafePath` realpaths the input path before comparison.** Symmetric with v2.5.1's `allowedRoots()` realpath. Now `corpusAmend` (and any future caller that doesn't pre-realpath) compares apples-to-apples. Fallback: if `realpathSync` fails (file doesn't exist yet), use the normalized form — both candidates are tried so any path that passed pre-v2.5.1 still passes.
+- **`.github/workflows/doc-drift.yml`** adds `npm run build` between install and test.
+
+### Notes
+
+- Tests, typecheck, build, coverage thresholds unchanged. Local Windows run: 958/959 passing.
+
 ## [2.5.1] — 2026-05-16
 
 Patch — closes three cross-platform CI matrix failures the v2.5.0 multi-OS strategy surfaced on first invocation. No API or behavior changes. The release-spine doing exactly what it was built to do: catching real platform-sensitive code that had been sitting in the repo behind the Linux-only gate.

@@ -102,10 +102,23 @@ export function assertSafePath(p: string): void {
       false,
     );
   }
+  // Realpath the input so it compares apples-to-apples with allowedRoots()
+  // (which also realpaths each entry). Without this, macOS rejects valid
+  // paths because /var/folders/... and /private/var/folders/... read as
+  // different strings even though they're the same directory. Fall back to
+  // the normalized string when the file doesn't exist yet (e.g. a manifest
+  // entry for a file the operator hasn't created).
+  let resolved = normalized;
+  try {
+    resolved = realpathSync(normalized);
+  } catch {
+    // Path doesn't exist (yet). Use the normalized form for the check; this
+    // matches the historical behavior pre-v2.5.1 for non-existent paths.
+  }
   const roots = allowedRoots();
   const ok = roots.some((root) => {
     const r = root.endsWith(sep) ? root : root + sep;
-    return normalized === root || normalized.startsWith(r);
+    return resolved === root || resolved.startsWith(r) || normalized === root || normalized.startsWith(r);
   });
   if (!ok) {
     throw new InternError(
