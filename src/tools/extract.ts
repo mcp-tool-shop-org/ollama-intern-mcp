@@ -52,6 +52,38 @@ export const extractSchema = z.object({
         "orchestration that requires explicit model identity (e.g., " +
         "research-os reviewer profiles).",
     ),
+  // R-019 (v2.6.0) — per-call tier-budget override.
+  //
+  // Replaces the active profile's per-tier `timeouts` budget for THIS call
+  // only. Applies to the initial tier AND any fallback tier the cascade
+  // visits. Other callers and other tool invocations are unaffected.
+  //
+  // Default behavior (field omitted) preserves the profile's per-tier
+  // timeouts byte-identically — pre-R-019 callers see no change.
+  //
+  // Motivating use case: research-os synth prose `--planner-timeout-ms`
+  // (R-018) needs to reach the inner mechanism. The R-018 wrapper sits
+  // outside the MCP call and never sees structured TIER_TIMEOUT responses;
+  // research-os now passes its operator-supplied budget here so the per-tier
+  // guardrail (runWithTimeoutAndFallback) honors the operator's intent.
+  //
+  // Bounds: [1, 600_000] (10-minute safety rail against typo runaway).
+  tier_budget_ms_override: z
+    .number()
+    .int()
+    .min(1)
+    .max(600_000)
+    .optional()
+    .describe(
+      "Optional per-call tier-budget override in milliseconds. When set, " +
+        "this value replaces the active profile's per-tier timeouts for " +
+        "THIS call only (both initial tier and any fallback tier visited). " +
+        "Other callers and tool invocations are unaffected. Omit to use " +
+        "the profile defaults (byte-identical to pre-R-019 behavior). " +
+        "Bounds: [1, 600000]. Use for client-orchestrated synth flows " +
+        "(e.g., research-os --planner-timeout-ms) where the operator's " +
+        "budget must reach the inner tier guardrail.",
+    ),
 });
 
 export type ExtractInput = z.infer<typeof extractSchema>;
@@ -172,6 +204,9 @@ export async function handleExtract(
       think: false,
       items: input.items,
       modelOverride: input.model,
+      // R-019 — propagate per-call tier-budget override into the runner so the
+      // inner runWithTimeoutAndFallback honors the operator's budget.
+      tierBudgetMsOverride: input.tier_budget_ms_override,
       build: (item, _tier, model) => ({
         model,
         prompt: buildPromptFor(item.text, input.schema, input.hint, input.frame),
@@ -198,6 +233,9 @@ export async function handleExtract(
     ctx,
     think: false,
     modelOverride: input.model,
+    // R-019 — propagate per-call tier-budget override into the runner so the
+    // inner runWithTimeoutAndFallback honors the operator's budget.
+    tierBudgetMsOverride: input.tier_budget_ms_override,
     build: (_tier, model) => ({
       model,
       prompt: buildPromptFor(text, input.schema, input.hint, input.frame),

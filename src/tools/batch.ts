@@ -87,6 +87,15 @@ export interface RunBatchInput<I extends BatchItem, R> {
    * Propagates to `envelope.model_requested` on the batch envelope.
    */
   modelOverride?: string;
+  /**
+   * R-019 (v2.6.0) — optional per-call tier-budget override in milliseconds.
+   *
+   * Same semantics as the single-call runner's `tierBudgetMsOverride`:
+   * applied uniformly to every tier the cascade visits (initial + fallback)
+   * for EVERY item in the batch. Validated upstream at the schema layer;
+   * trusted here.
+   */
+  tierBudgetMsOverride?: number;
 }
 
 /**
@@ -155,6 +164,21 @@ async function runBatchInner<I extends BatchItem, R>(
   // context budget consistently.
   const batchNumCtx = resolveNumCtx(input.tier, ctx.tiers);
 
+  // R-019 — when a per-call tier-budget override is supplied, replace EVERY
+  // tier's budget with the operator's value so the cascade honors the
+  // operator's intent on initial AND fallback tiers (same semantics as
+  // runner.ts). Computed once outside the loop because every batch item
+  // shares the same per-call budget.
+  const effectiveTimeouts: Record<Tier, number> =
+    input.tierBudgetMsOverride !== undefined
+      ? {
+          instant: input.tierBudgetMsOverride,
+          workhorse: input.tierBudgetMsOverride,
+          deep: input.tierBudgetMsOverride,
+          embed: input.tierBudgetMsOverride,
+        }
+      : ctx.timeouts;
+
   for (const item of input.items) {
     try {
       if (input.preValidate) input.preValidate(item);
@@ -163,7 +187,7 @@ async function runBatchInner<I extends BatchItem, R>(
         tier: input.tier,
         logger: ctx.logger,
         allowFallback: input.allowFallback,
-        timeoutOverrideMs: ctx.timeouts,
+        timeoutOverrideMs: effectiveTimeouts,
         run: async (tier, signal) => {
           // Per-call model override: same rule as the single-call runner —
           // override applies only on the initial tier; fallback resolves

@@ -93,6 +93,26 @@ export interface RunToolInput<T> {
    * `model_requested` vs `model`.
    */
   modelOverride?: string;
+  /**
+   * R-019 (v2.6.0) — optional per-call tier-budget override in milliseconds.
+   *
+   * When set, this value replaces the active profile's per-tier `timeouts`
+   * for THIS call only — applied uniformly to every tier the cascade visits
+   * (initial + any fallback). Other callers and tool invocations are
+   * unaffected. When omitted, the profile defaults govern byte-identically
+   * to pre-R-019 behavior.
+   *
+   * Validated upstream at the schema layer (e.g. extract.ts
+   * `tier_budget_ms_override`) — this field is the runner-internal channel
+   * and trusts its caller. Bounds are not re-checked here.
+   *
+   * Motivating use case: research-os synth prose `--planner-timeout-ms`
+   * (R-018) was missing its target mechanism because the R-018 wrapper sits
+   * outside the MCP call and never sees structured TIER_TIMEOUT responses.
+   * Threading the operator's budget through here makes the inner
+   * `runWithTimeoutAndFallback` honor the operator's intent.
+   */
+  tierBudgetMsOverride?: number;
 }
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
@@ -128,12 +148,26 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   // surfaces that as num_ctx_used absent, never a fake default.
   let lastNumCtx: number | undefined;
 
+  // R-019 — when a per-call tier-budget override is supplied, replace EVERY
+  // tier's budget with the operator's value so the cascade honors the
+  // operator's intent on initial AND fallback tiers. When omitted, fall
+  // through to the profile's per-tier timeouts (pre-R-019 behavior).
+  const effectiveTimeouts: Record<Tier, number> =
+    input.tierBudgetMsOverride !== undefined
+      ? {
+          instant: input.tierBudgetMsOverride,
+          workhorse: input.tierBudgetMsOverride,
+          deep: input.tierBudgetMsOverride,
+          embed: input.tierBudgetMsOverride,
+        }
+      : ctx.timeouts;
+
   const { value, actualTier, fallbackFrom } = await runWithTimeoutAndFallback({
     tool: input.tool,
     tier: input.tier,
     logger: ctx.logger,
     allowFallback: input.allowFallback,
-    timeoutOverrideMs: ctx.timeouts,
+    timeoutOverrideMs: effectiveTimeouts,
     run: async (tier, signal) => {
       // Per-call model override applies ONLY to the initial attempt. Any
       // fallback retry resolves its model from the fallback tier so the
