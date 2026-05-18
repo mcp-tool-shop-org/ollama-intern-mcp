@@ -27,6 +27,20 @@ No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
 
 ---
 
+## New in v2.6.0
+
+Per-call tier-budget override on `ollama_extract`. Additive minor — pre-v2.6.0 callers unchanged. Detailed entry in [CHANGELOG.md](./CHANGELOG.md).
+
+- **`tier_budget_ms_override?: number` schema field on `ollama_extract`** (optional, bounded `[1, 600000]` ms). When present, applies the override to every tier visited by the runner so the inner `runWithTimeoutAndFallback` machinery at `src/guardrails/timeouts.ts:61` honors the operator-supplied budget instead of the profile default. The cascade (workhorse → instant on timeout) still fires; the override governs each cascade hop uniformly.
+- **Why this exists.** The research-os R-018 wrapper (v0.12.1) wrapped MCP `callTool` with `Promise.race` and found the wrapper's budget did not reach the inner tier — `DEV_RTX5080_TIMEOUTS.instant = 15_000` continued to fire `TIER_TIMEOUT` at 15000ms regardless of a 180000ms wrapper budget. v2.6.0 supplies the MCP-side authoritative budget so the operator's `--planner-timeout-ms` flag (research-os) finally controls inner-tier timeouts as designed.
+- **Default behavior preserved.** Field omitted = profile defaults govern byte-identically. Pre-v2.6.0 callers see zero change.
+- **R-010 fallback-cause regex preserved.** Server-side `TIER_TIMEOUT` error message still matches `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/` so AI-advisor visibility downstream works on override and default paths alike.
+- Consumed by research-os v0.13.0 (cumulative R-019 client wire-up + R-020 + R-021) in a coordinated multi-repo release.
+
+### Historical — v2.4.0 deliverables
+
+See [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) for the full v2.4.0 entry (per-tier `num_ctx` control on the profile system).
+
 ## New in v2.4.0
 
 Per-tier `num_ctx` (context window) control on the profile system. Additive minor — v2.3.0 callers unchanged. Detailed entries in [CHANGELOG.md](./CHANGELOG.md) and [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).

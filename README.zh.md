@@ -27,6 +27,20 @@
 
 ---
 
+## 版本 2.6.0 的新功能
+
+对 `ollama_extract` 函数，新增了每个调用的分层预算覆盖功能。这是一个小幅的增量更新，之前的版本不受影响。详细信息请参见 [CHANGELOG.md](./CHANGELOG.md)。
+
+- **`ollama_extract` 函数中的 `tier_budget_ms_override?: number` 字段**（可选，范围为 `[1, 600000]` 毫秒）。如果该字段存在，则该覆盖值将应用于运行器访问的每个层，从而使 `src/guardrails/timeouts.ts` 文件第 61 行的内部 `runWithTimeoutAndFallback` 机制，使用操作员提供的预算，而不是配置文件的默认值。级联机制（workhorse → instant on timeout）仍然有效；该覆盖值对每个级联步骤进行统一控制。
+- **为什么需要这个功能。** research-os R-018 包装器（版本 v0.12.1）使用 `Promise.race` 包装了 MCP `callTool`，但发现包装器的预算没有传递到内部层——`DEV_RTX5080_TIMEOUTS.instant = 15_000` 仍然在 15000 毫秒时触发 `TIER_TIMEOUT`，而忽略了 180000 毫秒的包装器预算。版本 2.6.0 提供了 MCP 端的权威预算，因此操作员的 `--planner-timeout-ms` 标志（research-os）最终可以控制内部层的超时时间，正如设计的那样。
+- **默认行为保持不变。** 如果省略该字段，则使用配置文件的默认值，与之前的版本完全相同。
+- **R-010 的回退原因正则表达式保持不变。** 服务器端的 `TIER_TIMEOUT` 错误消息仍然匹配 `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/`，因此 AI 顾问的下游可见性，无论是在覆盖模式还是默认模式下，都能正常工作。
+- 该功能由 research-os v0.13.0（累积的 R-019 客户端连接 + R-020 + R-021）在协调的多仓库发布中引入。
+
+### 历史版本 — v2.4.0 的内容
+
+请参阅 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md)，以获取完整的 v2.4.0 版本信息（关于配置系统中的每个层的 `num_ctx` 控制）。
+
 ## 新功能，版本 2.4.0
 
 在配置文件系统中，可以对每个层级进行 `num_ctx`（上下文窗口）的控制。这是一个小幅的增量更新，不会影响 2.3.0 版本的调用者。详细信息请参见 [CHANGELOG.md](./CHANGELOG.md) 和 [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md)。

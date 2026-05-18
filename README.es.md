@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**El becario local para Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> herramientas diseñadas para tareas específicas, informes basados en evidencia, artefactos duraderos.
+> **El agente interno de Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> herramientas, resúmenes basados en evidencia, artefactos duraderos.
 
 Un servidor MCP que proporciona a Claude Code un **agente local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / Potente / Profundo / Integrado); el nivel escribe un archivo que puedes abrir la semana que viene.
 
@@ -26,6 +26,20 @@ Un servidor MCP que proporciona a Claude Code un **agente local** con reglas, ni
 Sin nube. Sin telemetría. Nada de "autonomía". Cada llamada muestra su trabajo.
 
 ---
+
+## Novedades en la versión 2.6.0
+
+Anulación del presupuesto por llamada para cada nivel en `ollama_extract`. Mejora menor y aditiva; las llamadas anteriores a la versión 2.6.0 no se ven afectadas. Consulte la entrada detallada en [CHANGELOG.md](./CHANGELOG.md).
+
+- **Campo de esquema `tier_budget_ms_override?: number` en `ollama_extract`** (opcional, con límites de `[1, 600000]` ms). Cuando está presente, aplica la anulación a cada nivel visitado por el ejecutor, de modo que el mecanismo interno `runWithTimeoutAndFallback` en `src/guardrails/timeouts.ts:61` respeta el presupuesto proporcionado por el operador en lugar del valor predeterminado del perfil. La cascada (workhorse → instant en caso de tiempo de espera) sigue activándose; la anulación rige cada salto de la cascada de manera uniforme.
+- **¿Por qué existe esto?** El wrapper de investigación R-018 (v0.12.1) envolvió la llamada `callTool` de MCP con `Promise.race` y descubrió que el presupuesto del wrapper no llegaba al nivel interno: `DEV_RTX5080_TIMEOUTS.instant = 15_000` continuaba activando `TIER_TIMEOUT` a 15000 ms, independientemente de un presupuesto de 180000 ms del wrapper. La versión 2.6.0 proporciona el presupuesto autorizado del lado de MCP, de modo que el indicador `--planner-timeout-ms` (de investigación) finalmente controla los tiempos de espera del nivel interno, como estaba previsto.
+- **Comportamiento predeterminado conservado.** Si el campo se omite, se aplican los valores predeterminados del perfil de forma idéntica. Las llamadas anteriores a la versión 2.6.0 no experimentan ningún cambio.
+- **Expresión de regex de fallback-cause de R-010 conservada.** El mensaje de error `TIER_TIMEOUT` del lado del servidor sigue coincidiendo con `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/`, de modo que la visibilidad del asesor de IA en los procesos posteriores funciona tanto en las rutas de anulación como en las rutas predeterminadas.
+- Implementado en research-os v0.13.0 (conexión de cliente acumulativa R-019 + R-020 + R-021) en una versión coordinada de varios repositorios.
+
+### Histórico — Entregables de la versión 2.4.0
+
+Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) para la entrada completa de la versión 2.4.0 (control de `num_ctx` por nivel en el sistema de perfiles).
 
 ## Novedades en la versión 2.4.0
 
@@ -74,7 +88,7 @@ En `m5-max` (o cualquier perfil que deje un nivel sin establecer), `num_ctx_used
 
 Los operadores configuran ajustando o editando el perfil; no hay una entrada de `num_ctx` por llamada en los esquemas de las herramientas. Si una llamada futura revela la necesidad, el patrón sigue la sobreescritura de `model` de la versión v2.3.0.
 
-### Versiones anteriores — Entregables de la versión 2.3.0
+### Histórico — Entregables de la versión 2.3.0
 
 Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) para la entrada completa de la versión v2.3.0 (sobreescritura de modelo por llamada).
 
@@ -114,7 +128,7 @@ Envolvente:
 
 Si el servidor principal o la capa de procesamiento intensivo hubiera alcanzado su límite de tiempo y la solicitud se hubiera redirigido a la capa de respuesta rápida, `env.model` sería el modelo asignado por la capa de respuesta rápida, y `env.fallback_from` sería "workhorse" (servidor principal). `env.model_requested` seguiría siendo "hermes3:8b", y la condición `env.model !== env.model_requested` indica que se ha realizado una sustitución. Esta sustitución se realiza deliberadamente y no se aplica a la capa de menor costo, ya que el modelo elegido podría no ser adecuado para el rol de esa capa.
 
-### Versiones anteriores — Entregables de la versión 2.2.0
+### Histórico — Entregables de la versión 2.2.0
 
 Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para ver la entrada completa de la versión 2.2.0 (relevancia temática contextual + abstención estructurada).
 
@@ -139,7 +153,7 @@ Consulta [CHANGELOG.md](./CHANGELOG.md) para ver la entrada completa de v2.1.0 (
 
 ---
 
-## Arquitectura general
+## Arquitectura de un vistazo
 
 ```mermaid
 flowchart LR
@@ -161,7 +175,7 @@ flowchart LR
   MCP --> NDJSON
 ```
 
-Cada llamada a una herramienta de Claude se envía al servidor MCP a través de JSON-RPC estándar. El servidor valida la llamada según el esquema [zod](https://zod.dev) de la herramienta, ejecuta las restricciones configuradas (validación de citas, eliminación de frases prohibidas, aplicación de rutas protegidas, umbrales de confianza) y luego la dirige a un renderizador determinista (nivel de artefacto) o a una llamada HTTP a Ollama (todos los demás niveles). El demonio de Ollama nunca ve las rutas proporcionadas por el usuario, solo el nivel del modelo y la solicitud preparada. Cada llamada agrega un evento estructurado al registro NDJSON en `~/.ollama-intern/log.ndjson`, donde `ollama_log_tail` y su shell pueden leerlo.
+Cada llamada a una herramienta de Claude pasa al servidor MCP a través de JSON-RPC de stdio. El servidor valida la llamada según el esquema [zod](https://zod.dev) de la herramienta, ejecuta las protecciones configuradas (validación de citas, eliminación de frases prohibidas, aplicación de rutas protegidas, umbrales de confianza) y luego la dirige a un renderizador determinista (nivel de artefacto) o a una llamada HTTP de Ollama (todos los demás niveles). El demonio de Ollama nunca ve las rutas proporcionadas por el usuario; solo ve el nivel del modelo y el mensaje preparado. Cada llamada agrega un evento estructurado al registro NDJSON en `~/.ollama-intern/log.ndjson`, que puede leer `ollama_log_tail` y su shell.
 
 ---
 
@@ -257,23 +271,23 @@ Si se omite el `frame`, el comportamiento no cambia con respecto a la versión 2
 
 ---
 
-## ¿Qué hay aquí? — Cuatro niveles, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> herramientas
+## ¿Qué hay aquí? Cuatro niveles, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> herramientas
 
 **Con forma de tarea** significa que cada herramienta define una tarea que se le asignaría a un becario: clasifica esto, extrae eso, triaje estos registros, redacta esta nota de lanzamiento, empaqueta este incidente. La entrada de la herramienta es la especificación de la tarea; la salida es el resultado. No hay una función primitiva genérica `run_model` / `chat_with_llm` en la parte superior.
 
 | Nivel | Cantidad | Qué hay aquí |
 |---|---|---|
-| **Atoms** | 28 | Elementos básicos diseñados para tareas específicas. **Originales (15):** `classify` (clasificar), `extract` (extraer), `triage_logs` (triaje de registros), `summarize_fast` / `deep` (resumir, rápido / profundo), `draft` (borrador), `research` (investigación), `corpus_search` (búsqueda en corpus) / `answer` (responder) / `index` (indexar) / `refresh` (actualizar) / `list` (listar), `embed_search` (búsqueda de incrustaciones), `embed` (incrustar), `chat` (chat). **+13 añadidos en la versión 2.1.0:** `doctor` (diagnóstico), `log_tail` (seguimiento de registros), `batch_proof_check` (verificación por lotes) (operaciones); `code_map` (mapa de código), `code_citation` (cita de código), `multi_file_refactor_propose` (proponer refactorización de varios archivos), `refactor_plan` (plan de refactorización) (refactorización); `artifact_prune` (poda de artefactos), `hypothesis_drill` (análisis de hipótesis) (artefacto/informe); `corpus_health` (salud del corpus), `corpus_amend` (modificación del corpus), `corpus_amend_history` (historial de modificaciones del corpus), `corpus_rerank` (reordenación del corpus) (corpus). Los elementos básicos que admiten procesamiento por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
+| **Atoms** | 28 | Primitivos con forma de tarea. **Originales 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 añadidos en v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operaciones); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactorización); `artifact_prune`, `hypothesis_drill` (artefacto/resumen); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). Los átomos con capacidad para procesamiento por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
 | **Briefs** | 3 | Resúmenes estructurados con respaldo de evidencia. `incident_brief`, `repo_brief`, `change_brief`. Cada afirmación cita un identificador de evidencia; los desconocidos se eliminan en el servidor. La evidencia débil muestra `weak: true` en lugar de una narrativa falsa. |
 | **Packs** | 3 | Tareas compuestas con un flujo de trabajo fijo que escriben datos duraderos en formato Markdown y JSON en el directorio `~/.ollama-intern/artifacts/`. Incluyen `incident_pack`, `repo_pack` y `change_pack`. Renderizadores deterministas: no se realizan llamadas a modelos en la estructura de los artefactos. |
 | **Artifacts** | 7 | Interfaz de consistencia sobre las salidas de los paquetes. Incluye `artifact_list`, `read`, `diff`, `export_to_path`, y tres fragmentos deterministas: `incident_note`, `onboarding_section` y `release_note`. |
 
-Total: **28 elementos básicos + 3 informes + 3 paquetes + 7 herramientas de artefactos = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
+Total: **28 átomos + 3 resúmenes + 3 paquetes + 7 herramientas de artefacto = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
 
-Líneas congeladas:
-- Elementos básicos: congelados, **levantada en la versión 2.1.0** (28 actualmente; +13 añadidos en la versión 2.1.0). Los nuevos elementos básicos aún requieren una justificación auditada, pruebas, una página del manual y una entrada en el CHANGELOG; no se permiten adiciones casuales.
-- Los paquetes están congelados en 3. No hay nuevos tipos de paquetes.
-- El nivel de artefacto está congelado en 7.
+Líneas de congelación:
+- Átomos: la restricción se **levanta en la versión 2.1.0** (28 actualmente; +13 añadidos en la versión 2.1.0). Los nuevos átomos aún requieren una justificación basada en una auditoría, pruebas, una página en el manual y una entrada en el CHANGELOG; no se permiten adiciones sin una justificación adecuada.
+- Paquetes: la restricción se mantiene en 3. No se permiten nuevos tipos de paquetes.
+- Niveles de artefactos: la restricción se mantiene en 7.
 
 La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
@@ -486,7 +500,7 @@ Construido según el estándar de [Shipcheck](https://github.com/mcp-tool-shop-o
 - **Fase 4 — Núcleo de Adopción** ✓ v2.0.1: corpus de salud endurecido en tres etapas (protección contra ataques TOCTOU, límite de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido de rutas de herramientas, observabilidad (registro de eventos de espera de semáforos, contexto de error de tiempo de espera, registro de anulación de entorno, señal de precalentamiento para inicio en frío), seguridad de pruebas (instantánea del entorno de carga de módulos en 10 archivos, `tools/call` de extremo a extremo). Se agregó un manual de solución de problemas y los requisitos mínimos de hardware para los operadores.
 - **Fase 5 — Pruebas de rendimiento en M5 Max** — Números publicables una vez que se disponga del hardware (aproximadamente 24 de abril de 2026).
 
-Fase por capa de endurecimiento. Los niveles de paquete y artefacto permanecen congelados en 3 y 7. La congelación de los elementos básicos se levantó en la versión 2.1.0; los nuevos elementos básicos requieren una justificación auditada, pruebas, una página del manual y una entrada en el CHANGELOG.
+Fase por capa de endurecimiento. Los niveles de paquetes y artefactos permanecen con la restricción en 3 y 7, respectivamente. La restricción sobre los átomos se levantó en la versión 2.1.0; los nuevos átomos requieren una justificación basada en una auditoría, pruebas, una página en el manual y una entrada en el CHANGELOG.
 
 ---
 

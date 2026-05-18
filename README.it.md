@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-**Lo stagista locale per Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> strumenti, documentazione basata su evidenze, artefatti duraturi.
+> **Lo strumento interno per Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> strumenti, documentazione basata su evidenze, artefatti duraturi.
 
 Un server MCP che fornisce a Claude Code un **tirocinante locale**, con regole, livelli, una scrivania e un archivio. Claude sceglie lo _strumento_; lo strumento sceglie il _livello_ (Instant / Workhorse / Deep / Embed); il livello scrive un file che puoi aprire la prossima settimana.
 
@@ -26,6 +26,20 @@ Un server MCP che fornisce a Claude Code un **tirocinante locale**, con regole, 
 Nessun cloud. Nessuna telemetria. Niente di "autonomo". Ogni chiamata mostra il suo lavoro.
 
 ---
+
+## Novità nella versione 2.6.0
+
+Sovrascrittura del budget per chiamata per livello su `ollama_extract`. Modifica minore e incrementale: le chiamate precedenti alla versione 2.6.0 rimangono invariate. Dettagli nella documentazione [CHANGELOG.md](./CHANGELOG.md).
+
+- **Campo dello schema `tier_budget_ms_override?: number` su `ollama_extract`** (opzionale, con limite tra `[1, 600000]` ms). Quando presente, applica la sovrascrittura a ogni livello visitato dal runner, in modo che il meccanismo interno `runWithTimeoutAndFallback` in `src/guardrails/timeouts.ts:61` rispetti il budget fornito dall'operatore, invece del valore predefinito del profilo. La sequenza (workhorse → instant in caso di timeout) continua a funzionare; la sovrascrittura governa ogni passaggio della sequenza in modo uniforme.
+- **Motivazione di questa funzionalità.** Il wrapper research-os R-018 (v0.12.1) ha avvolto la chiamata `callTool` di MCP con `Promise.race` e ha scoperto che il budget del wrapper non raggiungeva il livello interno: `DEV_RTX5080_TIMEOUTS.instant = 15_000` continuava a generare `TIER_TIMEOUT` a 15000ms, indipendentemente dal budget del wrapper di 180000ms. La versione 2.6.0 fornisce il budget autoritario lato MCP, in modo che il flag `--planner-timeout-ms` (research-os) controlli finalmente i timeout dei livelli interni, come previsto.
+- **Comportamento predefinito mantenuto.** Se il campo viene omesso, vengono applicati i valori predefiniti del profilo, in modo identico. Le chiamate precedenti alla versione 2.6.0 non subiscono alcuna modifica.
+- **Espressione regolare di fallback R-010 mantenuta.** Il messaggio di errore `TIER_TIMEOUT` lato server continua a corrispondere a `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/`, in modo che la visibilità dell'AI-advisor a valle funzioni sia nei percorsi con sovrascrittura che in quelli predefiniti.
+- Implementato in research-os v0.13.0 (configurazione client cumulativa R-019 + R-020 + R-021) in un rilascio coordinato di più repository.
+
+### Versioni precedenti — funzionalità della versione 2.4.0
+
+Consultare [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) per i dettagli completi della versione 2.4.0 (controllo di `num_ctx` per livello nel sistema dei profili).
 
 ## Novità nella versione 2.4.0
 
@@ -74,7 +88,7 @@ Su `m5-max` (o qualsiasi profilo in cui un tier non è impostato), `num_ctx_used
 
 Gli operatori configurano selezionando o modificando il profilo; non esiste un input `num_ctx` a livello di chiamata negli schemi degli strumenti. Se una chiamata futura dovesse richiedere questa funzionalità, il comportamento seguirà l'override del `model` della versione v2.3.0.
 
-### Versioni precedenti — risultati della versione 2.3.0
+### Versioni precedenti — funzionalità della versione 2.3.0
 
 Consultare [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) per l'elenco completo delle modifiche della versione v2.3.0 (override del modello a livello di chiamata).
 
@@ -114,7 +128,7 @@ Invio dati (envelope):
 
 Se il livello principale/di base avesse raggiunto il timeout e la richiesta fosse stata reindirizzata al livello istantaneo, `env.model` conterrebbe il modello risolto dal livello istantaneo e `env.fallback_from` sarebbe impostato su `"workhorse"`; `env.model_requested` rimarrebbe comunque `"hermes3:8b"`, e la condizione `env.model !== env.model_requested` indica che è avvenuta una sostituzione. L'override non viene applicato intenzionalmente al livello più economico; il modello scelto potrebbe non essere adatto al ruolo di quel livello.
 
-### Versioni precedenti — risultati della versione 2.2.0
+### Versioni precedenti — funzionalità della versione 2.2.0
 
 Consultare [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) per la versione completa delle note di rilascio della versione 2.2.0 (pertinenza contestuale e astensione strutturata).
 
@@ -161,7 +175,7 @@ flowchart LR
   MCP --> NDJSON
 ```
 
-Ogni chiamata a uno strumento di Claude viene inviata al server MCP tramite JSON-RPC standard. Il server convalida la chiamata rispetto allo schema [zod](https://zod.dev) dello strumento, esegue le protezioni configurate (convalida delle citazioni, rimozione di frasi proibite, applicazione di percorsi protetti, soglie di confidenza) e quindi la indirizza a un renderer deterministico (livello degli artefatti) oppure a una chiamata HTTP a Ollama (tutti gli altri livelli). Il demone Ollama non riceve mai percorsi forniti dall'utente, ma solo il livello del modello e il prompt preparato. Ogni chiamata aggiunge un evento strutturato al log NDJSON in `~/.ollama-intern/log.ndjson`, che può essere letto da `ollama_log_tail` e dalla shell.
+Ogni chiamata allo strumento Claude passa al server MCP tramite JSON-RPC su stdio. Il server convalida la chiamata rispetto allo schema [zod](https://zod.dev) dello strumento, esegue le guardie configurate (convalida delle citazioni, rimozione di frasi proibite, applicazione di percorsi protetti, soglie di confidenza), quindi la indirizza a un renderer deterministico (livello degli artefatti) o a una chiamata HTTP a Ollama (tutti gli altri livelli). Il demone Ollama non riceve mai percorsi forniti dall'utente, ma solo il livello del modello e il prompt preparato. Ogni chiamata aggiunge un evento strutturato al log NDJSON in `~/.ollama-intern/log.ndjson`, che può essere letto da `ollama_log_tail` e dalla shell.
 
 ---
 
@@ -257,23 +271,23 @@ Se il `frame` viene omesso, il comportamento rimane invariato rispetto alla vers
 
 ---
 
-## Cosa c'è qui: quattro livelli, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> strumenti
+## Cosa c'è qui — quattro livelli, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> strumenti
 
 **Strumenti specifici per attività** significa che ogni strumento descrive un compito che affidereste a uno stagista: classifica questo, estrai quello, gestisci questi log, scrivi questa nota di rilascio, impacchetta questo incidente. L'input dello strumento è la specifica del compito; l'output è il risultato. Non c'è un primitivo generico `run_model` / `chat_with_llm` all'inizio.
 
 | Livello | Numero | Cosa c'è qui |
 |---|---|---|
-| **Atoms** | 28 | Elementi fondamentali strutturati. **Originali 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 aggiunti nella versione 2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operazioni); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactoring); `artifact_prune`, `hypothesis_drill` (artefatti/documenti); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). Gli elementi atomici che supportano l'elaborazione batch (`classify`, `extract`, `triage_logs`) accettano `items: [{id, text}]`. |
+| **Atoms** | 28 | Primitivi strutturati. **Originali 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 aggiunti nella versione 2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operazioni); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactoring); `artifact_prune`, `hypothesis_drill` (artefatti/brief); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). Gli atomi in grado di gestire operazioni batch (`classify`, `extract`, `triage_logs`) accettano `items: [{id, text}]`. |
 | **Briefs** | 3 | Brevi strutturati basati su evidenze. `incident_brief`, `repo_brief`, `change_brief`. Ogni affermazione cita un ID di evidenza; le informazioni sconosciute vengono eliminate lato server. Le evidenze deboli mostrano `weak: true` invece di una narrazione inventata. |
 | **Packs** | 3 | Lavori composti con pipeline fissa che scrivono markdown e JSON in formato duraturo nella directory `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renderizzatori deterministici: nessuna chiamata al modello basata sulla struttura dell'artefatto. |
 | **Artifacts** | 7 | Superficie di continuità basata sugli output dei pacchetti. `artifact_list` / `read` / `diff` / `export_to_path`, più tre snippet deterministici: `incident_note`, `onboarding_section`, `release_note`. |
 
-Totale: **28 elementi atomici + 3 documenti + 3 pacchetti + 7 strumenti per artefatti = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
+Totale: **28 atomi + 3 brief + 3 pacchetti + 7 strumenti per artefatti = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
 
-Linee congelate:
-- Elementi atomici: il congelamento è **stato rimosso nella versione 2.1.0** (28 attualmente; +13 aggiunti nella versione 2.1.0). Nuovi elementi atomici richiedono ancora una giustificazione verificabile, test, una pagina del manuale e una voce nel CHANGELOG: non sono ammesse aggiunte casuali.
-- I pacchetti sono congelati a 3. Nessun nuovo tipo di pacchetto.
-- Il livello degli artefatti è congelato a 7.
+Linee guida per il blocco delle modifiche:
+- Atomi: il blocco delle modifiche è stato **rimosso con la versione 2.1.0** (28 attualmente; +13 aggiunti nella versione 2.1.0). I nuovi atomi richiedono ancora una giustificazione formale, test, una pagina nel manuale e una voce nel CHANGELOG: non sono ammesse aggiunte improvvisate.
+- Pacchetti: il blocco delle modifiche è attivo per i pacchetti, livello 3. Non sono previsti nuovi tipi di pacchetti.
+- Livello degli artefatti: il blocco delle modifiche è attivo per il livello degli artefatti, livello 7.
 
 Il riferimento completo degli strumenti è disponibile nel [manuale](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
@@ -486,7 +500,7 @@ Conforme agli standard di [Shipcheck](https://github.com/mcp-tool-shop-org/shipc
 - **Fase 4 — Struttura di adozione** ✓ v2.0.1: corpus di test avanzato a tre livelli (protezione contro attacchi TOCTOU, limite di 50 MB per file, rifiuto di collegamenti simbolici, scritture atomiche, acquisizione di errori a livello di file), navigazione dei percorsi degli strumenti, osservabilità (registrazione degli eventi di attesa del semaforo, contesto degli errori di timeout, registrazione delle sovrascritture dell'ambiente, segnale di pre-riscaldamento per l'avvio a freddo), sicurezza dei test (istantanea dell'ambiente di caricamento dei moduli su 10 file, `tools/call` test end-to-end). Aggiunto manuale di risoluzione dei problemi e requisiti minimi hardware per gli operatori.
 - **Fase 5 — Benchmark M5 Max** — dati pubblicabili una volta disponibili le specifiche hardware (circa 2026-04-24).
 
-Fasi per livello di protezione. I livelli dei pacchetti e degli artefatti rimangono congelati a 3 e 7. Il congelamento degli elementi atomici è stato rimosso nella versione 2.1.0: i nuovi elementi atomici richiedono una giustificazione verificabile, test, una pagina del manuale e una voce nel CHANGELOG.
+Fasi di sviluppo per livello di complessità. I livelli dei pacchetti e degli artefatti rimangono bloccati a 3 e 7 rispettivamente. Il blocco delle modifiche agli atomi è stato rimosso con la versione 2.1.0: i nuovi atomi richiedono una giustificazione formale, test, una pagina nel manuale e una voce nel CHANGELOG.
 
 ---
 

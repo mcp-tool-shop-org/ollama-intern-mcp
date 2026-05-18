@@ -27,6 +27,20 @@ Sem nuvem. Sem telemetria. Sem nada "autônomo". Cada chamada mostra seu trabalh
 
 ---
 
+## Novidades na versão 2.6.0
+
+Substituição do orçamento por chamada para cada nível em `ollama_extract`. Pequena alteração adicional — as chamadas anteriores à versão 2.6.0 não são afetadas. Detalhes no arquivo [CHANGELOG.md](./CHANGELOG.md).
+
+- **Campo de esquema `tier_budget_ms_override?: number` em `ollama_extract`** (opcional, com limite de `[1, 600000]` ms). Quando presente, aplica a substituição a cada nível acessado pelo executor, permitindo que o mecanismo interno `runWithTimeoutAndFallback` em `src/guardrails/timeouts.ts:61` utilize o orçamento fornecido pelo operador, em vez do padrão do perfil. A cascata (workhorse → instantânea em caso de timeout) continua a funcionar; a substituição governa cada etapa da cascata de forma uniforme.
+- **Por que isso existe.** O wrapper research-os R-018 (v0.12.1) envolveu a função MCP `callTool` com `Promise.race` e descobriu que o orçamento do wrapper não alcançava o nível interno — `DEV_RTX5080_TIMEOUTS.instant = 15_000` continuava a disparar `TIER_TIMEOUT` a 15000ms, independentemente de um orçamento de 180000ms do wrapper. A versão 2.6.0 fornece o orçamento autorizado no lado do MCP, permitindo que a flag `--planner-timeout-ms` (research-os) controle finalmente os timeouts dos níveis internos, conforme o esperado.
+- **Comportamento padrão preservado.** Se o campo for omitido, os padrões do perfil são aplicados, byte a byte. As chamadas anteriores à versão 2.6.0 não apresentam nenhuma alteração.
+- **Expressão regular `fallback-cause` do R-010 preservada.** A mensagem de erro `TIER_TIMEOUT` no lado do servidor ainda corresponde a `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/`, permitindo que a visibilidade do AI-advisor funcione tanto nos caminhos de substituição quanto nos caminhos padrão.
+- Utilizado pela versão research-os v0.13.0 (conexão do cliente cumulativa R-019 + R-020 + R-021) em uma versão coordenada de vários repositórios.
+
+### Histórico — Entregas da versão 2.4.0
+
+Consulte os arquivos [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) para obter a entrada completa da versão 2.4.0 (controle de `num_ctx` por nível no sistema de perfis).
+
 ## Novidades na v2.4.0
 
 Controle individualizado de `num_ctx` (janela de contexto) para cada nível no sistema de perfis. Pequena alteração cumulativa — as chamadas não foram modificadas na versão 2.3.0. Detalhes nas seções [CHANGELOG.md](./CHANGELOG.md) e [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).

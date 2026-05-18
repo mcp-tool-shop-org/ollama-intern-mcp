@@ -27,6 +27,20 @@ Pas de cloud. Pas de télémétrie. Rien d' "autonome". Chaque appel montre son 
 
 ---
 
+## Nouvelles fonctionnalités dans la version 2.6.0
+
+Possibilité de définir un budget personnalisé pour chaque appel de la fonction `ollama_extract`. Amélioration mineure : les appels effectués avant la version 2.6.0 ne sont pas affectés. Consultez la description détaillée dans le fichier [CHANGELOG.md](./CHANGELOG.md).
+
+- **Champ de schéma `tier_budget_ms_override?: number` pour la fonction `ollama_extract`** (facultatif, valeur comprise entre `[1, 600000]` ms). Lorsqu'il est présent, il applique ce budget personnalisé à chaque niveau (tier) utilisé par le programme, de sorte que le mécanisme interne `runWithTimeoutAndFallback` situé dans `src/guardrails/timeouts.ts:61` respecte le budget fourni par l'utilisateur plutôt que les valeurs par défaut du profil. La cascade (workhorse → instant en cas de dépassement de délai) continue de fonctionner ; le budget personnalisé s'applique uniformément à chaque étape de la cascade.
+- **Pourquoi cette fonctionnalité existe.** L'environnement de recherche R-018 (version v0.12.1) utilisait un wrapper pour la fonction MCP `callTool` avec `Promise.race` et a constaté que le budget du wrapper n'atteignait pas le niveau interne : `DEV_RTX5080_TIMEOUTS.instant = 15_000` continuait de déclencher `TIER_TIMEOUT` à 15000 ms, quel que soit le budget du wrapper de 180000 ms. La version 2.6.0 fournit le budget autoritaire côté MCP, ce qui permet à l'utilisateur de contrôler enfin les délais des niveaux internes grâce à l'option `--planner-timeout-ms` (pour l'environnement de recherche).
+- **Comportement par défaut conservé.** Si le champ est omis, les valeurs par défaut du profil s'appliquent, exactement comme avant. Les appels effectués avant la version 2.6.0 ne sont pas modifiés.
+- **L'expression régulière `fallback-cause` de R-010 est conservée.** Le message d'erreur `TIER_TIMEOUT` côté serveur correspond toujours à `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/`, ce qui permet à l'outil d'aide à l'IA de fonctionner correctement, tant avec le budget personnalisé qu'avec les valeurs par défaut.
+- Intégré dans l'environnement de recherche v0.13.0 (combinaison des améliorations R-019 côté client, R-020 et R-021) dans le cadre d'une publication coordonnée impliquant plusieurs dépôts.
+
+### Versions antérieures — fonctionnalités de la version 2.4.0
+
+Consultez les fichiers [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) pour la description complète de la version 2.4.0 (contrôle du nombre de tokens (`num_ctx`) par niveau dans le système de profils).
+
 ## Nouveautés dans la version 2.4.0
 
 Contrôle individuel de `num_ctx` (fenêtre de contexte) pour chaque niveau dans le système de profil. Amélioration mineure, les appels inchangés dans la version 2.3.0. Détails dans [CHANGELOG.md](./CHANGELOG.md) et [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).

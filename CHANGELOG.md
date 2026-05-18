@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] — 2026-05-17
+
+Minor — non-breaking server-side feature for the v0.13 cross-repo finalization arc. Adds a per-call tier-budget override on `ollama_extract` so research-os (and any other MCP client) can authoritatively set the inner tier-budget that drives `TIER_TIMEOUT` events at the live guardrail layer. Pre-R-019 callers see byte-identical behavior (field is optional and omitted = profile defaults govern).
+
+### Added
+
+- **`tier_budget_ms_override?: number` schema field on `ollama_extract`.** Optional, bounded `[1, 600000]` ms. When present, the runner builds an `effectiveTimeouts` record (override applied to every tier visited; cascade still honored) and passes it as `timeoutOverrideMs` into the existing `runWithTimeoutAndFallback` machinery at `guardrails/timeouts.ts:61`. The per-tier override slot already existed; v2.6.0 adds the MCP-client entry point to populate it. Handler threads via `RunToolInput.tierBudgetMsOverride` and `RunBatchInput.tierBudgetMsOverride` for items-mode batches.
+
+### Why this matters
+
+The R-018 wrapper that shipped in research-os v0.12.1 wrapped the MCP `callTool` with `Promise.race`. The v0.4 rerun's MISTARGETED-PATCH finding showed the wrapper's effective budget did NOT reach the inner mechanism — `DEV_RTX5080_TIMEOUTS.instant = 15_000` in `src/profiles.ts` continued to fire `TIER_TIMEOUT` at 15000ms regardless of the wrapper's 180000ms budget. v2.6.0's schema field is the MCP-side authoritative budget surface: when research-os passes a `tier_budget_ms_override`, the value reaches the inner mechanism directly, and the operator's `--planner-timeout-ms` flag (or `RESEARCH_OS_SYNTH_PLANNER_TIMEOUT_MS` env var) finally controls inner-tier timeouts as designed.
+
+### Hard invariants preserved
+
+- Default behavior preserved when the field is omitted. Pre-R-019 callers (any research-os version below 0.13.0; any other MCP client; any direct `ollama_extract` caller that doesn't set the field) see profile defaults govern byte-identically.
+- The existing `guardrails/timeouts.ts` per-tier override slot at line 61 is UNCHANGED. The plumbing was already there; v2.6.0 supplies the client-side entry point.
+- The cascade (workhorse → instant on timeout) honors the override on every tier visited; `effectiveTimeouts` applies the override uniformly.
+- R-010 fallback-cause regex (`/elapsed=(\d+)ms/`, `/budget=(\d+)ms/`) preserved on the server-side `TIER_TIMEOUT` shape.
+
+### Tests / verify
+
+- 958 → 968 vitest passing (+10 R-019.SERVER tests at `tests/tools/r019TierBudgetOverride.test.ts`). 77 → 78 test files.
+- Typecheck clean.
+- Behavior verified live against the v0.4 rerun pack via research-os R-019 client (separate research-os release; arrives as v0.13.0 in the same release window).
+
+### Notes
+
+- Non-breaking minor: the new schema field is optional with a documented default; backward-compatible.
+- Consumed by research-os v0.13.0 (cumulative R-019 client wire-up + R-020 + R-021); coordinated multi-repo release per `memory/multi-repo-publish-sequencing.md`.
+
 ## [2.5.3] — 2026-05-16
 
 Patch — finishes the macOS realpath story. v2.5.1 realpath'd allowedRoots. v2.5.2 realpath'd the assertSafePath input. Both fail when the input file doesn't exist (synthetic-path amends — a documented use case where the path is recorded in the manifest before the operator creates the file). v2.5.3 fixes this by expanding allowedRoots to return BOTH the literal-normalized form AND the realpath form. Input check passes if it matches either side — no longer requires input.realpath to succeed.

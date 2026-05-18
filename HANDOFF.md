@@ -1,6 +1,6 @@
 # Ollama Intern MCP — Handoff
 
-**Status:** v<!-- VERSION:start -->2.5.3<!-- VERSION:end --> published · <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> tools (atoms + briefs + packs + artifact tier) · <!-- TEST_COUNT:start -->958<!-- TEST_COUNT:end --> tests · CI green
+**Status:** v<!-- VERSION:start -->2.6.0<!-- VERSION:end --> published · <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> tools (atoms + briefs + packs + artifact tier) · <!-- TEST_COUNT:start -->968<!-- TEST_COUNT:end --> tests · CI green
 **Repo:** https://github.com/mcp-tool-shop-org/ollama-intern-mcp
 **npm:** https://www.npmjs.com/package/ollama-intern-mcp
 **Hardware:** M5 Max 128GB unified (active 2026-04-24+); RTX 5080 16GB box still works for `dev-rtx5080` profile
@@ -54,7 +54,7 @@ export INTERN_PROFILE=m5-max
 # 4. Install + verify
 cd /Volumes/T9-Shared/AI/ollama-intern-mcp
 npm ci
-npm run verify   # typecheck + build + <!-- TEST_COUNT:start -->958<!-- TEST_COUNT:end --> tests
+npm run verify   # typecheck + build + <!-- TEST_COUNT:start -->968<!-- TEST_COUNT:end --> tests
 ```
 
 For RTX 5080 (Windows or other dev box), use `INTERN_PROFILE=dev-rtx5080` (hermes3:8b ladder) or `dev-rtx5080-qwen3` (Qwen 3 alternate).
@@ -66,7 +66,7 @@ For RTX 5080 (Windows or other dev box), use `INTERN_PROFILE=dev-rtx5080` (herme
 ```bash
 # Full verify — must pass before any release work
 npm run verify
-# Expected: typecheck clean, build clean, <!-- TEST_COUNT:start -->958<!-- TEST_COUNT:end --> tests passing
+# Expected: typecheck clean, build clean, <!-- TEST_COUNT:start -->968<!-- TEST_COUNT:end --> tests passing
 # (the bash comment count is rewritten by `npm run sync-docs`)
 
 # Ollama alive
