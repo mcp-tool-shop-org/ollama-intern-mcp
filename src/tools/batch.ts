@@ -28,6 +28,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
+import { getRoutingInfo, type Backend } from "../routing.js";
 import { countTokens } from "../ollama.js";
 import { InternError, toErrorShape, type ErrorShape } from "../errors.js";
 import type { RunContext } from "../runContext.js";
@@ -177,7 +178,22 @@ async function runBatchInner<I extends BatchItem, R>(
           deep: input.tierBudgetMsOverride,
           embed: input.tierBudgetMsOverride,
         }
-      : ctx.timeouts;
+      : ctx.cloud
+        ? {
+            instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,
+            workhorse: ctx.cloud.timeouts.workhorse + ctx.timeouts.workhorse,
+            deep: ctx.cloud.timeouts.deep + ctx.timeouts.deep,
+            embed: ctx.cloud.timeouts.embed + ctx.timeouts.embed,
+          }
+        : ctx.timeouts;
+
+  // Backend routing aggregates across the batch (cloud-primary mode). A batch
+  // may serve some items from cloud and some from local fallback; we surface
+  // the last backend + whether ANY item degraded, plus the last reason.
+  let lastBackend: Backend | undefined;
+  let anyDegraded = false;
+  let lastDegradeReason: string | undefined;
+  let lastNumCtx: number | undefined;
 
   for (const item of input.items) {
     try {
@@ -206,15 +222,23 @@ async function runBatchInner<I extends BatchItem, R>(
               ? { ...built, options: { ...(built.options ?? {}), num_ctx: numCtx } }
               : built;
           const req = input.think === undefined ? withNumCtx : { ...withNumCtx, think: input.think };
-          const resp = await ctx.client.generate(req, signal);
+          // Pass `tier` so the RoutingOllamaClient can resolve cloud vs local.
+          const resp = await ctx.client.generate(req, signal, tier);
           return { resp, model };
         },
       });
       const { resp, model } = value;
+      const routing = getRoutingInfo(resp);
       const tokens = countTokens(resp);
       tokensIn += tokens.in;
       tokensOut += tokens.out;
-      lastModel = model;
+      lastModel = routing?.model ?? model;
+      if (routing?.backend) lastBackend = routing.backend;
+      if (routing?.degraded) {
+        anyDegraded = true;
+        lastDegradeReason = routing.degrade_reason;
+      }
+      if (routing?.num_ctx !== undefined) lastNumCtx = routing.num_ctx;
       if (fallbackFrom && !sawFallback) sawFallback = fallbackFrom;
       const parsed = input.parse(resp.response, item);
       entries.push({ id: item.id, ok: true, result: parsed });
@@ -234,7 +258,10 @@ async function runBatchInner<I extends BatchItem, R>(
     }
   }
 
-  const residency = await ctx.client.residency(lastModel);
+  // Cloud-served items have no local residency; only probe when the last
+  // served item ran locally.
+  const residency = lastBackend === "cloud" ? null : await ctx.client.residency(lastModel);
+  const numCtxUsed = lastNumCtx ?? batchNumCtx;
   const envelope = buildEnvelope<BatchResult<R>>({
     result: { items: entries },
     tier: input.tier,
@@ -245,8 +272,11 @@ async function runBatchInner<I extends BatchItem, R>(
     startedAt,
     residency,
     ...(sawFallback ? { fallbackFrom: sawFallback } : {}),
+    ...(lastBackend ? { backend: lastBackend } : {}),
+    ...(anyDegraded ? { degraded: true } : {}),
+    ...(anyDegraded && lastDegradeReason ? { degradeReason: lastDegradeReason } : {}),
     ...(input.modelOverride !== undefined ? { modelRequested: input.modelOverride } : {}),
-    ...(batchNumCtx !== undefined ? { numCtxUsed: batchNumCtx } : {}),
+    ...(numCtxUsed !== undefined ? { numCtxUsed } : {}),
   });
   envelope.batch_count = input.items.length;
   envelope.ok_count = okCount;

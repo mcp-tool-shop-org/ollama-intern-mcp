@@ -261,16 +261,33 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
       false,
     );
   }
+  // Refuse to load a manifest written by a newer pkg version than ours.
+  // Same schema number, but a newer build may have added fields the current
+  // build would lose on the next write. Mirrors loadCorpus in storage.ts so
+  // the manifest gets the same downgrade protection as the corpus payload.
+  const writtenBy = parsed.schema_version_written_by;
+  if (typeof writtenBy === "string" && compareVersions(writtenBy, MANIFEST_WRITER_VERSION) > 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" was written by v${writtenBy}; this build is v${MANIFEST_WRITER_VERSION} and refuses to downgrade. File: ${path}`,
+      `Upgrade ollama-intern-mcp to v${writtenBy} or newer, or re-index after downgrading the package deliberately.`,
+      false,
+    );
+  }
   return parsed as CorpusManifest;
 }
 
 export async function saveManifest(manifest: CorpusManifest): Promise<void> {
   assertValidCorpusName(manifest.name);
   const path = manifestPath(manifest.name);
+  // Stamp the writer version so older builds can refuse to downgrade —
+  // mirrors saveCorpus in storage.ts. loadManifest reads this back and
+  // rejects when it's newer than the running build.
+  const stamped: CorpusManifest = { ...manifest, schema_version_written_by: MANIFEST_WRITER_VERSION };
   // Atomic write: tmp+fsync+rename — mirrors saveCorpus in storage.ts so
   // the corpus JSON and manifest JSON paired under withCorpusLock are
   // each individually durable. A torn manifest write would leave a
   // truncated JSON that loadManifest's silent catch swallows, breaking
   // the lock's "one logical state" guarantee.
-  await atomicWriteFile(path, JSON.stringify(manifest, null, 2));
+  await atomicWriteFile(path, JSON.stringify(stamped, null, 2));
 }
