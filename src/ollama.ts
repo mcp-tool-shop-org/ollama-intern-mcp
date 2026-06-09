@@ -279,7 +279,12 @@ export function normalizeOllamaHost(raw: string | undefined): string {
   const value = (raw ?? "").trim();
   if (!value) return fallback;
   const withScheme = /^https?:\/\//i.test(value) ? value : `http://${value}`;
-  const trimmed = withScheme.replace(/\/+$/, "");
+  // Strip ALL trailing slashes with a linear-time loop. A `/\/+$/` regex is the
+  // canonical polynomial-ReDoS shape (the unbounded `+` backtracks against the
+  // end anchor); `endsWith`/`slice` can't backtrack and is behaviourally
+  // identical ("http://h///" -> "http://h").
+  let trimmed = withScheme;
+  while (trimmed.endsWith("/")) trimmed = trimmed.slice(0, -1);
   // Validate port range if one is present. An out-of-range port lands as a
   // 'Invalid URL' error deep inside fetch() which turns into a generic
   // "Failed to reach Ollama" — CONFIG_INVALID at startup is the honest signal.
