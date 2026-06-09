@@ -18,7 +18,7 @@
  * CorrelationOp enum stays tight.
  */
 
-import { readFile, stat, realpath, lstat } from "node:fs/promises";
+import { realpath, lstat, open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
@@ -127,27 +127,38 @@ async function sha256File(path: string): Promise<{ hash: string; mtime: string; 
   // realpath(path) to point at e.g. /etc/shadow.
   const realPath = await realpath(path);
   assertSafePath(realPath);
-  const stBefore = await stat(realPath);
-  if (stBefore.size > MAX_FILE_BYTES) {
-    throw new InternError(
-      "SOURCE_PATH_NOT_FOUND",
-      `File exceeds max size (${stBefore.size} bytes > ${MAX_FILE_BYTES} bytes cap): ${path}`,
-      `Split the file or raise the cap. The 50MB limit exists to prevent OOM from a user pointing at a huge file.`,
-      false,
-    );
+  // Open the real path ONCE and do the size-cap check, the read, and the
+  // mutation re-check all against the same file handle (same inode). A
+  // path-based stat()-then-readFile() is a TOCTOU: the path could be
+  // swapped to a 100GB file between the size check and the read, bypassing
+  // the cap (CodeQL js/file-system-race). Pinning to one fd closes that —
+  // fh.stat() reports the bytes we are actually about to read.
+  const fh = await open(realPath, "r");
+  try {
+    const stBefore = await fh.stat();
+    if (stBefore.size > MAX_FILE_BYTES) {
+      throw new InternError(
+        "SOURCE_PATH_NOT_FOUND",
+        `File exceeds max size (${stBefore.size} bytes > ${MAX_FILE_BYTES} bytes cap): ${path}`,
+        `Split the file or raise the cap. The 50MB limit exists to prevent OOM from a user pointing at a huge file.`,
+        false,
+      );
+    }
+    const content = await fh.readFile("utf8");
+    const hash = "sha256:" + createHash("sha256").update(content).digest("hex");
+    const stAfter = await fh.stat();
+    if (stAfter.size !== stBefore.size || stAfter.mtimeMs !== stBefore.mtimeMs) {
+      throw new InternError(
+        "SOURCE_PATH_NOT_FOUND",
+        `File mutated during read (TOCTOU): ${path}`,
+        "Another process wrote to the file while we were hashing it. Re-run the index.",
+        true,
+      );
+    }
+    return { hash, mtime: stBefore.mtime.toISOString(), content };
+  } finally {
+    await fh.close();
   }
-  const content = await readFile(realPath, "utf8");
-  const hash = "sha256:" + createHash("sha256").update(content).digest("hex");
-  const stAfter = await stat(realPath);
-  if (stAfter.size !== stBefore.size || stAfter.mtimeMs !== stBefore.mtimeMs) {
-    throw new InternError(
-      "SOURCE_PATH_NOT_FOUND",
-      `File mutated during read (TOCTOU): ${path}`,
-      "Another process wrote to the file while we were hashing it. Re-run the index.",
-      true,
-    );
-  }
-  return { hash, mtime: stBefore.mtime.toISOString(), content };
 }
 
 export async function indexCorpus(params: IndexParams): Promise<IndexReport> {

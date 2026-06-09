@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **CodeQL `js/file-system-race` (TOCTOU) — 4 HIGH alerts hardened.** Removed check-then-use filesystem patterns flagged by CodeQL on `main`:
+  - `src/sources.ts` and `src/corpus/indexer.ts` now open a single file handle and run the is-file / size-cap check, the read, and the mutation re-check against that one inode. A path swapped between a `stat()` and a path-based `readFile()` can no longer slip a different (or oversized) file through — in the indexer this also closes the OOM-via-swap window where the 50 MB cap could be bypassed.
+  - `src/tools/artifacts/export.ts` writes atomically with the exclusive-create flag (`wx`) instead of `existsSync`-then-`writeFile`. The flag *is* the existence check, so the "never clobber by default" guarantee holds against a racing writer; directory diagnosis runs only after a failed write (never before).
+  - `scripts/sync-doc-versions.mjs` reads directly with `ENOENT` handling instead of `existsSync`-then-read.
+  - Error codes/messages and the `overwrote` contract are unchanged; full suite (968 tests) green, typecheck clean.
+- **CodeQL `js/http-to-file-access` (1 MEDIUM) — dismissed as a false positive.** The NDJSON logger's write path is operator config (`DEFAULT_LOG_PATH` / `INTERN_LOG_PATH`), never HTTP-derived, so there is no path-injection sink. HTTP-derived data reaches only the log *content*, which is `JSON.stringify`-escaped into one NDJSON line (no log-line injection). The log is data, never executed.
+
 ### Fixed
 
 - **corpus/manifest: writer-version downgrade guard was declared but never wired.** The v2.0.1 changelog claimed the manifest loader refused a newer-than-build manifest, and `manifest.ts` carried `MANIFEST_WRITER_VERSION` + a `compareVersions` helper + a doc comment promising the behavior — but nothing referenced them, so the guard never ran (and CodeQL flagged both symbols as unused). `loadManifest` now rejects a manifest whose `schema_version_written_by` is newer than the running build, and `saveManifest` stamps that field on every write — reaching parity with the corpus-side guard in `storage.ts` (`loadCorpus` / `saveCorpus`). Legacy manifests with no writer field, and manifests written by an older build, still load.
