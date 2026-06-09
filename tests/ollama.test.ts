@@ -26,6 +26,14 @@ describe("normalizeOllamaHost", () => {
     expect(normalizeOllamaHost("http://127.0.0.1:11434///")).toBe("http://127.0.0.1:11434");
   });
 
+  it("strips a long run of trailing slashes in linear time (ReDoS-safe)", () => {
+    // CodeQL #24 (js/polynomial-redos): the old `/\/+$/` trim backtracked on a
+    // long trailing-slash run. The endsWith/slice loop is linear — a 100k-slash
+    // input resolves instantly and yields the bare host.
+    const host = `http://127.0.0.1:11434${"/".repeat(100_000)}`;
+    expect(normalizeOllamaHost(host)).toBe("http://127.0.0.1:11434");
+  });
+
   it("rejects an out-of-range port with CONFIG_INVALID", () => {
     // 70000 > 65535 — deep in fetch() this surfaced as "Failed to reach
     // Ollama"; we'd rather fail loud at startup with a clear hint.
