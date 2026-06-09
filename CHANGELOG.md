@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **corpus/manifest: writer-version downgrade guard was declared but never wired.** The v2.0.1 changelog claimed the manifest loader refused a newer-than-build manifest, and `manifest.ts` carried `MANIFEST_WRITER_VERSION` + a `compareVersions` helper + a doc comment promising the behavior — but nothing referenced them, so the guard never ran (and CodeQL flagged both symbols as unused). `loadManifest` now rejects a manifest whose `schema_version_written_by` is newer than the running build, and `saveManifest` stamps that field on every write — reaching parity with the corpus-side guard in `storage.ts` (`loadCorpus` / `saveCorpus`). Legacy manifests with no writer field, and manifests written by an older build, still load.
+
 ## [2.6.0] — 2026-05-17
 
 Minor — non-breaking server-side feature for the v0.13 cross-repo finalization arc. Adds a per-call tier-budget override on `ollama_extract` so research-os (and any other MCP client) can authoritatively set the inner tier-budget that drives `TIER_TIMEOUT` events at the live guardrail layer. Pre-R-019 callers see byte-identical behavior (field is optional and omitted = profile defaults govern).
