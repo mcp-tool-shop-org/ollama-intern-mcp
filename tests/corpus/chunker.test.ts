@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunk, chunkDocument, DEFAULT_CHUNK } from "../../src/corpus/chunker.js";
+import { chunk, chunkDocument } from "../../src/corpus/chunker.js";
 
 describe("chunker", () => {
   it("returns empty array for empty text", () => {

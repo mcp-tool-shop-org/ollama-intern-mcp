@@ -164,7 +164,7 @@ describe("indexCorpus + searchCorpus", () => {
     await writeFile(p1, "original content", "utf8");
 
     const client = new HashEmbedMock();
-    const r1 = await indexCorpus({ name: "ch", paths: [p1], model: "nomic-embed-text", client });
+    await indexCorpus({ name: "ch", paths: [p1], model: "nomic-embed-text", client });
     const embedsAfterFirst = client.embedCalls;
 
     await writeFile(p1, "completely different content now, longer too", "utf8");

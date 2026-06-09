@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { readdir, mkdtemp, rm } from "node:fs/promises";
+import { readdir, mkdtemp } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -36,7 +36,6 @@ import {
   type EvalSummary,
   type EvalRecord,
 } from "../../src/evals/retrieval.js";
-import { SEARCH_MODES } from "../../src/corpus/searcher.js";
 import type {
   OllamaClient,
   GenerateRequest,

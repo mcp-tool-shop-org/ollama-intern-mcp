@@ -25,7 +25,7 @@
 import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
-import { TEMPERATURE_BY_SHAPE, resolveTier, resolveNumCtx } from "../tiers.js";
+import { TEMPERATURE_BY_SHAPE, resolveTier } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { callEvent, timestamp } from "../observability.js";
 import { loadCorpus } from "../corpus/storage.js";

@@ -25,7 +25,6 @@ import type {
   EmbedResponse,
 } from "../../src/ollama.js";
 import type { Residency } from "../../src/envelope.js";
-import { InternError } from "../../src/errors.js";
 
 // ── Helpers ─────────────────────────────────────────────────
 

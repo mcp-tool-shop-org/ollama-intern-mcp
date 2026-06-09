@@ -24,8 +24,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, readFile, rm, stat, writeFile, chmod } from "node:fs/promises";
-import { tmpdir, platform } from "node:os";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { atomicWriteFile } from "../../src/corpus/atomicWrite.js";

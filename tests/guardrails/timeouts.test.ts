@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runWithTimeoutAndFallback } from "../../src/guardrails/timeouts.js";
 import { NullLogger } from "../../src/observability.js";
-import { InternError } from "../../src/errors.js";
 
 describe("runWithTimeoutAndFallback", () => {
   it("returns the value when run() resolves before timeout", async () => {
