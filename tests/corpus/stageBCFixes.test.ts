@@ -406,3 +406,77 @@ describe("Fix 6: humanized error hints", () => {
     expect(issueMessages.toLowerCase()).toContain("directory");
   });
 });
+
+// ── Fix 7: manifest writer-version downgrade guard ─────────
+//
+// Mirrors the corpus-side protection in storage.ts (loadCorpus rejects a
+// corpus whose schema_version_written_by is newer than SCHEMA_WRITER_VERSION).
+// The manifest loader previously declared the machinery but never wired it —
+// MANIFEST_WRITER_VERSION + compareVersions were dead, so the documented
+// "loader refuses a newer-than-build manifest" guarantee (and the v2.0.1
+// CHANGELOG entry claiming it shipped) was not enforced.
+
+describe("Fix 7: manifest writer-version downgrade guard", () => {
+  it("saveManifest stamps schema_version_written_by with the running pkg version", async () => {
+    const p = await writeSource("a.md", "alpha");
+    await indexCorpus({ name: "wv1", paths: [p], model: MODEL, client: new Mock() });
+
+    const m = await loadManifest("wv1");
+    expect(typeof m!.schema_version_written_by).toBe("string");
+    expect(m!.schema_version_written_by!.length).toBeGreaterThan(0);
+
+    // The stamp is the actual package version, not a hard-coded constant.
+    const pkgRaw = await readFile(
+      new URL("../../package.json", import.meta.url),
+      "utf8",
+    );
+    const pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
+    expect(m!.schema_version_written_by).toBe(pkgVersion);
+  });
+
+  it("loadManifest refuses a manifest written by a newer build (no silent downgrade)", async () => {
+    const p = await writeSource("a.md", "alpha");
+    await indexCorpus({ name: "wv2", paths: [p], model: MODEL, client: new Mock() });
+
+    // Simulate a newer build having written this manifest.
+    const mPath = manifestPath("wv2");
+    const raw = JSON.parse(await readFile(mPath, "utf8"));
+    raw.schema_version_written_by = "999.0.0";
+    await writeFile(mPath, JSON.stringify(raw, null, 2), "utf8");
+
+    await expect(loadManifest("wv2")).rejects.toMatchObject({
+      code: "SCHEMA_INVALID",
+      message: expect.stringContaining("999.0.0"),
+      hint: expect.stringContaining("Upgrade ollama-intern-mcp"),
+    });
+  });
+
+  it("loadManifest accepts a manifest with no writer field (legacy / back-compat)", async () => {
+    const p = await writeSource("a.md", "alpha");
+    await indexCorpus({ name: "wv3", paths: [p], model: MODEL, client: new Mock() });
+
+    // Pre-guard manifests never carried the field — they must still load.
+    const mPath = manifestPath("wv3");
+    const raw = JSON.parse(await readFile(mPath, "utf8"));
+    delete raw.schema_version_written_by;
+    await writeFile(mPath, JSON.stringify(raw, null, 2), "utf8");
+
+    const m = await loadManifest("wv3");
+    expect(m).not.toBeNull();
+    expect(m!.name).toBe("wv3");
+  });
+
+  it("loadManifest accepts a manifest written by an older build (forward, not down)", async () => {
+    const p = await writeSource("a.md", "alpha");
+    await indexCorpus({ name: "wv4", paths: [p], model: MODEL, client: new Mock() });
+
+    // An older writer version is a normal upgrade path — load, don't reject.
+    const mPath = manifestPath("wv4");
+    const raw = JSON.parse(await readFile(mPath, "utf8"));
+    raw.schema_version_written_by = "0.0.1";
+    await writeFile(mPath, JSON.stringify(raw, null, 2), "utf8");
+
+    const m = await loadManifest("wv4");
+    expect(m!.schema_version_written_by).toBe("0.0.1");
+  });
+});

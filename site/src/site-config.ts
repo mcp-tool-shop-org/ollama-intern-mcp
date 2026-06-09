@@ -12,11 +12,11 @@ export const config: SiteConfig = {
     'MIT Licensed — built by <a href="https://mcp-tool-shop.github.io/" style="color:var(--color-muted);text-decoration:underline">MCP Tool Shop</a>',
 
   hero: {
-    badge: 'Local · evidence-first · Hermes-ready · MIT',
+    badge: 'Local-first · cloud-optional · evidence-first · Hermes-ready · MIT',
     headline: 'The local intern',
     headlineAccent: 'for Claude Code.',
     description:
-      '42 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. Ships a validated Hermes Agent integration path on hermes3:8b. No cloud. No telemetry. Every call shows its work.',
+      '42 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. Local-first and zero-egress by default, with optional Ollama Cloud routing for 600B-class models when local hardware is the bottleneck. No telemetry. Every call shows its work.',
     primaryCta: { href: '#example', label: 'See a pack run' },
     secondaryCta: { href: 'handbook/', label: 'Read the Handbook' },
     previews: [
@@ -109,6 +109,26 @@ export const config: SiteConfig = {
       ],
     },
     {
+      kind: 'features',
+      id: 'cloud',
+      title: 'Scale up — optional Ollama Cloud',
+      subtitle: 'Off by default, zero egress until you opt in. Local-first stays the promise.',
+      features: [
+        {
+          title: 'Cloud-primary, local-fallback',
+          desc: 'Set OLLAMA_CLOUD_PRIMARY=1 + OLLAMA_API_KEY and the generative tiers route to a 600B-class model (default minimax-m3:cloud). A circuit breaker falls back to your local profile on any cloud failure; embeddings always stay local.',
+        },
+        {
+          title: 'Never a silent downgrade',
+          desc: 'Every envelope reports backend (cloud|local), degraded, and degrade_reason — plus a backend_fallback NDJSON event — so you always know when you got the local model instead of the big one. A bad key surfaces loudly, never a silent degrade.',
+        },
+        {
+          title: 'Opt-in by design',
+          desc: 'Nothing leaves the box unless you set both vars — the local-first, zero-egress promise holds for everyone else. See the Ollama Cloud handbook page for setup, env vars, and the privacy posture.',
+        },
+      ],
+    },
+    {
       kind: 'code-cards',
       id: 'example',
       title: 'One call, one artifact',
@@ -172,6 +192,19 @@ weak: false · evidence_count: 6
     }
   }
 }`,
+        },
+        {
+          title: 'Ollama Cloud (optional — off by default)',
+          code: `// Add to the env block to route the generative tiers
+// to a 600B-class cloud model; local stays the fallback.
+// Zero egress until BOTH of these are set.
+"env": {
+  "OLLAMA_CLOUD_PRIMARY": "1",
+  "OLLAMA_API_KEY": "sk-...your-key...",
+  "INTERN_PROFILE": "dev-rtx5080"
+}
+// Key from https://ollama.com/settings/keys (a runtime env
+// var, not a CI secret). See handbook/ollama-cloud/.`,
         },
         {
           title: 'Hermes Agent (validated path)',

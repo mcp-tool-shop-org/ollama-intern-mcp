@@ -91,6 +91,22 @@ export type LogEvent = CorrelationFields &
         reason: string;
         profile_name?: string;
       }
+    // Emitted when the routing layer (cloud-primary mode) serves a call from
+    // the LOCAL backend instead of cloud — because the cloud attempt failed
+    // (timeout/5xx/429/network), the breaker was open, or the cloud key is
+    // misconfigured. ORTHOGONAL to `fallback` (which is tier-degradation on a
+    // single backend). Lets `log_tail` surface the cloud→local fallback RATE,
+    // the early-warning that cloud is degrading.
+    | {
+        kind: "backend_fallback";
+        ts: string;
+        from: "cloud";
+        to: "local";
+        /** cloud_timeout | cloud_5xx | cloud_rate_limited | cloud_unreachable | cloud_auth_failed | circuit_open */
+        reason: string;
+        tier?: Tier;
+        model?: string;
+      }
     | { kind: "guardrail"; ts: string; tool: string; rule: string; action: string; detail?: unknown }
     | {
         kind: "prewarm";

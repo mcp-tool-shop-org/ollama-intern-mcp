@@ -27,10 +27,10 @@
  *         npm run sync-docs
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, relative } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -275,11 +275,20 @@ function run() {
 
   for (const { path, rewrites } of plan) {
     const abs = resolve(REPO, path);
-    if (!existsSync(abs)) {
-      console.warn(`[skip] ${path} (not present)`);
-      continue;
+    // Read directly and treat a missing file as "skip". Checking existence
+    // first (existsSync) then reading/writing is a TOCTOU — the file can be
+    // swapped in the gap (CodeQL js/file-system-race). A single read with
+    // ENOENT handling closes the window.
+    let before;
+    try {
+      before = readFileSync(abs, "utf8");
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        console.warn(`[skip] ${path} (not present)`);
+        continue;
+      }
+      throw err;
     }
-    const before = readFileSync(abs, "utf8");
     let after = before;
     for (const fn of rewrites) {
       after = fn(after);

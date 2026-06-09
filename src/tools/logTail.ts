@@ -33,7 +33,7 @@ export const logTailSchema = z.object({
   filter_kind: z
     .string()
     .optional()
-    .describe("Keep only events with this kind — e.g. 'call', 'timeout', 'fallback', 'pack_step', 'semaphore:wait'."),
+    .describe("Keep only events with this kind — e.g. 'call', 'timeout', 'fallback', 'backend_fallback' (cloud→local), 'pack_step', 'semaphore:wait'."),
   filter_tool: z
     .string()
     .optional()
