@@ -340,3 +340,124 @@ export function detectEnvOverrides(env: NodeJS.ProcessEnv = process.env): EnvOve
   }
   return out;
 }
+
+// ── Ollama Cloud (optional, opt-in) ──────────────────────────────────────────
+//
+// Cloud is OFF by default. The package stays local-first with zero egress
+// unless BOTH OLLAMA_CLOUD_PRIMARY and OLLAMA_API_KEY are set. When enabled,
+// cloud serves the generative tiers (instant/workhorse/deep) and the local
+// profile becomes the fallback; embeddings stay local always (Ollama Cloud
+// serves no embedding models).
+
+/** Resolved cloud configuration. Null when cloud is not opted into. */
+export interface CloudConfig {
+  /** Cloud base host, e.g. https://ollama.com. */
+  host: string;
+  /** Bearer API key (OLLAMA_API_KEY). */
+  apiKey: string;
+  /**
+   * Cloud model per tier. instant/workhorse use INTERN_CLOUD_MODEL; deep uses
+   * INTERN_CLOUD_DEEP_MODEL when set (else the same model). `embed` is carried
+   * for shape only — embeddings never route to cloud.
+   */
+  tiers: TierConfig;
+  /** Per-tier cloud-attempt timeout (ms). Cloud is far slower than local 8B. */
+  timeouts: Record<Tier, number>;
+  /** Context-window cap (tokens) applied to every cloud request (GPU-time control). */
+  numCtx: number;
+}
+
+const CLOUD_DEFAULT_HOST = "https://ollama.com";
+/**
+ * Default cloud model. minimax-m3:cloud is the current flagship successor to
+ * the 2026-06-16-retiring minimax-m2 — fast for a big model, 512K–1M context
+ * (fits the file-reading flagship tools), thinking-capable. NEVER default to a
+ * deprecation-listed id (minimax-m2, glm-4.6, kimi-k2:1t, cogito-2.1:671b,
+ * qwen3-vl:235b).
+ */
+const CLOUD_DEFAULT_MODEL = "minimax-m3:cloud";
+const CLOUD_DEFAULT_TIMEOUTS: Record<Tier, number> = {
+  instant: 30_000,
+  workhorse: 120_000,
+  deep: 300_000,
+  embed: 10_000,
+};
+const CLOUD_DEFAULT_NUM_CTX = 32_768;
+
+/** Truthy values that enable cloud-primary mode. */
+function isCloudEnabled(env: NodeJS.ProcessEnv): boolean {
+  const v = (env.OLLAMA_CLOUD_PRIMARY ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/** Strip trailing slashes; default to ollama.com; ensure an https scheme. */
+function normalizeCloudHost(raw: string | undefined): string {
+  const value = (raw ?? "").trim();
+  if (!value) return CLOUD_DEFAULT_HOST;
+  const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return withScheme.replace(/\/+$/, "");
+}
+
+/** Parse a positive-integer env value; fall back when unset/empty/invalid. */
+function positiveIntEnv(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Resolve the cloud configuration from env, or null when cloud is not opted
+ * into. Throws CONFIG_INVALID (fail-fast at startup) when OLLAMA_CLOUD_PRIMARY
+ * is enabled but OLLAMA_API_KEY is missing, or a cloud model name is malformed.
+ *
+ * Env surface:
+ *   OLLAMA_CLOUD_PRIMARY        opt-in switch (1/true/yes/on)
+ *   OLLAMA_API_KEY              bearer key (required when enabled)
+ *   OLLAMA_CLOUD_HOST           default https://ollama.com
+ *   INTERN_CLOUD_MODEL          default minimax-m3:cloud (instant+workhorse+deep)
+ *   INTERN_CLOUD_DEEP_MODEL     optional deep-only override (e.g. deepseek-v3.1:671b)
+ *   INTERN_CLOUD_TIMEOUT_*_MS   per-tier cloud timeouts (instant/workhorse/deep)
+ *   INTERN_CLOUD_NUM_CTX        cloud context-window cap (default 32768)
+ */
+export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConfig | null {
+  if (!isCloudEnabled(env)) return null;
+  const apiKey = (env.OLLAMA_API_KEY ?? "").trim();
+  if (!apiKey) {
+    throw new InternError(
+      "CONFIG_INVALID",
+      "OLLAMA_CLOUD_PRIMARY is enabled but OLLAMA_API_KEY is not set.",
+      "Set OLLAMA_API_KEY (create a key at https://ollama.com/settings/keys), or unset OLLAMA_CLOUD_PRIMARY to run local-only. Note: a GitHub Actions secret is NOT visible to the running server — the key must be a local env var passed via your MCP client's env block.",
+      false,
+    );
+  }
+  const model = (env.INTERN_CLOUD_MODEL || CLOUD_DEFAULT_MODEL).trim();
+  const deepModel = (env.INTERN_CLOUD_DEEP_MODEL || model).trim();
+  // Reuse the same fail-fast model-name validation as the local tiers.
+  validateEnvModel("INTERN_CLOUD_MODEL", model);
+  validateEnvModel("INTERN_CLOUD_DEEP_MODEL", deepModel);
+
+  const numCtx = positiveIntEnv(env.INTERN_CLOUD_NUM_CTX, CLOUD_DEFAULT_NUM_CTX);
+  validateNumCtx("INTERN_CLOUD_NUM_CTX", numCtx);
+
+  const tiers: TierConfig = {
+    instant: model,
+    workhorse: model,
+    deep: deepModel,
+    // Embeddings never route to cloud; carry the local embed model for shape.
+    embed: env.INTERN_EMBED_MODEL || "nomic-embed-text",
+  };
+  const timeouts: Record<Tier, number> = {
+    instant: positiveIntEnv(env.INTERN_CLOUD_TIMEOUT_INSTANT_MS, CLOUD_DEFAULT_TIMEOUTS.instant),
+    workhorse: positiveIntEnv(env.INTERN_CLOUD_TIMEOUT_WORKHORSE_MS, CLOUD_DEFAULT_TIMEOUTS.workhorse),
+    deep: positiveIntEnv(env.INTERN_CLOUD_TIMEOUT_DEEP_MS, CLOUD_DEFAULT_TIMEOUTS.deep),
+    embed: CLOUD_DEFAULT_TIMEOUTS.embed,
+  };
+
+  return {
+    host: normalizeCloudHost(env.OLLAMA_CLOUD_HOST),
+    apiKey,
+    tiers,
+    timeouts,
+    numCtx,
+  };
+}

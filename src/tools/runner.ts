@@ -13,6 +13,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent, timestamp } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
+import { getRoutingInfo } from "../routing.js";
 import type { RunContext } from "../runContext.js";
 import {
   withRunContext as withRunCorrelation,
@@ -152,6 +153,12 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   // tier's budget with the operator's value so the cascade honors the
   // operator's intent on initial AND fallback tiers. When omitted, fall
   // through to the profile's per-tier timeouts (pre-R-019 behavior).
+  //
+  // Cloud-primary: the RoutingOllamaClient does cloud-then-local INSIDE a
+  // single generate() (the cloud attempt has its own cloudTimeouts budget).
+  // So the OUTER per-tier budget must cover BOTH — cloud attempt + local
+  // fallback — or tier-degradation would fire before the local fallback gets
+  // its window. We sum the cloud and local per-tier budgets for that headroom.
   const effectiveTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
       ? {
@@ -160,7 +167,14 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
           deep: input.tierBudgetMsOverride,
           embed: input.tierBudgetMsOverride,
         }
-      : ctx.timeouts;
+      : ctx.cloud
+        ? {
+            instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,
+            workhorse: ctx.cloud.timeouts.workhorse + ctx.timeouts.workhorse,
+            deep: ctx.cloud.timeouts.deep + ctx.timeouts.deep,
+            embed: ctx.cloud.timeouts.embed + ctx.timeouts.embed,
+          }
+        : ctx.timeouts;
 
   const { value, actualTier, fallbackFrom } = await runWithTimeoutAndFallback({
     tool: input.tool,
@@ -220,29 +234,44 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
           });
         }
       }
-      const resp = await ctx.client.generate(req, signal);
+      // Pass `tier` through: the RoutingOllamaClient needs it to resolve the
+      // cloud vs local model per tier (and it also labels semaphore:wait
+      // events with the real tier instead of 'unknown').
+      const resp = await ctx.client.generate(req, signal, tier);
       lastNumCtx = numCtx;
       return { resp, model };
     },
   });
 
   const { resp, model } = value;
+  // Backend routing provenance (cloud-primary mode). Undefined in the default
+  // local-only path — every field below then behaves exactly as before.
+  const routing = getRoutingInfo(resp);
+  const actualModel = routing?.model ?? model;
   const tokens = countTokens(resp);
   const result = input.parse(resp.response);
-  const residency = await ctx.client.residency(model);
+  // Residency is a local-VRAM concept: a cloud-served call has none (report
+  // null honestly), a local-served call probes the model that actually ran.
+  const residency = routing?.backend === "cloud" ? null : await ctx.client.residency(actualModel);
+  // The num_ctx actually sent: cloud uses its cap, local uses the per-tier
+  // value the run callback recorded. Prefer the routing-reported value.
+  const numCtxUsed = routing?.num_ctx ?? lastNumCtx;
 
   const envelope = buildEnvelope<T>({
     result,
     tier: actualTier,
-    model,
+    model: actualModel,
     hardwareProfile: ctx.hardwareProfile,
     tokensIn: tokens.in,
     tokensOut: tokens.out,
     startedAt,
     residency,
     ...(fallbackFrom ? { fallbackFrom } : {}),
+    ...(routing?.backend ? { backend: routing.backend } : {}),
+    ...(routing?.degraded ? { degraded: true } : {}),
+    ...(routing?.degrade_reason ? { degradeReason: routing.degrade_reason } : {}),
     ...(input.modelOverride !== undefined ? { modelRequested: input.modelOverride } : {}),
-    ...(lastNumCtx !== undefined ? { numCtxUsed: lastNumCtx } : {}),
+    ...(numCtxUsed !== undefined ? { numCtxUsed } : {}),
     ...(input.warnings ? { warnings: input.warnings } : {}),
   });
 
