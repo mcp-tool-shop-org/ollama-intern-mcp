@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.7.2] — 2026-06-09
+
+Patch — CodeQL alert cleanup. No API or behavior changes. Hardens the lone remaining HIGH alert (a polynomial-ReDoS regex) and sweeps the 14 outstanding `js/unused-local-variable` quality alerts, leaving the code-scanning surface fully clear (0 open alerts of any severity).
+
+### Security
+
+- **CodeQL `js/polynomial-redos` (1 HIGH) — hardened.** `normalizeOllamaHost` (`src/ollama.ts`) trimmed trailing slashes with `withScheme.replace(/\/+$/, "")` — the unbounded `+` anchored to the end is the canonical super-linear-backtracking shape CodeQL flags. Replaced with a linear-time `while (trimmed.endsWith("/")) trimmed = trimmed.slice(0, -1)` loop; behavior is identical (all trailing slashes stripped, `"http://h///"` → `"http://h"`). `OLLAMA_HOST` is operator-set, not attacker- or HTTP-derived, so the ReDoS was never reachable by an adversary — but hardening removes the alert outright rather than carrying a dismissed false-positive. Adds a 100k-trailing-slash regression test that would have hung the old regex.
+
+### Changed
+
+- **14 `js/unused-local-variable` CodeQL alerts swept** — dead imports and unused local bindings removed across `src/` (`chunker` `closeStart`, `ollama` `op`, `corpusAnswer` `resolveNumCtx`) and 11 across the test suite. Pure dead-code removal with no behavior change; the two unused *result* bindings (`r1` in `indexerSearcher.test.ts`, `env` in `repoPack.test.ts`) kept their side-effecting `await` calls. Combined with the ReDoS fix above, the repository's code-scanning surface is fully clear.
+
 ## [2.7.1] — 2026-06-09
 
 Patch — security hardening from CodeQL triage. No API or behavior changes: the `overwrote` contract and all error codes are preserved, and callers see identical behavior. Closes 4 HIGH `js/file-system-race` alerts, wires a previously-dead manifest downgrade guard (2 unused-symbol alerts), and dismisses 1 MEDIUM `js/http-to-file-access` false positive.
