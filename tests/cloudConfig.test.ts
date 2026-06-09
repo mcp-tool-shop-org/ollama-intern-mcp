@@ -43,13 +43,13 @@ describe("loadCloudConfig — gating", () => {
 });
 
 describe("loadCloudConfig — defaults", () => {
-  it("uses minimax-m3:cloud across generative tiers, ollama.com host, 32768 num_ctx", () => {
+  it("uses qwen3-coder-next:cloud (non-thinking) across generative tiers, ollama.com host, 32768 num_ctx", () => {
     const cfg = loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "1", ...KEY })!;
     expect(cfg.host).toBe("https://ollama.com");
     expect(cfg.apiKey).toBe("sk-test-123");
-    expect(cfg.tiers.instant).toBe("minimax-m3:cloud");
-    expect(cfg.tiers.workhorse).toBe("minimax-m3:cloud");
-    expect(cfg.tiers.deep).toBe("minimax-m3:cloud");
+    expect(cfg.tiers.instant).toBe("qwen3-coder-next:cloud");
+    expect(cfg.tiers.workhorse).toBe("qwen3-coder-next:cloud");
+    expect(cfg.tiers.deep).toBe("qwen3-coder-next:cloud");
     expect(cfg.tiers.embed).toBe("nomic-embed-text");
     expect(cfg.numCtx).toBe(32_768);
     expect(cfg.timeouts).toEqual({ instant: 30_000, workhorse: 120_000, deep: 300_000, embed: 10_000 });
@@ -63,7 +63,7 @@ describe("loadCloudConfig — overrides", () => {
       ...KEY,
       INTERN_CLOUD_DEEP_MODEL: "deepseek-v3.1:671b",
     })!;
-    expect(cfg.tiers.instant).toBe("minimax-m3:cloud");
+    expect(cfg.tiers.instant).toBe("qwen3-coder-next:cloud");
     expect(cfg.tiers.deep).toBe("deepseek-v3.1:671b");
   });
 

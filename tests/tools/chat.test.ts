@@ -40,6 +40,26 @@ describe("handleChat — baseline", () => {
   });
 });
 
+describe("handleChat — thinking suppression + output budget (v2.7.3)", () => {
+  it("passes think=false and num_predict=4096 to the underlying chat call", async () => {
+    const client = createFakeOllama({
+      chatImpl: async (req) => ({
+        model: req.model,
+        message: { role: "assistant", content: "ok" },
+        done: true,
+        prompt_eval_count: 10,
+        eval_count: 5,
+      }),
+    });
+    await handleChat({ messages: [{ role: "user", content: "hi" }] }, makeFakeCtx({ client }));
+    // Regression guard for the 2026-06-09 cloud incident: chat was the only
+    // generate-shaped tool not passing `think`, so a thinking cloud model
+    // burned the whole (then-1024) num_predict on CoT and replied "".
+    expect(client.lastChat?.think).toBe(false);
+    expect(client.lastChat?.options?.num_predict).toBe(4096);
+  });
+});
+
 describe("handleChat — per-call model override (v2.3.0)", () => {
   it("input.model is passed to the underlying Ollama chat call", async () => {
     const client = createFakeOllama({
