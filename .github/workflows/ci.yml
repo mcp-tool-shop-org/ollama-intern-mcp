@@ -23,6 +23,11 @@ on:
       - ".github/workflows/**"
       - ".npmignore"
   workflow_dispatch:
+    inputs:
+      run_generate:
+        description: "Cloud smoke: also run one REAL cloud generate (consumes a tiny amount of cloud GPU time). Off = doctor reachability probe only (zero GPU)."
+        type: boolean
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -100,3 +105,81 @@ jobs:
           npm install --no-audit --no-fund
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
+
+  # ── Cloud smoke (MANUAL ONLY) ──────────────────────────────────────────────
+  # Smoke-tests the v2.7.0 opt-in cloud-routing path against the REAL Ollama
+  # Cloud. Gated to `workflow_dispatch` so it NEVER runs on push/PR and never
+  # spends cloud GPU quota automatically — an operator triggers it on demand.
+  #
+  # The OLLAMA_CLOUD repo secret (the API key) is mapped to OLLAMA_API_KEY at
+  # the step level (the only place the `secrets` context is allowed). When the
+  # secret is absent (forks, unconfigured repos) the step exits 0 with a notice
+  # rather than failing — a missing key is "can't test here", not "broken".
+  #
+  # Cost: the doctor probe is a no-GPU /api/tags listing; the optional real
+  # generate is a single ~8-token call (run_generate input, default on). Keep
+  # it tiny.
+  cloud-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install (regenerate lockfile for runner platform)
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: "Cloud doctor probe (reachable: yes)"
+        # Maps the OLLAMA_CLOUD secret → OLLAMA_API_KEY here (step-level env is
+        # the only context where `secrets` is permitted). Skips gracefully when
+        # the secret is absent.
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD }}
+          OLLAMA_CLOUD_PRIMARY: "1"
+        run: |
+          set -euo pipefail
+          if [ -z "${OLLAMA_API_KEY:-}" ]; then
+            echo "::notice::OLLAMA_CLOUD secret not set (fork or unconfigured repo) — skipping cloud smoke test."
+            exit 0
+          fi
+          # doctor exits 0 even when unhealthy (its job is to REPORT). Capture
+          # the human-readable report and assert the Cloud (primary) block.
+          node dist/index.js doctor | tee doctor.out
+          echo "----------------------------------------"
+          if ! grep -q "Cloud (primary):" doctor.out; then
+            echo "::error::doctor output is missing the 'Cloud (primary)' block — cloud config was not loaded."
+            exit 1
+          fi
+          # Extract just the Cloud block (header → next blank line) so we don't
+          # accidentally match the local Ollama block's own 'reachable:' line.
+          cloud_block="$(awk '/^Cloud \(primary\):/{f=1} f{print} /^$/{if(f)exit}' doctor.out)"
+          echo "--- Cloud (primary) block ---"
+          echo "$cloud_block"
+          if ! echo "$cloud_block" | grep -q "reachable: yes"; then
+            echo "::error::Cloud (primary) block does not report 'reachable: yes' — cloud host did not answer."
+            exit 1
+          fi
+          echo "cloud-smoke (doctor): OK — Ollama Cloud is reachable."
+      - name: Cloud generate (backend == cloud)
+        # Optional, default on. The doctor probe only proves reachability (the
+        # /api/tags listing does not gate on the key); this single tiny generate
+        # proves the key is GOOD and the routing path actually serves from cloud.
+        if: ${{ inputs.run_generate }}
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD }}
+          OLLAMA_CLOUD_PRIMARY: "1"
+        run: |
+          set -euo pipefail
+          if [ -z "${OLLAMA_API_KEY:-}" ]; then
+            echo "::notice::OLLAMA_CLOUD secret not set — skipping real cloud generate."
+            exit 0
+          fi
+          node scripts/cloud-smoke-generate.mjs
