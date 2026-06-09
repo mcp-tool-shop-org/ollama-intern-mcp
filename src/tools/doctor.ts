@@ -19,7 +19,8 @@ import { join } from "node:path";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import { normalizeOllamaHost } from "../ollama.js";
+import { normalizeOllamaHost, HttpOllamaClient } from "../ollama.js";
+import { RoutingOllamaClient } from "../routing.js";
 import type { RunContext } from "../runContext.js";
 
 export const doctorSchema = z.object({});
@@ -43,6 +44,28 @@ export interface DoctorResult {
     allowed_roots: string[];
     artifact_root: string;
     log_path: string;
+  };
+  /**
+   * Cloud-primary status. Present only when cloud is opted into
+   * (OLLAMA_CLOUD_PRIMARY + OLLAMA_API_KEY). `reachable` = the cloud host
+   * answered; `auth_ok` = the Bearer key was accepted (not 401/403);
+   * `circuit_state` reflects the live routing breaker when available.
+   */
+  cloud?: {
+    enabled: boolean;
+    host: string;
+    reachable: boolean;
+    /**
+     * 'failed' on a definitive 401/403; 'unverified' otherwise. NOTE: the
+     * cloud /api/tags probe lists public models and does NOT gate on the key,
+     * so a reachable host cannot confirm a GOOD key — the key is truly
+     * validated on the first real generate call (where a bad key trips the
+     * sticky breaker). We never claim 'ok' from a probe that can't prove it.
+     */
+    auth: "failed" | "unverified";
+    models: { instant: string; workhorse: string; deep: string };
+    circuit_state?: string;
+    error?: string;
   };
   recent_errors: Array<{ ts: string; code: string; tool: string }>;
   healthy: boolean;
@@ -214,6 +237,43 @@ export async function handleDoctor(
   const missing = required.filter((m) => !isPresent(m, pulled));
   const suggested_pulls = missing.map((m) => `ollama pull ${m}`);
 
+  // Cloud-primary probe (optional). A 401/403 means reachable-but-bad-key;
+  // a timeout/network error means unreachable. Either way the server still
+  // works via local fallback, so this is informational + a warning, never a
+  // hard failure. Build a throwaway cloud client so the auth + /api/tags path
+  // is exercised exactly as the real routing client would.
+  let cloudStatus: DoctorResult["cloud"];
+  if (ctx.cloud) {
+    const cloudProbeClient = new HttpOllamaClient({
+      baseUrl: ctx.cloud.host,
+      apiKey: ctx.cloud.apiKey,
+      kind: "cloud",
+    });
+    const cp = await cloudProbeClient.probe(5_000);
+    const reason = cp.reason ?? "";
+    // Any HTTP response (even 401) means the host answered → reachable.
+    const reachable = cp.ok || /^HTTP \d{3}/.test(reason);
+    // Only a definitive 401/403 proves a BAD key. /api/tags returns 200 even
+    // for an invalid key (it lists public models), so a 200 is 'unverified',
+    // never 'ok' — don't overclaim what the probe can't prove.
+    const auth: "failed" | "unverified" = /HTTP 40[13]/.test(reason) ? "failed" : "unverified";
+    cloudStatus = {
+      enabled: true,
+      host: ctx.cloud.host,
+      reachable,
+      auth,
+      models: {
+        instant: ctx.cloud.tiers.instant,
+        workhorse: ctx.cloud.tiers.workhorse,
+        deep: ctx.cloud.tiers.deep,
+      },
+      ...(ctx.client instanceof RoutingOllamaClient
+        ? { circuit_state: ctx.client.breaker.currentState }
+        : {}),
+      ...(cp.ok ? {} : { error: reason || "unreachable" }),
+    };
+  }
+
   const logPath = defaultLogPath();
   const recent_errors = await readRecentErrors(logPath);
 
@@ -244,6 +304,7 @@ export async function handleDoctor(
       artifact_root: defaultArtifactRoot(),
       log_path: logPath,
     },
+    ...(cloudStatus ? { cloud: cloudStatus } : {}),
     recent_errors,
     healthy: reachable && missing.length === 0,
   };
@@ -252,6 +313,15 @@ export async function handleDoctor(
   if (!reachable) {
     warnings.push(
       `Ollama unreachable at ${host} (${probeError ?? "unknown"}). Start it with 'ollama serve' or set OLLAMA_HOST.`,
+    );
+  }
+  if (cloudStatus && cloudStatus.auth === "failed") {
+    warnings.push(
+      `Ollama Cloud auth failed at ${cloudStatus.host} — check OLLAMA_API_KEY (https://ollama.com/settings/keys). Calls fall back to the local profile until fixed.`,
+    );
+  } else if (cloudStatus && !cloudStatus.reachable) {
+    warnings.push(
+      `Ollama Cloud unreachable at ${cloudStatus.host} (${cloudStatus.error ?? "unknown"}). Calls fall back to the local profile until cloud recovers.`,
     );
   }
   if (missing.length > 0) {

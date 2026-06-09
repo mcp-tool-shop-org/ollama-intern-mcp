@@ -28,16 +28,24 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { OllamaClient } from "./ollama.js";
 import type { Tier, TierConfig } from "./tiers.js";
 import type { Logger } from "./observability.js";
+import type { CloudConfig } from "./profiles.js";
 
 export interface RunContext {
   client: OllamaClient;
-  /** Concrete tier→model picks from the active Profile. */
+  /** Concrete tier→model picks from the active Profile (the LOCAL fallback ladder). */
   tiers: TierConfig;
   /** Per-tier timeouts in ms, sized for the active profile's hardware. */
   timeouts: Record<Tier, number>;
   /** Profile name written onto every envelope + NDJSON line. */
   hardwareProfile: string;
   logger: Logger;
+  /**
+   * Cloud configuration when cloud-primary mode is opted into (null/undefined
+   * otherwise — the default local-only path). When set, `client` is a
+   * RoutingOllamaClient and the runner uses `cloud.timeouts` as the per-tier
+   * budget. Embeddings always stay local regardless.
+   */
+  cloud?: CloudConfig | null;
 }
 
 /**

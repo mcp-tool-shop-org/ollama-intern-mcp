@@ -11,6 +11,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **corpus/manifest: writer-version downgrade guard was declared but never wired.** The v2.0.1 changelog claimed the manifest loader refused a newer-than-build manifest, and `manifest.ts` carried `MANIFEST_WRITER_VERSION` + a `compareVersions` helper + a doc comment promising the behavior — but nothing referenced them, so the guard never ran (and CodeQL flagged both symbols as unused). `loadManifest` now rejects a manifest whose `schema_version_written_by` is newer than the running build, and `saveManifest` stamps that field on every write — reaching parity with the corpus-side guard in `storage.ts` (`loadCorpus` / `saveCorpus`). Legacy manifests with no writer field, and manifests written by an older build, still load.
 
+## [2.7.0] — 2026-06-09
+
+Minor — non-breaking, opt-in **Ollama Cloud routing** (cloud-primary, local-fallback). The package stays local-first with **zero network egress by default**; cloud is off unless BOTH `OLLAMA_CLOUD_PRIMARY` and `OLLAMA_API_KEY` are set. Anyone not opting in sees byte-identical behavior.
+
+### Added
+
+- **`RoutingOllamaClient`** (`src/routing.ts`) wraps a cloud `HttpOllamaClient` (Bearer auth, `https://ollama.com`) and the existing local client behind the same `OllamaClient` interface, so all tools inherit cloud routing through the single `ctx.client` seam. Cloud serves the generative tiers (instant/workhorse/deep); **embeddings always stay local** (Ollama Cloud serves no embedding models).
+- **Hand-rolled circuit breaker** (no new dependency): CLOSED → OPEN after 3 consecutive trip-worthy failures (timeout / 5xx / 429 / network) → 20s cooldown → single HALF-OPEN probe → CLOSED. A bad key (401/403) trips a **separate sticky `misconfigured` state** that does not auto-recover — surfaced loudly rather than degrading silently. A retired/typo'd cloud model id (404) rethrows instead of silently serving a different local model.
+- **Cloud config** via `loadCloudConfig(env)` (`src/profiles.ts`) — fail-fast `CONFIG_INVALID` at startup if `OLLAMA_CLOUD_PRIMARY` is enabled without `OLLAMA_API_KEY`. New env: `OLLAMA_CLOUD_PRIMARY`, `OLLAMA_API_KEY`, `OLLAMA_CLOUD_HOST` (default `https://ollama.com`), `INTERN_CLOUD_MODEL` (default `minimax-m3:cloud`), `INTERN_CLOUD_DEEP_MODEL`, `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS`, `INTERN_CLOUD_NUM_CTX` (default 32768).
+- **Envelope provenance** — new optional fields `backend` (`"cloud"`|`"local"`), `degraded`, `degrade_reason`. Absent in the default local-only path (additive, "absent when unset" — same pattern as `num_ctx_used`). `residency` is `null` for cloud-served calls.
+- **`backend_fallback` NDJSON event** on every cloud→local fallback, filterable via `ollama_log_tail --filter_kind backend_fallback` (surfaces fallback *rate*, the early-warning that cloud is degrading).
+- **`ollama_doctor` cloud block** — `{enabled, host, reachable, auth_ok, models, circuit_state}`; `ollama-intern-mcp doctor` renders a `Cloud (primary)` section. Cloud auth/reachability probed via `/api/tags` with the Bearer key.
+
+### Changed
+
+- The runner now threads `tier` into `ctx.client.generate(req, signal, tier)` (required for cloud-vs-local model resolution; also fixes pre-existing `semaphore:wait` events that logged `tier: 'unknown'`).
+- When cloud is enabled, the per-tier outer timeout budget is the sum of the cloud-attempt and local-fallback budgets so a cloud→local fallback completes within one tier attempt (no premature tier-degradation, no 6-timeout stacking).
+- Cloud requests use `INTERN_CLOUD_NUM_CTX` (default 32768), not the local VRAM-driven `num_ctx`, so the big model's context window isn't crippled by a local profile's small value.
+
+### Hard invariants preserved
+
+- **Zero egress by default.** With cloud unset, `ctx.client` is the plain local `HttpOllamaClient` and behavior is byte-identical to v2.6.0. A Bearer key is never sent to a loopback host.
+- Embeddings/corpus tools never route to cloud.
+- The README's headline reframes from "No cloud" to **local-first**; the threat model gains §11 (opt-in cloud egress) so shipcheck Hard Gate A still passes.
+
+### Tests / verify
+
+- 1001 vitest passing (+ new `tests/cloudClient.test.ts`, `tests/routing.test.ts`, `tests/cloudConfig.test.ts`, `tests/routingIntegration.test.ts`, `tests/doctorCloud.test.ts`). Typecheck + build clean.
+- Routing/breaker/fallback unit-tested network-free via the injected fake-client seam.
+
 ## [2.6.0] — 2026-05-17
 
 Minor — non-breaking server-side feature for the v0.13 cross-repo finalization arc. Adds a per-call tier-budget override on `ollama_extract` so research-os (and any other MCP client) can authoritatively set the inner tier-budget that drives `TIER_TIMEOUT` events at the live guardrail layer. Pre-R-019 callers see byte-identical behavior (field is optional and omitted = profile defaults govern).
