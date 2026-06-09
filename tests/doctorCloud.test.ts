@@ -41,7 +41,18 @@ function jsonResponse(body: unknown, status = 200): Response {
 function mockFetch(cloudStatus: number) {
   globalThis.fetch = vi.fn(async (url: unknown) => {
     const u = String(url);
-    if (u.includes("ollama.com")) {
+    // Parse the host rather than substring-matching the raw URL: a bare
+    // `u.includes("ollama.com")` also matches `evil.com/?x=ollama.com` and is
+    // flagged by CodeQL (js/incomplete-url-substring-sanitization). The cloud
+    // probe always targets the configured host, so an exact hostname match is
+    // both correct and what the analyzer expects.
+    let host = "";
+    try {
+      host = new URL(u).hostname;
+    } catch {
+      /* relative or malformed URL — falls through to the local branches */
+    }
+    if (host === "ollama.com") {
       return cloudStatus === 200 ? jsonResponse({ models: [] }) : new Response("no", { status: cloudStatus });
     }
     if (u.endsWith("/api/tags")) {
