@@ -11,7 +11,7 @@ The threat model, data-handling policy, network egress posture, telemetry stance
 
 For operators landing here from search, the short version:
 
-- **Local-only.** Network egress is off by default. The only outbound traffic is to the local Ollama HTTP endpoint (`http://127.0.0.1:11434`). No cloud calls, no update pings, no crash reporting.
+- **Local-first.** Network egress is off by default — the only outbound traffic is to the local Ollama HTTP endpoint (`http://127.0.0.1:11434`), no update pings, no crash reporting. **Opt-in exception:** enabling [Ollama Cloud](../ollama-cloud/) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`) sends the generative tiers' prompts to `ollama.com` over HTTPS; this is explicit, disclosed, and off unless you set both vars. Embeddings never leave the box. See [SECURITY.md §11](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md).
 - **No telemetry.** Every call logs one NDJSON line to `~/.ollama-intern/log.ndjson` on your machine. Inputs (prompts, inline text) are not logged — only the envelope (tier, model, tokens, elapsed, residency).
 - **Path-safety enforced server-side.** Tools that read or write files validate against caller-declared `source_paths` / `allowed_roots`; `..` is rejected before normalize; protected-path writes require `confirm_write: true`.
 - **Structured errors only.** Stack traces are never exposed through tool results. Errors return `{ error, code, message, hint, retryable }`. The full index lives at [Error codes](../error-codes/).
