@@ -442,11 +442,6 @@ export class HttpOllamaClient implements OllamaClient {
     // operator join "the wait that happened" with "the call that was
     // queued waiting" without timestamp guesswork.
     const callId = mintCallId();
-    // Map endpoint path → OTel `op` value (Phase 7 / FT-001). The
-    // mapping is deterministic from the path so callers don't need to
-    // pass an `op` parameter. /api/embed → embeddings; everything else
-    // (generate, chat) → chat per the OTel GenAI convention.
-    const op = path === "/api/embed" ? "embeddings" : "chat";
     // Before acquiring, peek at the gate. If we'd block, emit a single
     // semaphore:wait event with queue depth + rough wait estimate so an
     // operator debugging "why was this slow?" has the context they need.

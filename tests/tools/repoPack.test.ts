@@ -187,7 +187,7 @@ describe("handleRepoPack — fixed pipeline", () => {
       { name: "package.json", content: '{"name":"@mcptoolshop/foundry","scripts":{"build":"tsc"}}' },
     ]);
     const client = new PipelineMock(BRIEF_OUT, EXTRACT_OUT);
-    const env = await handleRepoPack(
+    await handleRepoPack(
       { source_paths: paths, title: "FoundryOS", artifact_dir: tempArtifactDir },
       makeCtx(client),
     );

@@ -130,7 +130,6 @@ function extractFrontmatter(text: string): { end: number; content: string } | nu
   const closeRx = /(^|\n)---\s*(\n|$)/;
   const m = closeRx.exec(rest);
   if (!m) return null;
-  const closeStart = afterOpen + 1 + m.index + (m[1] === "" ? 0 : 1);
   const closeEnd = afterOpen + 1 + m.index + m[0].length;
   return { end: closeEnd, content: text.slice(0, closeEnd) };
 }
