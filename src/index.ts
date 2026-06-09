@@ -16,8 +16,16 @@ import { copyFile } from "node:fs/promises";
 import { dirname, join, resolve as resolvePath } from "node:path";
 
 import { VERSION } from "./version.js";
-import { loadProfile } from "./profiles.js";
-import { HttpOllamaClient, setClientLogger, setClientProfileName, normalizeOllamaHost } from "./ollama.js";
+import { loadProfile, loadCloudConfig } from "./profiles.js";
+import type { CloudConfig } from "./profiles.js";
+import {
+  HttpOllamaClient,
+  setClientLogger,
+  setClientProfileName,
+  normalizeOllamaHost,
+  type OllamaClient,
+} from "./ollama.js";
+import { RoutingOllamaClient } from "./routing.js";
 import { NdjsonLogger, timestamp } from "./observability.js";
 import { InternError, toErrorShape } from "./errors.js";
 import { runPrewarm, notePrewarmInProgressRequest } from "./prewarm.js";
@@ -503,13 +511,58 @@ async function main(): Promise<void> {
     throw err;
   }
 
+  // Cloud is opt-in. loadCloudConfig returns null unless OLLAMA_CLOUD_PRIMARY
+  // is enabled, and throws CONFIG_INVALID (fail-fast) if it's enabled without
+  // a key. Catch here so the operator sees a one-liner, not a stack.
+  let cloud: CloudConfig | null;
+  try {
+    cloud = loadCloudConfig();
+  } catch (err) {
+    if (err instanceof InternError) {
+      // eslint-disable-next-line no-console
+      console.error(`ollama-intern: ${err.message}\n  hint: ${err.hint}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+
+  const logger = new NdjsonLogger();
+  const local = new HttpOllamaClient();
+  // The cloud HTTP client (Bearer auth, cloud host) — only built when opted in.
+  const cloudClient = cloud
+    ? new HttpOllamaClient({ baseUrl: cloud.host, apiKey: cloud.apiKey, kind: "cloud" })
+    : null;
+  // When cloud is on, every tool talks to a RoutingOllamaClient that tries
+  // cloud first and falls back to the local profile. Otherwise ctx.client is
+  // the plain local client — byte-identical to pre-cloud behavior.
+  const client: OllamaClient =
+    cloud && cloudClient
+      ? new RoutingOllamaClient({
+          cloud: cloudClient,
+          local,
+          cloudTiers: cloud.tiers,
+          localTiers: profile.tiers,
+          cloudTimeouts: cloud.timeouts,
+          cloudNumCtx: cloud.numCtx,
+          logger,
+        })
+      : local;
+
   const ctx: RunContext = {
-    client: new HttpOllamaClient(),
+    client,
     tiers: profile.tiers,
     timeouts: profile.timeouts,
     hardwareProfile: profile.name,
-    logger: new NdjsonLogger(),
+    logger,
+    cloud,
   };
+
+  if (cloud) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern: cloud-primary ON — ${cloud.tiers.instant} (deep: ${cloud.tiers.deep}) via ${cloud.host}; local fallback profile=${profile.name}. Embeddings stay local.`,
+    );
+  }
 
   // Surface env-var tier overrides at startup instead of silently applying
   // them. Operator sees one stderr line per override (key, tier, from → to)
@@ -553,14 +606,34 @@ async function main(): Promise<void> {
         op: "startup",
       });
     }
+    // Cloud reachability + auth probe (cloud-primary mode). Never crashes
+    // startup — a down/misconfigured cloud just means calls fall back to
+    // local. Surfaces the auth status immediately so a bad key is obvious.
+    if (cloudClient && cloud) {
+      const cloudProbe = await cloudClient.probe(5_000);
+      if (!cloudProbe.ok) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `ollama-intern: Ollama Cloud unreachable/auth-failed at ${cloud.host} (${cloudProbe.reason ?? "unknown"}). Calls fall back to the local profile until cloud recovers — check OLLAMA_API_KEY.`,
+        );
+      } else {
+        // /api/tags proves reachability, not key validity (it lists public
+        // models). The key is validated on the first real call.
+        // eslint-disable-next-line no-console
+        console.error(`ollama-intern: Ollama Cloud reachable at ${cloud.host} (key validated on first call).`);
+      }
+    }
   }
 
   // Profile-policy prewarm: pulls Instant tier into VRAM on dev profiles
   // before connecting transport, so the first real Claude call doesn't eat
   // cold-load latency. Failures are logged but never throw — server startup
   // must not depend on Ollama being reachable.
+  // Prewarm warms the LOCAL fallback model into VRAM — never cloud (cloud has
+  // no residency and keep_alive is meaningless there). Pass the local client
+  // explicitly so prewarm bypasses the routing layer in cloud-primary mode.
   if (profile.prewarm.length > 0) {
-    await runPrewarm(ctx, profile.prewarm);
+    await runPrewarm({ ...ctx, client: local }, profile.prewarm);
   }
 
   const server = createServer(ctx);
@@ -718,6 +791,13 @@ function printHelp(): void {
     `  OLLAMA_HOST            Ollama base URL (default: http://127.0.0.1:11434).`,
     `  INTERN_LOG_PATH        Override NDJSON log path (default: ~/.ollama-intern/log.ndjson).`,
     ``,
+    `  Ollama Cloud (optional — off by default, zero egress until both are set):`,
+    `  OLLAMA_CLOUD_PRIMARY   Enable cloud-primary routing (1/true/yes/on).`,
+    `  OLLAMA_API_KEY         Bearer key for Ollama Cloud (required when cloud is on).`,
+    `  OLLAMA_CLOUD_HOST      Cloud base URL (default: https://ollama.com).`,
+    `  INTERN_CLOUD_MODEL     Cloud model for instant+workhorse+deep (default: minimax-m3:cloud).`,
+    `  INTERN_CLOUD_DEEP_MODEL  Deep-tier-only cloud override (e.g. deepseek-v3.1:671b).`,
+    ``,
     `DOCS`,
     `  https://github.com/mcp-tool-shop-org/ollama-intern-mcp#readme`,
   ];
@@ -749,6 +829,20 @@ async function runCliDoctor(): Promise<void> {
     }
     throw err;
   }
+  // Cloud config for the doctor report. A CONFIG_INVALID (e.g. PRIMARY set
+  // without a key) is REPORTED, not fatal — doctor's job is to surface broken
+  // config, so we print the hint and continue with cloud disabled.
+  let cloud: CloudConfig | null = null;
+  try {
+    cloud = loadCloudConfig();
+  } catch (err) {
+    if (err instanceof InternError) {
+      // eslint-disable-next-line no-console
+      console.error(`ollama-intern: cloud config error — ${err.message}\n  hint: ${err.hint}`);
+    } else {
+      throw err;
+    }
+  }
   // Doctor needs a RunContext but we don't want the NDJSON logger to
   // append a `call` event for a CLI invocation — that would pollute
   // tool-call histograms. NullLogger captures events in memory and is
@@ -759,6 +853,7 @@ async function runCliDoctor(): Promise<void> {
     timeouts: profile.timeouts,
     hardwareProfile: profile.name,
     logger: new NullLogger(),
+    cloud,
   };
   const env = await handleDoctor({}, ctx);
   const r = env.result;
@@ -780,6 +875,20 @@ async function runCliDoctor(): Promise<void> {
   out.push(`  reachable: ${r.ollama.reachable ? "yes" : "no"}`);
   if (r.ollama.error) out.push(`  error:     ${r.ollama.error}`);
   out.push(``);
+  if (r.cloud) {
+    out.push(`Cloud (primary):`);
+    out.push(`  host:      ${r.cloud.host}`);
+    out.push(`  reachable: ${r.cloud.reachable ? "yes" : "no"}`);
+    out.push(
+      `  auth:      ${r.cloud.auth === "failed" ? "FAILED (bad key)" : "unverified (checked on first call)"}`,
+    );
+    out.push(
+      `  models:    instant=${r.cloud.models.instant}  workhorse=${r.cloud.models.workhorse}  deep=${r.cloud.models.deep}`,
+    );
+    if (r.cloud.circuit_state) out.push(`  circuit:   ${r.cloud.circuit_state}`);
+    if (r.cloud.error) out.push(`  error:     ${r.cloud.error}`);
+    out.push(``);
+  }
   out.push(`Models:`);
   out.push(`  required:  ${r.models.required.join(", ") || "(none)"}`);
   out.push(`  pulled:    ${r.models.pulled.length} present`);

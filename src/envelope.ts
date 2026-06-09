@@ -31,6 +31,25 @@ export interface Envelope<T> {
   /** Set when a timeout fired and the server fell back to a cheaper tier. */
   fallback_from?: Tier;
   /**
+   * Which backend served this call (cloud-primary mode only). ABSENT in the
+   * default local-only path — so existing callers see no change. When present:
+   * 'cloud' = served by Ollama Cloud; 'local' = served locally.
+   */
+  backend?: "cloud" | "local";
+  /**
+   * True when cloud was wanted but the call was served LOCALLY (cloud failed,
+   * the circuit was open, or the key is misconfigured) — i.e. you got the
+   * smaller local model instead of the big cloud one. Present only in
+   * cloud-primary mode; surfaced so a worse answer is never silent.
+   */
+  degraded?: boolean;
+  /**
+   * Why the call degraded to local: cloud_timeout | cloud_5xx |
+   * cloud_rate_limited | cloud_unreachable | cloud_auth_failed | circuit_open.
+   * Present only when `degraded` is true.
+   */
+  degrade_reason?: string;
+  /**
    * The model the CALLER asked for via input.model override. Present only
    * when override was supplied. Calibration-aware callers compare
    * model_requested vs model to detect fallback substitution.
@@ -84,6 +103,12 @@ export interface EnvelopeBuilderInput<T> {
   startedAt: number;
   residency: Residency | null;
   fallbackFrom?: Tier;
+  /** Backend that served the call (cloud-primary mode). Omit in local-only path. */
+  backend?: "cloud" | "local";
+  /** True when cloud was wanted but local served. Omit in local-only path. */
+  degraded?: boolean;
+  /** Reason for the cloud→local degrade. Omit unless `degraded` is true. */
+  degradeReason?: string;
   /**
    * The model the caller asked for via the per-call `model` override.
    * Propagates to `model_requested` on the output envelope. Omit when
@@ -124,6 +149,9 @@ export function buildEnvelope<T>(input: EnvelopeBuilderInput<T>): Envelope<T> {
     residency: input.residency,
   };
   if (input.fallbackFrom) env.fallback_from = input.fallbackFrom;
+  if (input.backend) env.backend = input.backend;
+  if (input.degraded) env.degraded = input.degraded;
+  if (input.degradeReason) env.degrade_reason = input.degradeReason;
   if (input.modelRequested) env.model_requested = input.modelRequested;
   if (input.numCtxUsed !== undefined) env.num_ctx_used = input.numCtxUsed;
   // run_id propagation (Phase 7 / FT-001) — prefer caller-supplied value

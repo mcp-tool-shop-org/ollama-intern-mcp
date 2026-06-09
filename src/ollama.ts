@@ -308,10 +308,74 @@ export function normalizeOllamaHost(raw: string | undefined): string {
   return trimmed;
 }
 
+/**
+ * True when a normalized base URL points at the local loopback interface.
+ * Used to refuse attaching a cloud Bearer key to a LOCAL Ollama — sending an
+ * `Authorization` header to 127.0.0.1:11434 returns 403, a footgun for
+ * operators who `export OLLAMA_API_KEY` globally. Best-effort: a parse
+ * failure returns false (treat as remote) so valid remote hosts never
+ * silently lose their auth header.
+ */
+export function isLoopbackHost(baseUrl: string): boolean {
+  try {
+    const { hostname } = new URL(baseUrl);
+    return (
+      hostname === "127.0.0.1" ||
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "0.0.0.0"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Construction options for HttpOllamaClient. The legacy bare-`string` form
+ * (a baseUrl) is still accepted for backward-compat with existing callers and
+ * tests; the options object adds cloud auth + cloud-aware probe behavior.
+ */
+export interface OllamaClientOptions {
+  /** Base URL (host[:port] or full http(s)://). Falls back to OLLAMA_HOST then loopback. */
+  baseUrl?: string;
+  /**
+   * Bearer API key for Ollama Cloud (https://ollama.com). When set AND the
+   * resolved host is NOT loopback, an `Authorization: Bearer <key>` header is
+   * attached to every request. Never sent to a localhost host (see
+   * isLoopbackHost).
+   */
+  apiKey?: string;
+  /**
+   * Backend kind. 'cloud' changes the two behaviors that are local-only on
+   * the Ollama API: residency() returns null (no /api/ps on the stateless
+   * cloud host) and probe() hits /api/tags instead of /api/ps. Default 'local'.
+   */
+  kind?: "local" | "cloud";
+}
+
 export class HttpOllamaClient implements OllamaClient {
   private baseUrl: string;
-  constructor(baseUrl?: string) {
-    this.baseUrl = normalizeOllamaHost(baseUrl ?? process.env.OLLAMA_HOST);
+  private apiKey?: string;
+  private kind: "local" | "cloud";
+  constructor(opts?: string | OllamaClientOptions) {
+    const o: OllamaClientOptions = typeof opts === "string" ? { baseUrl: opts } : (opts ?? {});
+    this.baseUrl = normalizeOllamaHost(o.baseUrl ?? process.env.OLLAMA_HOST);
+    this.kind = o.kind ?? "local";
+    // Loopback-filter the key in the constructor so every downstream request
+    // path (post / get / probe) is auth-correct without re-checking.
+    this.apiKey = o.apiKey && !isLoopbackHost(this.baseUrl) ? o.apiKey : undefined;
+  }
+
+  /**
+   * Build request headers, adding the cloud Bearer auth header when an apiKey
+   * is configured (already loopback-filtered in the constructor). `extra`
+   * lets POST merge in Content-Type without duplicating the auth logic.
+   */
+  private headers(extra?: Record<string, string>): Record<string, string> {
+    return {
+      ...(extra ?? {}),
+      ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+    };
   }
 
   async generate(req: GenerateRequest, signal?: AbortSignal, tier?: Tier): Promise<GenerateResponse> {
@@ -327,6 +391,10 @@ export class HttpOllamaClient implements OllamaClient {
   }
 
   async residency(model: string): Promise<Residency | null> {
+    // Cloud is a stateless managed service — /api/ps (local VRAM residency)
+    // is meaningless and undocumented there. Report null honestly rather
+    // than hitting a remote endpoint that doesn't model residency.
+    if (this.kind === "cloud") return null;
     try {
       const ps = await this.get<PsResponse>("/api/ps");
       const hit = ps.models.find((m) => m.name === model || m.model === model);
@@ -511,7 +579,7 @@ export class HttpOllamaClient implements OllamaClient {
 
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
       signal,
     });
@@ -529,6 +597,18 @@ export class HttpOllamaClient implements OllamaClient {
       // error so it can back off rather than failing immediately.
       if (res.status >= 500 || res.status === 429) {
         throw new TransientHttpError(res.status, text.slice(0, 200));
+      }
+      // 401/403 — cloud auth failure. Distinct code (not OLLAMA_UNREACHABLE)
+      // so the routing layer can treat a bad key as a sticky misconfiguration
+      // that surfaces loudly, instead of a transient outage that auto-recovers.
+      // retryable=false: a bad/expired key fails identically on every retry.
+      if (res.status === 401 || res.status === 403) {
+        throw new InternError(
+          "OLLAMA_AUTH_FAILED",
+          `Ollama returned ${res.status}: ${text}`,
+          "Cloud auth failed — check OLLAMA_API_KEY (manage at https://ollama.com/settings/keys). Note: a Bearer key sent to a LOCAL Ollama also 403s, so don't set OLLAMA_API_KEY for a localhost host.",
+          false,
+        );
       }
       // Other 4xx — definitive.
       throw new InternError(
@@ -568,8 +648,15 @@ export class HttpOllamaClient implements OllamaClient {
   async probe(timeoutMs: number = 5000): Promise<{ ok: boolean; reason?: string }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Cloud has no /api/ps; /api/tags lists available cloud models and is the
+    // documented reachability surface. It also exercises the Bearer header,
+    // so a 401/403 here is a clear auth signal at startup.
+    const probePath = this.kind === "cloud" ? "/api/tags" : "/api/ps";
     try {
-      const res = await fetch(`${this.baseUrl}/api/ps`, { signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}${probePath}`, {
+        headers: this.headers(),
+        signal: controller.signal,
+      });
       if (res.ok) return { ok: true };
       return { ok: false, reason: `HTTP ${res.status}` };
     } catch (err) {
@@ -585,7 +672,10 @@ export class HttpOllamaClient implements OllamaClient {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     try {
-      const res = await fetch(`${this.baseUrl}${path}`, { signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        headers: this.headers(),
+        signal: controller.signal,
+      });
       if (!res.ok) {
         throw new InternError(
           "OLLAMA_UNREACHABLE",
