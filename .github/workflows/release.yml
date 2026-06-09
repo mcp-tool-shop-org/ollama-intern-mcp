@@ -1,0 +1,177 @@
+name: Release
+
+# Publishes ollama-intern-mcp to npm via OIDC Trusted Publishing (NO long-lived
+# token) and the MCP server image to GHCR, then creates the GitHub release with
+# notes pulled from CHANGELOG.md. Fires on a pushed v*.*.* tag; workflow_dispatch
+# offers a dry-run (npm --dry-run + docker build without push) to validate the
+# pipeline before a real tag.
+#
+# npm Trusted Publishing is configured on the package for THIS workflow file
+# (release.yml). The job exchanges the GitHub OIDC token for a short-lived npm
+# credential — there is no NPM_TOKEN here by design.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate only (npm publish --dry-run, docker build without push)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# docker/* JS actions still ship Node 20 entrypoints (removed from runners
+# 2026-09-16); force them onto Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  npm:
+    name: Publish to npm (OIDC Trusted Publishing)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create
+      id-token: write # npm Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Tag-vs-package.json guard (tag push only): an out-of-sync tag must never
+      # produce an npm artifact. Load-bearing rig-bridge ratchet.
+      - name: Verify tag matches package.json
+        if: github.ref_type == 'tag'
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "$PKG" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json $PKG"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Verify (typecheck + build + test)
+        run: npm run verify
+
+      # Node 22 bundles npm 10.9, which can sign Sigstore provenance but cannot
+      # negotiate the OIDC auth path (publish returns a misleading 404 "not in
+      # this registry"). Sandbox-install npm@latest and prepend to PATH so the
+      # publish step uses npm >=11.5. In-place `npm install -g npm@latest` races
+      # Node 22's arborist rebuild, hence the sandbox dir.
+      - name: Install npm >=11.5 for OIDC trusted publishing
+        run: |
+          SANDBOX="$HOME/.npm-cli-sandbox"
+          mkdir -p "$SANDBOX"
+          ( cd "$SANDBOX" \
+            && echo '{"name":"npm-cli-sandbox","version":"0.0.0","private":true}' > package.json \
+            && npm install --no-save --no-audit --no-fund --silent npm@latest )
+          echo "$SANDBOX/node_modules/.bin" >> "$GITHUB_PATH"
+          "$SANDBOX/node_modules/.bin/npm" --version
+
+      - name: Publish to npm (dry-run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: npm publish --provenance --access public --dry-run
+
+      # Idempotent: skip if this version is already on npm so a re-run after a
+      # partial failure completes without erroring.
+      - name: Publish to npm (live)
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VER" version >/dev/null 2>&1; then
+            echo "skip $NAME@$VER (already published)"
+          else
+            npm publish --provenance --access public
+          fi
+
+      # GitHub release from the CHANGELOG section for this version (richer than
+      # commit auto-notes). Falls back to --generate-notes when no section found.
+      - name: Extract CHANGELOG section
+        if: github.ref_type == 'tag'
+        id: changelog
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          SECTION=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[?" ver "\\]?" { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$SECTION" ]; then
+            echo "::warning::No CHANGELOG section for v${VERSION}; falling back to auto-notes"
+            echo "has_section=false" >> "$GITHUB_OUTPUT"
+          else
+            printf "%s\n" "$SECTION" > .release-notes.md
+            echo "has_section=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping create."
+          elif [ "${{ steps.changelog.outputs.has_section }}" = "true" ]; then
+            gh release create "$TAG" --title "$TAG" --notes-file .release-notes.md --verify-tag
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+          fi
+
+  docker:
+    name: Build & push image (GHCR)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GHCR push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Log in to GHCR
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

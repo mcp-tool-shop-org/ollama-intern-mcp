@@ -23,9 +23,18 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 
 **Not using Claude?** The [`examples/`](./examples/) directory has a minimal Node.js and Python MCP client you can spawn over stdio. See also [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
 
-No cloud. No telemetry. No "autonomous" anything. Every call shows its work.
+**Local-first** — zero network egress until you opt in. No telemetry. No "autonomous" anything. Every call shows its work. Optional [Ollama Cloud](#ollama-cloud-optional) routing puts 600B-class models behind the same tools when local hardware is the bottleneck — with automatic fallback to local.
 
 ---
+
+## New in v2.7.0
+
+**Optional Ollama Cloud routing — cloud-primary, local-fallback.** Opt in with a key + a flag and the generative tiers route to a 600B-class cloud model; embeddings stay local; a circuit breaker falls back to your local profile on any cloud failure. **Off by default — zero egress unless you set both `OLLAMA_API_KEY` and `OLLAMA_CLOUD_PRIMARY=1`.** Additive minor — pre-v2.7.0 callers (and anyone not opting in) see byte-identical behavior. See [Ollama Cloud (optional)](#ollama-cloud-optional).
+
+- **Cloud-primary with a safety net.** A `RoutingOllamaClient` tries cloud first and falls back to the local profile on timeout / 5xx / 429 / network. Bad keys (401/403) surface loudly via a sticky breaker instead of degrading silently forever; a retired/typo'd cloud model id (404) surfaces too.
+- **Never a silent downgrade.** Every envelope gains `backend` (`cloud`|`local`), `degraded`, and `degrade_reason` so you always know when you got the local model instead of the big one. A `backend_fallback` NDJSON event makes the cloud→local fallback rate visible in `ollama_log_tail`.
+- **`ollama_doctor` reports cloud auth + reachability** as a distinct block; `ollama-intern-mcp doctor` shows a `Cloud (primary)` section.
+- Default cloud model is `minimax-m3:cloud`; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` (e.g. `deepseek-v3.1:671b`).
 
 ## New in v2.6.0
 
@@ -419,6 +428,8 @@ Every tool returns the same shape:
 
 `residency` comes from Ollama's `/api/ps`. When `evicted: true` or `size_vram < size`, the model paged to disk and inference dropped 5–10× — surface this to the user so they know to restart Ollama or trim loaded-model count.
 
+In [Ollama Cloud](#ollama-cloud-optional) mode the envelope also carries `backend` (`"cloud"` | `"local"`) and, on a cloud→local fallback, `degraded: true` + `degrade_reason`. These fields are **absent** in the default local-only path, so existing consumers are unaffected. `residency` is `null` for cloud-served calls (the stateless cloud has no local-VRAM residency).
+
 Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter by `hardware_profile` to keep dev numbers out of publishable benchmarks.
 
 ---
@@ -432,6 +443,60 @@ Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter
 | `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
 **Default dev** collapses all three work tiers onto `hermes3:8b` — the validated Hermes Agent integration path. Same model top to bottom means there is one thing to pull, one residency cost, one set of behavior to understand. Users who prefer Qwen 3 (with its `THINK_BY_SHAPE` plumbing) opt into `dev-rtx5080-qwen3`. `m5-max` is the Qwen 3 ladder sized for unified memory.
+
+---
+
+## Ollama Cloud (optional)
+
+Local 8B models are the hardware bottleneck most people hit. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so you can route the heavy tools to a far stronger model and free up local VRAM — while keeping local as an always-on fallback.
+
+**This is opt-in and off by default.** The package stays local-first with **zero egress** unless you set *both* of these. Anyone who doesn't opt in is unaffected.
+
+```json
+{
+  "mcpServers": {
+    "ollama-intern": {
+      "command": "npx",
+      "args": ["-y", "ollama-intern-mcp"],
+      "env": {
+        "OLLAMA_CLOUD_PRIMARY": "1",
+        "OLLAMA_API_KEY": "sk-...your-key...",
+        "INTERN_PROFILE": "dev-rtx5080"
+      }
+    }
+  }
+}
+```
+
+> **The key is a runtime env var, not a CI secret.** A GitHub Actions secret is only visible inside CI runs — it never reaches the running server. Create a key at [ollama.com/settings/keys](https://ollama.com/settings/keys) and put it in your MCP client's `env` block (or your shell environment).
+
+**How routing works.** When cloud is on, the generative tiers (instant / workhorse / deep) go to the cloud model; **embeddings always stay local** (Ollama Cloud serves no embedding models, so the corpus/embed tools are unaffected). A circuit breaker tries cloud first and falls back to your local profile on timeout / 5xx / 429 / network errors. A bad key (401/403) trips a *sticky* breaker that surfaces loudly rather than degrading silently. The local profile (`INTERN_PROFILE`) is the fallback ladder, so keep its models pulled.
+
+**You're never silently downgraded.** Every envelope reports which backend served the call:
+
+```ts
+{ ...envelope, backend: "cloud" | "local", degraded?: true, degrade_reason?: "cloud_timeout" | "cloud_5xx" | "cloud_rate_limited" | "cloud_unreachable" | "cloud_auth_failed" | "circuit_open" }
+```
+
+A `backend_fallback` line lands in `~/.ollama-intern/log.ndjson` on every cloud→local fallback (`ollama_log_tail --filter_kind backend_fallback`), and `ollama-intern-mcp doctor` shows a **Cloud (primary)** block with reachability + auth status.
+
+**Latency vs quality.** Big cloud models run far slower per token than a local 8B (seconds, not milliseconds) — a quality upgrade, not a speed one. Cloud tiers use a generous timeout ladder (instant 30s / workhorse 120s / deep 300s by default).
+
+### Cloud env vars
+
+| Var | Default | Purpose |
+|---|---|---|
+| `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The opt-in switch.** `1`/`true`/`yes`/`on` enables cloud-primary. Unset = local-only, zero egress. |
+| `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. **Required** when cloud is enabled (fail-fast at startup if missing). |
+| `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Cloud base host. |
+| `INTERN_CLOUD_MODEL` | `minimax-m3:cloud` | Cloud model for instant + workhorse + deep. |
+| `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Optional deep-tier-only override, e.g. `deepseek-v3.1:671b`. |
+| `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Per-tier cloud-attempt timeouts. |
+| `INTERN_CLOUD_NUM_CTX` | `32768` | Context-window cap for cloud calls (cloud bills by GPU-time; cap controls cost). |
+
+> **Model availability changes.** Ollama periodically retires cloud models. `minimax-m3:cloud`, `deepseek-v3.1:671b`, `gpt-oss:120b`, and `qwen3-coder:480b` are current picks; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id.
+
+**Privacy note.** Routing to Ollama Cloud sends prompts to a third party. Ollama's [privacy policy](https://ollama.com/privacy) states cloud prompts are processed transiently, not retained beyond the request, and not used for training — but it is still egress, which is why it's opt-in and disclosed. Local-only mode (the default) sends nothing off the box.
 
 ---
 
@@ -471,9 +536,9 @@ No model calls in this tier. All render from stored content.
 
 **Data NOT touched:** anything outside `source_paths` / `allowed_roots`. `..` is rejected before normalize. `artifact_export_to_path` refuses existing files unless `overwrite: true`. Drafts targeting protected paths (`memory/`, `.claude/`, `docs/canon/`, etc.) require explicit `confirm_write: true`, enforced server-side.
 
-**Network egress:** **off by default.** The only outbound traffic is to the local Ollama HTTP endpoint. No cloud calls, no update pings, no crash reporting.
+**Network egress:** **off by default.** Out of the box the only outbound traffic is to the local Ollama HTTP endpoint — no cloud calls, no update pings, no crash reporting. **Opt-in exception:** if you enable [Ollama Cloud](#ollama-cloud-optional) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`), prompts for the generative tiers are sent to `ollama.com` over HTTPS with a Bearer key. This is explicit, disclosed, and off unless you set both vars; embeddings still never leave the box. See [SECURITY.md](SECURITY.md) §11.
 
-**Telemetry:** **none.** Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson` on your machine. Nothing leaves the box.
+**Telemetry:** **none.** Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson` on your machine. The server itself phones home to nothing.
 
 **Errors:** structured shape `{ code, message, hint, retryable }`. Stack traces are never exposed through tool results.
 

@@ -5,7 +5,7 @@
  * not pre-read the file, the server does. Keep this module fast and boring.
  */
 
-import { readFile, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { InternError } from "./errors.js";
 
@@ -26,8 +26,14 @@ export async function loadSources(
   const loaded: LoadedSource[] = [];
   for (const p of paths) {
     const abs = resolve(p);
+    // Open once and operate on the handle: the is-file check and the read
+    // then observe the same inode, so a path swapped between a stat() and a
+    // path-based readFile() can't slip a different file through
+    // (CodeQL js/file-system-race).
+    let fh: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      const st = await stat(abs);
+      fh = await open(abs, "r");
+      const st = await fh.stat();
       if (!st.isFile()) {
         throw new InternError(
           "SOURCE_PATH_NOT_FOUND",
@@ -36,7 +42,7 @@ export async function loadSources(
           false,
         );
       }
-      const raw = await readFile(abs, "utf8");
+      const raw = await fh.readFile("utf8");
       loaded.push({ path: p, body: raw.slice(0, perFileMax) });
     } catch (err) {
       if (err instanceof InternError) throw err;
@@ -46,6 +52,8 @@ export async function loadSources(
         "Check the path exists and is readable.",
         false,
       );
+    } finally {
+      await fh?.close();
     }
   }
   return loaded;

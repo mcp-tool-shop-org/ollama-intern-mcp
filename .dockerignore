@@ -1,0 +1,18 @@
+# Keep the build context lean — only package*.json, tsconfig.json, src/, and
+# hermes.config.example.yaml are needed by the Dockerfile.
+node_modules
+dist
+.git
+.github
+site
+tests
+evals
+bench
+smoke
+docs
+artifacts
+coverage
+.polyglot-cache.json
+README.*.md
+*.log
+.DS_Store

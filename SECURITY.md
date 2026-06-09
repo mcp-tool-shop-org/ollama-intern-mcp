@@ -2,7 +2,7 @@
 
 ## Threat Model
 
-Ollama Intern MCP is a **local delegation layer**. It runs on the user's machine and talks only to a local Ollama instance (`http://localhost:11434` by default). No cloud calls, no telemetry.
+Ollama Intern MCP is a **local-first delegation layer**. By default it runs on the user's machine and talks only to a local Ollama instance (`http://localhost:11434` by default) — **zero network egress, no telemetry**. An **opt-in** cloud mode (off unless explicitly enabled) can route the generative tiers to Ollama Cloud; see threat #11. Embeddings always stay local.
 
 The primary risks are not network-facing. They are:
 
@@ -28,6 +28,14 @@ v2.1.0 adds tools that extend the attack surface in ways the prior versions did 
 9. **Corpus-as-snapshot invariant broken by `corpus_amend`.** Earlier versions treated every corpus as a pure disk snapshot — identical input always produced identical output. `corpus_amend` allows additive in-place edits, which can drift a corpus from its manifest-hashed origin. Mitigated by surfacing `has_amended_content: true` on every `corpus_answer` result whose backing corpus was amended. Callers doing audit-grade work can detect amendment and re-run `ollama_corpus_index` from source to return to a clean snapshot.
 
 10. **File-reading surface in `code_map` and `code_citation`.** Both tools read source files to produce structural maps and symbol citations. Mitigated by the same `allowed_roots` check used by `research` and the corpus tools — files outside the caller-declared roots are refused at the tool entry. `..` normalization still runs before path use.
+
+### New surface in v2.7.0
+
+11. **Cloud egress when opted in (`OLLAMA_CLOUD_PRIMARY` + `OLLAMA_API_KEY`).** The first network surface that leaves the machine. **Off by default** — the package is byte-identical to local-only behavior unless BOTH the flag and the key are set, so the "zero egress by default" guarantee is preserved for every non-opting user. When enabled:
+    - **What leaves the box:** prompts + inputs for the *generative* tiers (instant/workhorse/deep) are POSTed to `OLLAMA_CLOUD_HOST` (default `https://ollama.com`) over HTTPS with an `Authorization: Bearer` header. **Embeddings never route to cloud** — the corpus/embed tools stay fully local. Mitigated by being opt-in, disclosed in the README and startup logs, and surfaced per-call on the envelope (`backend`, `degraded`, `degrade_reason`) so a cloud-served answer is never indistinguishable from a local one.
+    - **Key handling:** the key is read from the `OLLAMA_API_KEY` runtime env var (the operator supplies it via their MCP client's `env` block). It is never written to disk, never logged (NDJSON events carry models/tiers/reasons, not the key), and is refused to a loopback host (a Bearer header sent to local Ollama 403s). A GitHub Actions secret is NOT a runtime credential — it is invisible to the running server.
+    - **Third-party prompt handling:** routing to Ollama Cloud means prompts are processed by Ollama's infrastructure. Per [Ollama's privacy policy](https://ollama.com/privacy), cloud prompts/responses are processed transiently, not retained beyond the request, and not used for training — but this is a third-party assurance, not a local guarantee. Operators handling sensitive material should weigh this before enabling cloud, or keep cloud off (the default).
+    - **Failure posture:** transient cloud failures fall back to the local profile (degraded, observable); a bad/expired key (401/403) trips a sticky breaker that surfaces loudly rather than silently degrading forever.
 
 ## Reporting
 

@@ -17,8 +17,8 @@ import { describe, it, expect, beforeAll } from "vitest";
  * Size-regression floor for the published tarball.
  *
  * The "size" field in `npm pack --json` output is the COMPRESSED tarball size
- * in bytes. At v2.0.2 with the current dist/ output, this sits around
- * ~302 KB. We fail if a change pushes the compressed size more than 10%
+ * in bytes. At v2.7.0 with the current dist/ output, this sits around
+ * ~515 KB. We fail if a change pushes the compressed size more than 10%
  * above this baseline — an early signal that something accidentally got
  * added to `files`, dist/ swelled, or a sourcemap/asset leaked into the
  * tarball.
@@ -27,8 +27,11 @@ import { describe, it, expect, beforeAll } from "vitest";
  * or required asset): run `npm pack --dry-run --json | jq '.[0].size'` on a
  * clean build of main, and set BASELINE_PACKED_BYTES to that value. Keep the
  * tolerance at 10% unless you have a reason to widen it.
+ *
+ * v2.7.0: bumped 470_000 → 528_000 for the opt-in Ollama Cloud routing code
+ * (new dist/routing.js + cloud additions across client/runner/index/profiles).
  */
-export const BASELINE_PACKED_BYTES = 470_000;
+export const BASELINE_PACKED_BYTES = 528_000;
 export const BASELINE_TOLERANCE = 0.10;
 
 type PackEntry = { path: string; size: number; mode: number };

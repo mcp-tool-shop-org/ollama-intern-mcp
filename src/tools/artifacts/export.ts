@@ -18,7 +18,6 @@
  */
 
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { dirname, isAbsolute, normalize, relative } from "node:path";
 import { InternError } from "../../errors.js";
 import type { PackArtifact } from "./scan.js";
@@ -111,6 +110,30 @@ function renderProvenance(art: PackArtifact, exportedAt: string): string {
   ].join("\n");
 }
 
+/** SCHEMA_INVALID error for a target_path that names a directory. */
+function directoryTargetError(target: string): InternError {
+  return new InternError(
+    "SCHEMA_INVALID",
+    `target_path is a directory, not a file: ${target}`,
+    "Pick a target_path that names a .md file, not a directory.",
+    false,
+  );
+}
+
+/**
+ * Diagnose-only stat, run AFTER a failed write to shape the error message.
+ * This is deliberately a post-hoc check (never before a write) so it can't
+ * introduce a TOCTOU — the write has already happened or failed by the time
+ * we look. Returns false on any stat error (the path vanished, etc.).
+ */
+async function isExistingDirectory(target: string): Promise<boolean> {
+  try {
+    return (await stat(target)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Execute the export. Takes the resolved artifact + target details
  * and writes the artifact's existing markdown (with a provenance
@@ -135,30 +158,6 @@ export async function exportArtifactMarkdown(
   const normalizedRoots = opts.allowed_roots.map((r) => safeNormalize(r, "allowed_roots entry"));
   assertUnderAllowedRoots(normalizedTarget, normalizedRoots);
 
-  // Check overwrite policy.
-  const exists = existsSync(normalizedTarget);
-  if (exists && !opts.overwrite) {
-    throw new InternError(
-      "SCHEMA_INVALID",
-      `target_path exists and overwrite=false: ${normalizedTarget}`,
-      "Pass overwrite: true to replace the file, or pick a different target_path. Export never clobbers by default.",
-      false,
-    );
-  }
-
-  // Confirm the existing file isn't a directory before we try to write.
-  if (exists) {
-    const st = await stat(normalizedTarget);
-    if (st.isDirectory()) {
-      throw new InternError(
-        "SCHEMA_INVALID",
-        `target_path is a directory, not a file: ${normalizedTarget}`,
-        "Pick a target_path that names a .md file, not a directory.",
-        false,
-      );
-    }
-  }
-
   // Read the artifact's existing markdown — this is a handoff, not a re-render.
   const sourceMdPath = artifact.artifact.markdown_path;
   let sourceMd: string;
@@ -177,14 +176,54 @@ export async function exportArtifactMarkdown(
   const exportedAt = new Date().toISOString();
   const body = renderProvenance(artifact, exportedAt) + sourceMd;
 
-  // Write.
+  // Write atomically. We never pre-check existence (existsSync/stat → write
+  // is a TOCTOU — a file appearing in the gap would defeat the "never
+  // clobber by default" guarantee, CodeQL js/file-system-race). Instead the
+  // exclusive-create flag ('wx') IS the existence check: it fails with
+  // EEXIST rather than overwriting. Any directory diagnosis happens only
+  // AFTER a failed write, so no stat precedes a write on this path.
   await mkdir(dirname(normalizedTarget), { recursive: true });
-  await writeFile(normalizedTarget, body, "utf8");
+  let overwrote = false;
+  try {
+    await writeFile(normalizedTarget, body, { encoding: "utf8", flag: "wx" });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+      // 'wx' failed for a reason other than "already exists" — e.g. the
+      // path names an existing directory (EISDIR/EPERM on some platforms).
+      if (await isExistingDirectory(normalizedTarget)) {
+        throw directoryTargetError(normalizedTarget);
+      }
+      throw err;
+    }
+    // Path already exists.
+    if (!opts.overwrite) {
+      if (await isExistingDirectory(normalizedTarget)) {
+        throw directoryTargetError(normalizedTarget);
+      }
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `target_path exists and overwrite=false: ${normalizedTarget}`,
+        "Pass overwrite: true to replace the file, or pick a different target_path. Export never clobbers by default.",
+        false,
+      );
+    }
+    // Existing entry + overwrite: replace it. Writing to a directory throws
+    // EISDIR, which we map to the friendly directory error.
+    try {
+      await writeFile(normalizedTarget, body, { encoding: "utf8", flag: "w" });
+    } catch (err2) {
+      if (await isExistingDirectory(normalizedTarget)) {
+        throw directoryTargetError(normalizedTarget);
+      }
+      throw err2;
+    }
+    overwrote = true;
+  }
 
   return {
     target_path: normalizedTarget,
     bytes_written: Buffer.byteLength(body, "utf8"),
-    overwrote: exists,
+    overwrote,
     provenance: {
       pack: artifact.pack,
       slug: artifact.slug,
