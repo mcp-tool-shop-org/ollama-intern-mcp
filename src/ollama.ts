@@ -211,6 +211,14 @@ export interface ChatRequest {
   format?: "json";
   stream?: boolean;
   options?: GenerateRequest["options"];
+  /**
+   * Thinking-mode toggle — same semantics as GenerateRequest.think. Without
+   * this field the chat path could never suppress CoT, so a thinking model
+   * (e.g. minimax-m3:cloud) burned the entire num_predict budget on thinking
+   * tokens and returned an empty `message.content` (observed live 2026-06-09
+   * against Ollama Cloud). Non-thinking models ignore the field.
+   */
+  think?: boolean;
   keep_alive?: string | number;
 }
 

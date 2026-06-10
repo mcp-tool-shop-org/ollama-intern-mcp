@@ -12,7 +12,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import type { ChatMessage } from "../ollama.js";
 import { countTokens } from "../ollama.js";
-import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE } from "../tiers.js";
+import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE, THINK_BY_SHAPE } from "../tiers.js";
 import type { RunContext } from "../runContext.js";
 
 export const chatSchema = z.object({
@@ -66,15 +66,23 @@ export async function handleChat(
   // TIER_FALLBACK, so a single resolved value covers the whole call.
   // Absent when the active profile doesn't set workhorse num_ctx.
   const numCtx = resolveNumCtx("workhorse", ctx.tiers);
+  // 4096 (was 1024): chat is the catch-all that long-form jobs (canon
+  // authoring, dense prose) fall back to when no specialty tool fits; 1024
+  // truncated those even on non-thinking models. Generous but bounded.
   const options: { temperature?: number; num_predict?: number; num_ctx?: number } = {
     temperature: TEMPERATURE_BY_SHAPE.chat,
-    num_predict: 1024,
+    num_predict: 4096,
     ...(numCtx !== undefined ? { num_ctx: numCtx } : {}),
   };
   const resp = await ctx.client.chat({
     model,
     messages,
     options,
+    // chat was the ONLY generate-shaped tool not passing `think`. On a
+    // thinking model CoT consumed the whole num_predict and `content` came
+    // back empty (the 2026-06-09 minimax-m3:cloud incident). Same doctrine
+    // as draft/extract/etc.: short-form shapes suppress CoT.
+    think: THINK_BY_SHAPE.chat,
   });
   const tokens = countTokens(resp);
   const residency = await ctx.client.residency(model);

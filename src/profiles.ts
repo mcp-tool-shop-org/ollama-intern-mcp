@@ -369,13 +369,20 @@ export interface CloudConfig {
 
 const CLOUD_DEFAULT_HOST = "https://ollama.com";
 /**
- * Default cloud model. minimax-m3:cloud is the current flagship successor to
- * the 2026-06-16-retiring minimax-m2 — fast for a big model, 512K–1M context
- * (fits the file-reading flagship tools), thinking-capable. NEVER default to a
- * deprecation-listed id (minimax-m2, glm-4.6, kimi-k2:1t, cogito-2.1:671b,
- * qwen3-vl:235b).
+ * Default cloud model. MUST be a NON-thinking model: the default serves
+ * instant+workhorse, where short-output tools cap num_predict tightly — a
+ * thinking default burns that budget on CoT and returns empty replies (the
+ * 2026-06-09 minimax-m3:cloud incident: cloud reachable, every chat reply "").
+ * qwen3-coder-next:cloud is explicitly non-thinking ("no <think> blocks",
+ * 80B-A3B, 256K ctx) per ollama.com/library/qwen3-coder-next, checked
+ * 2026-06-09 — cloud ids are volatile; re-check ollama.com/search?c=cloud
+ * before re-pinning. Big thinking models (glm-5, deepseek-v4-pro, kimi-k2.x)
+ * belong on INTERN_CLOUD_DEEP_MODEL, where tools size num_predict for
+ * reasoning + response together. NEVER default to a deprecation-listed id
+ * (minimax-m2, glm-4.6, kimi-k2:1t, cogito-2.1:671b, qwen3-vl:235b,
+ * qwen3-coder:480b — the latter 404s as of 2026-06-09).
  */
-const CLOUD_DEFAULT_MODEL = "minimax-m3:cloud";
+const CLOUD_DEFAULT_MODEL = "qwen3-coder-next:cloud";
 const CLOUD_DEFAULT_TIMEOUTS: Record<Tier, number> = {
   instant: 30_000,
   workhorse: 120_000,
@@ -414,8 +421,10 @@ function positiveIntEnv(raw: string | undefined, fallback: number): number {
  *   OLLAMA_CLOUD_PRIMARY        opt-in switch (1/true/yes/on)
  *   OLLAMA_API_KEY              bearer key (required when enabled)
  *   OLLAMA_CLOUD_HOST           default https://ollama.com
- *   INTERN_CLOUD_MODEL          default minimax-m3:cloud (instant+workhorse+deep)
- *   INTERN_CLOUD_DEEP_MODEL     optional deep-only override (e.g. deepseek-v3.1:671b)
+ *   INTERN_CLOUD_MODEL          default qwen3-coder-next:cloud (instant+workhorse+deep;
+ *                               keep NON-thinking — see CLOUD_DEFAULT_MODEL)
+ *   INTERN_CLOUD_DEEP_MODEL     optional deep-only override (e.g. glm-5:cloud,
+ *                               deepseek-v4-pro:cloud — thinking OK here)
  *   INTERN_CLOUD_TIMEOUT_*_MS   per-tier cloud timeouts (instant/workhorse/deep)
  *   INTERN_CLOUD_NUM_CTX        cloud context-window cap (default 32768)
  */
