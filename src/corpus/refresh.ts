@@ -31,14 +31,12 @@
  * CorrelationOp enum stays tight.
  */
 
-import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { InternError } from "../errors.js";
 import { loadCorpus } from "./storage.js";
 import { loadManifest, saveManifest } from "./manifest.js";
-import { indexCorpusUnlocked } from "./indexer.js";
+import { indexCorpusUnlocked, sha256File } from "./indexer.js";
 import { withCorpusLock } from "./lock.js";
 
 export interface RefreshReport {
@@ -108,14 +106,8 @@ export interface RefreshParams {
 
 interface PathClassification {
   path: string;
-  klass: "added" | "changed" | "unchanged" | "missing";
+  klass: "added" | "changed" | "unchanged" | "missing" | "unreadable";
   file_hash: string | null;
-}
-
-async function sha256Of(absPath: string): Promise<string> {
-  const content = await readFile(absPath, "utf8");
-  await stat(absPath); // fail if not a regular file / missing
-  return "sha256:" + createHash("sha256").update(content).digest("hex");
 }
 
 export async function refreshCorpus(params: RefreshParams): Promise<RefreshReport> {
@@ -170,9 +162,17 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   for (const absPath of manifestAbs) {
     let hash: string;
     try {
-      hash = await sha256Of(absPath);
-    } catch {
-      classifications.push({ path: absPath, klass: "missing", file_hash: null });
+      hash = (await sha256File(absPath)).hash;
+    } catch (err) {
+      // H5: distinguish a genuinely-absent file from a transient read error.
+      // Only ENOENT is "missing" — the living-corpus law that deletes its
+      // chunks. Any OTHER failure (Windows file lock, antivirus hold, editor
+      // atomic-save rename window, unmounted share, size-cap/symlink
+      // rejection) is "unreadable": it stays in livePaths so the indexer
+      // re-attempts the read and, on repeat failure, carries its existing
+      // chunks forward + records it in failed_paths — never a silent delete.
+      const klass = (err as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unreadable";
+      classifications.push({ path: absPath, klass, file_hash: null });
       continue;
     }
     const prior = priorHashByPath.get(absPath);
@@ -193,6 +193,10 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   const changed = classifications.filter((c) => c.klass === "changed").map((c) => c.path);
   const unchanged = classifications.filter((c) => c.klass === "unchanged").map((c) => c.path);
   const missing = classifications.filter((c) => c.klass === "missing").map((c) => c.path);
+  // H5: paths that failed to read with a NON-ENOENT (transient) error. They
+  // stay live (handed to the indexer, which preserves their chunks and
+  // records them in failed_paths) — never silently deleted like `missing`.
+  const unreadable = classifications.filter((c) => c.klass === "unreadable").map((c) => c.path);
 
   // Union of deletes: manifest-removed plus disk-missing. Both mean
   // "chunks for this path are no longer in the corpus after refresh".
@@ -215,6 +219,10 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
     added.length === 0 &&
     changed.length === 0 &&
     deleted.length === 0 &&
+    // An unreadable declared path is unresolved work: re-run the indexer so
+    // it re-attempts the read (transient locks often clear) and records the
+    // failure, rather than treating a locked file as "nothing to do".
+    unreadable.length === 0 &&
     retryExtraPaths.length === 0;
   if (noOp) {
     return {

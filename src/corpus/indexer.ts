@@ -104,7 +104,7 @@ export interface IndexReport {
  * after read and fail if size or mtime drifted — that means the file
  * mutated mid-read and the hash doesn't match the returned content.
  */
-async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
+export async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
   // Symlink check FIRST — reject before any size/read or realpath work so
   // a symlink can't bypass the size cap (pointing the symlink at a 100GB
   // file after the stat but before the read) and can't leak even partial
@@ -207,12 +207,20 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     );
   }
   const reusable = new Map<string, CorpusChunk[]>();
+  // H5: also index prior chunks by path alone, so a transient (non-ENOENT)
+  // read failure below can carry a path's existing chunks forward verbatim
+  // instead of silently dropping already-indexed content on a Windows file
+  // lock / antivirus hold / editor atomic-save window.
+  const priorChunksByPath = new Map<string, CorpusChunk[]>();
   if (existing && existing.model_version === params.model) {
     for (const c of existing.chunks) {
       const key = `${c.path}::${c.file_hash}`;
       const arr = reusable.get(key) ?? [];
       arr.push(c);
       reusable.set(key, arr);
+      const byPath = priorChunksByPath.get(c.path) ?? [];
+      byPath.push(c);
+      priorChunksByPath.set(c.path, byPath);
     }
   }
 
@@ -259,6 +267,20 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
         path: rawPath,
         reason: (err as Error).message ?? String(err),
       });
+      // H5: a TRANSIENT read failure (Windows file lock, antivirus hold,
+      // editor atomic-save rename window, size-cap/symlink rejection) must
+      // not delete already-indexed content. Carry this path's prior chunks
+      // forward verbatim — it stays in seenPaths (→ manifest.paths) and was
+      // recorded in failed_paths above, so retry_failed can re-verify it.
+      // Only a genuinely-absent file (ENOENT) drops: there is nothing to
+      // carry, and it must fall out per the living-corpus delete law.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        const prior = priorChunksByPath.get(absPath);
+        if (prior && prior.length > 0) {
+          allChunks.push(...prior);
+          reusedCount += prior.length;
+        }
+      }
       continue;
     }
     totalChars += fileInfo.content.length;

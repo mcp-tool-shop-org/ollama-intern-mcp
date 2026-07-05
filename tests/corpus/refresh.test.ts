@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, readFile, unlink } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, unlink, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -478,5 +478,71 @@ describe("refreshCorpus", () => {
     // but it must run to completion without the lock being violated.
     expect(report2).toBeDefined();
     expect(maxInFlight).toBe(1);
+  });
+});
+
+// ── H5: transient (non-ENOENT) read errors must not delete the path ──
+//
+// The bug: refresh classified EVERY read failure as "missing" — a Windows
+// file lock, an antivirus hold, or an editor's atomic-save rename window
+// would drop the path from manifest.paths AND delete its chunks, silently
+// and permanently (never recorded in failed_paths, so retry_failed couldn't
+// recover it). Only a genuinely-absent file (ENOENT) may delete.
+describe("refreshCorpus — transient read errors preserve the path (H5)", () => {
+  it("a non-ENOENT read error keeps the path in the manifest, records it failed, and preserves its chunks", async () => {
+    const pStable = await writeSource("stable.md", "i am stable content here");
+    const pLocked = await writeSource(
+      "locked.md",
+      "important indexed content that must survive a transient lock",
+    );
+    const client = new CountingEmbedMock();
+    await indexCorpus({ name: "lock", paths: [pStable, pLocked], model: MODEL, client });
+
+    const corpusBefore = (await loadCorpus("lock"))!;
+    const chunksForLocked = corpusBefore.chunks.filter((c) => c.path === pLocked);
+    expect(chunksForLocked.length).toBeGreaterThan(0);
+
+    // Simulate a transient, NON-ENOENT read failure. Replacing the file with
+    // a directory of the same name makes sha256File's open()/read throw
+    // EISDIR — a read error that emphatically does NOT mean "the file is
+    // gone" (stands in for EBUSY/EACCES/Windows lock/AV hold).
+    await unlink(pLocked);
+    await mkdir(pLocked);
+
+    const report = await refreshCorpus({ name: "lock", model: MODEL, client });
+
+    // (a) the path must remain declared in the manifest — never silently dropped.
+    const manifest = (await loadManifest("lock"))!;
+    expect(manifest.paths).toContain(pLocked);
+
+    // (b) it must be recorded as failed so retry_failed:true can recover it,
+    //     and surfaced to the operator on the report.
+    expect(manifest.failed_paths.map((f) => f.path)).toContain(pLocked);
+    expect(report.still_failed.map((f) => f.path)).toContain(pLocked);
+
+    // (c) its existing chunks must NOT be deleted by a transient read error.
+    const corpusAfter = (await loadCorpus("lock"))!;
+    expect(corpusAfter.chunks.some((c) => c.path === pLocked)).toBe(true);
+
+    // And it must NOT be reported as a delete/miss — those are ENOENT-only.
+    expect(report.deleted).not.toContain(pLocked);
+    expect(report.missing).not.toContain(pLocked);
+  });
+
+  it("still deletes a genuinely-missing (ENOENT) path — the transient-error fix must not blunt real deletes", async () => {
+    // Guard against over-correction in the other direction: a truly-gone
+    // file (ENOENT) must still delete per the documented law.
+    const pKeep = await writeSource("keep.md", "keep me around");
+    const pGone = await writeSource("gone.md", "this file will truly vanish");
+    const client = new CountingEmbedMock();
+    await indexCorpus({ name: "enoent", paths: [pKeep, pGone], model: MODEL, client });
+
+    await unlink(pGone); // genuine ENOENT — file is really gone
+
+    const report = await refreshCorpus({ name: "enoent", model: MODEL, client });
+    expect(report.missing).toContain(pGone);
+    expect(report.deleted).toContain(pGone);
+    const corpusAfter = (await loadCorpus("enoent"))!;
+    expect(corpusAfter.chunks.some((c) => c.path === pGone)).toBe(false);
   });
 });
