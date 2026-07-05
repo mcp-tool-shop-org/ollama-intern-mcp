@@ -17,6 +17,7 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
+import { sanitizePromptField } from "./_helpers.js";
 import {
   applyConfidenceThreshold,
   buildConfidenceStripEvent,
@@ -195,6 +196,18 @@ export async function handleClassify(
 ): Promise<Envelope<ClassifyGuardedWithFrame> | Envelope<BatchResult<ClassifyGuardedWithFrame>>> {
   assertExactlyOneInput(input);
   const frameSupplied = input.frame !== undefined;
+  // M9: labels + frame flow verbatim into the classifier prompt. Strip
+  // prompt-injection vectors (code fences / newlines) and cap length BEFORE
+  // any model call, so a caller can't break out of their field into
+  // instructions. Reuse the cleaned copy for every prompt build below.
+  const promptInput: ClassifyInput = {
+    ...input,
+    labels: input.labels.map((l) => sanitizePromptField(l, { fieldName: "labels[]", maxChars: 100 })),
+    ...(input.frame !== undefined
+      ? { frame: sanitizePromptField(input.frame, { fieldName: "frame", maxChars: 500 }) }
+      : {}),
+  };
+
   const parseOne = (raw: string): ClassifyGuardedWithFrame => {
     const outcome = parseClassify(raw);
     // Emit a guardrail event when the parser abstained — operator-facing
@@ -252,7 +265,7 @@ export async function handleClassify(
       modelOverride: input.model,
       build: (item, _tier, model) => ({
         model,
-        prompt: buildPromptFor(item.text, input),
+        prompt: buildPromptFor(item.text, promptInput),
         format: "json",
         options: { temperature: TEMPERATURE_BY_SHAPE.classify, num_predict: 64 },
       }),
@@ -276,7 +289,7 @@ export async function handleClassify(
     modelOverride: input.model,
     build: (_tier, model) => ({
       model,
-      prompt: buildPromptFor(text, input),
+      prompt: buildPromptFor(text, promptInput),
       format: "json",
       options: { temperature: TEMPERATURE_BY_SHAPE.classify, num_predict: 64 },
     }),

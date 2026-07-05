@@ -316,3 +316,37 @@ describe("handleClassify — parseClassify null-safety (Stage C / F-006)", () =>
     expect(detail?.reason).toBe("non_object");
   });
 });
+
+describe("handleClassify — prompt-field sanitizer (M9)", () => {
+  it("strips code fences + newlines from labels before they reach the prompt", async () => {
+    const client = mock(JSON.stringify({ label: "safe", confidence: 0.9 }));
+    await handleClassify(
+      { text: "some input to classify", labels: ["safe", "ev```il\nlabel"] },
+      makeCtx(client),
+    );
+    const prompt = client.lastGenerate?.prompt ?? "";
+    expect(prompt).toContain("ev il label"); // fence + newline collapsed
+    expect(prompt).not.toContain("ev```il"); // the raw fence breakout is gone
+  });
+
+  it("strips fences + newlines from the frame too", async () => {
+    const client = mock(
+      JSON.stringify({ label: "a", confidence: 0.9, off_topic: false, off_topic_reason: null }),
+    );
+    await handleClassify(
+      { text: "x", labels: ["a", "b"], frame: "billing```\nsupport tickets" },
+      makeCtx(client),
+    );
+    const prompt = client.lastGenerate?.prompt ?? "";
+    expect(prompt).toContain("billing support tickets");
+    expect(prompt).not.toContain("billing```");
+  });
+
+  it("rejects an over-long label with SCHEMA_INVALID and never calls the model", async () => {
+    const client = mock("{}");
+    await expect(
+      handleClassify({ text: "x", labels: ["a".repeat(101)] }, makeCtx(client)),
+    ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+    expect(client.callCount.generate).toBe(0);
+  });
+});

@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
+import { sanitizePromptField } from "./_helpers.js";
 import {
   parseCitations,
   validateCitations,
@@ -116,6 +117,10 @@ export async function handleResearch(
   input: ResearchInput,
   ctx: RunContext,
 ): Promise<Envelope<ResearchResult>> {
+  // M9: the question flows verbatim into the research prompt. Strip
+  // prompt-injection vectors (fences/newlines) + cap length BEFORE loadSources
+  // and the model call, so the question can't break out into instructions.
+  const question = sanitizePromptField(input.question, { fieldName: "question", maxChars: 1000 });
   const perFileMax = input.per_file_max_chars ?? 40_000;
   const sources = await loadSources(input.source_paths, perFileMax);
   const warnings: string[] = [];
@@ -154,7 +159,7 @@ export async function handleResearch(
     modelOverride: input.model,
     build: (_tier, model) => ({
       model,
-      prompt: buildPrompt(input, sources),
+      prompt: buildPrompt({ ...input, question }, sources),
       options: { temperature: TEMPERATURE_BY_SHAPE.research, num_predict: Math.ceil((input.max_words ?? 300) * 2.5) },
     }),
     parse: (raw): ResearchResult => {

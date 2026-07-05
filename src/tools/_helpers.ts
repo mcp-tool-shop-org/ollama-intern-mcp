@@ -27,6 +27,39 @@ export const MAX_CORPUS_QUERY_CHARS = 200;
  * Strips newlines (CR/LF) and fence markers from OTHERWISE-valid queries
  * as a convenience: they're always mistakes, never intent.
  */
+/**
+ * Strip prompt-injection vectors from a user-supplied field: code-fence
+ * delimiters and CR/LF become spaces, then runs of whitespace collapse. A
+ * user field can no longer break out of its slot in an LLM prompt with a
+ * fenced block or a newline-delimited "IGNORE ABOVE" instruction.
+ */
+export function stripInjectionVectors(raw: string): string {
+  return raw.replace(/```/g, " ").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Sanitize a user-supplied field that flows VERBATIM into an LLM prompt
+ * (classify labels/frame, research question — M9). Strips injection vectors
+ * (fences/newlines) then rejects if the cleaned text exceeds maxChars.
+ * Returns the cleaned text. The length reject keeps a caller from filling the
+ * prompt budget with a whole log/diff blob under the guise of one field.
+ */
+export function sanitizePromptField(
+  raw: string,
+  opts: { fieldName: string; maxChars: number },
+): string {
+  const cleaned = stripInjectionVectors(raw);
+  if (cleaned.length > opts.maxChars) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `${opts.fieldName} exceeds ${opts.maxChars} chars after stripping newlines/fences (got ${cleaned.length}).`,
+      `${opts.fieldName} is interpolated directly into the model prompt — keep it a concise single-line value under ${opts.maxChars} chars.`,
+      false,
+    );
+  }
+  return cleaned;
+}
+
 export function normalizeCorpusQuery(
   raw: string | undefined,
   opts: { fieldName?: string } = {},
@@ -35,7 +68,7 @@ export function normalizeCorpusQuery(
   const field = opts.fieldName ?? "corpus_query";
   // Strip fences + newlines first — if the cleaned query fits within the
   // cap we keep the call alive instead of rejecting on trivia.
-  const cleaned = raw.replace(/```/g, " ").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  const cleaned = stripInjectionVectors(raw);
   if (cleaned.length > MAX_CORPUS_QUERY_CHARS) {
     throw new InternError(
       "SCHEMA_INVALID",
