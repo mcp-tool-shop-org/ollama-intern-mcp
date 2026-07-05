@@ -111,6 +111,9 @@ export async function handleChat(
   const tokens = countTokens(resp);
   // Residency is a local-VRAM concept: a cloud-served call has none.
   const residency = routing?.backend === "cloud" ? null : await ctx.client.residency(actualModel);
+  // num_ctx_used must report the num_ctx actually SENT — the cloud cap on a
+  // cloud-served call — matching runner.ts, not the local resolved value.
+  const numCtxUsed = routing?.num_ctx ?? numCtx;
 
   const envelope = buildEnvelope<ChatResult>({
     result: { reply: resp.message.content, last_resort: true },
@@ -125,7 +128,7 @@ export async function handleChat(
     ...(routing?.degraded ? { degraded: true } : {}),
     ...(routing?.degrade_reason ? { degradeReason: routing.degrade_reason } : {}),
     ...(input.model !== undefined ? { modelRequested: input.model } : {}),
-    ...(numCtx !== undefined ? { numCtxUsed: numCtx } : {}),
+    ...(numCtxUsed !== undefined ? { numCtxUsed } : {}),
   });
 
   await ctx.logger.log(callEvent("ollama_chat", envelope));
