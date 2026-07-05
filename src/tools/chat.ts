@@ -10,9 +10,11 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import type { ChatMessage } from "../ollama.js";
+import type { ChatMessage, ChatResponse } from "../ollama.js";
 import { countTokens } from "../ollama.js";
 import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE, THINK_BY_SHAPE } from "../tiers.js";
+import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
+import { getRoutingInfo } from "../routing.js";
 import type { RunContext } from "../runContext.js";
 
 export const chatSchema = z.object({
@@ -33,11 +35,11 @@ export const chatSchema = z.object({
     .optional()
     .describe(
       "Optional per-call model override. When provided, overrides the " +
-        "tool's tier-resolved model for this call. The tier's timeout " +
-        "(TIER_TIMEOUT_MS) still applies. On timeout, fallback uses the " +
-        "tier-resolved model, NOT the override. Use for receipt-backed " +
-        "orchestration that requires explicit model identity (e.g., " +
-        "research-os reviewer profiles).",
+        "tool's tier-resolved (workhorse) model for this single attempt. " +
+        "The workhorse-tier timeout (TIER_TIMEOUT_MS) applies; on timeout the " +
+        "call fails with TIER_TIMEOUT — chat is single-attempt, with no tier " +
+        "fallback. Use for receipt-backed orchestration that requires explicit " +
+        "model identity (e.g., research-os reviewer profiles).",
     ),
 });
 
@@ -53,49 +55,75 @@ export async function handleChat(
   ctx: RunContext,
 ): Promise<Envelope<ChatResult>> {
   const startedAt = Date.now();
-  // Per-call model override (v2.3.0). Falls back to tier-resolved model
-  // when omitted. chat does not currently engage TIER_FALLBACK, so the
-  // override is the only model used for the single attempt.
+  // Per-call model override (v2.3.0). Falls back to tier-resolved model when
+  // omitted. chat is a single workhorse attempt — no TIER_FALLBACK — so the
+  // override (or the resolved workhorse model) is the only model used.
   const model = input.model ?? resolveTier("workhorse", ctx.tiers);
 
   const messages: ChatMessage[] = input.system
     ? [{ role: "system", content: input.system }, ...input.messages]
     : input.messages;
 
-  // Per-tier num_ctx (v2.4.0). chat runs on workhorse and does not engage
-  // TIER_FALLBACK, so a single resolved value covers the whole call.
-  // Absent when the active profile doesn't set workhorse num_ctx.
+  // Per-tier num_ctx (v2.4.0). chat runs on workhorse; a single resolved value
+  // covers the call. Absent when the profile doesn't set workhorse num_ctx.
   const numCtx = resolveNumCtx("workhorse", ctx.tiers);
-  // 4096 (was 1024): chat is the catch-all that long-form jobs (canon
-  // authoring, dense prose) fall back to when no specialty tool fits; 1024
-  // truncated those even on non-thinking models. Generous but bounded.
+  // 4096 (was 1024): chat is the catch-all long-form jobs fall back to.
   const options: { temperature?: number; num_predict?: number; num_ctx?: number } = {
     temperature: TEMPERATURE_BY_SHAPE.chat,
     num_predict: 4096,
     ...(numCtx !== undefined ? { num_ctx: numCtx } : {}),
   };
-  const resp = await ctx.client.chat({
-    model,
-    messages,
-    options,
-    // chat was the ONLY generate-shaped tool not passing `think`. On a
-    // thinking model CoT consumed the whole num_predict and `content` came
-    // back empty (the 2026-06-09 minimax-m3:cloud incident). Same doctrine
-    // as draft/extract/etc.: short-form shapes suppress CoT.
-    think: THINK_BY_SHAPE.chat,
+
+  // H4: previously ctx.client.chat(req) ran with NO tier and NO AbortSignal.
+  // Without a tier, cloud-primary routing served local unconditionally (chat
+  // never used cloud, carried no backend provenance); without a signal, a
+  // wedged local model held a global semaphore permit for minutes while the
+  // schema falsely claimed a timeout applied. Run the single workhorse attempt
+  // through runWithTimeoutAndFallback so it carries a tier-bounded AbortSignal,
+  // and pass tier='workhorse' so routing can reach cloud. allowFallback:false
+  // preserves chat's deliberate single-attempt shape (no tier cascade).
+  //
+  // Cloud-primary: the outer budget must cover BOTH the cloud attempt and the
+  // local fallback the RoutingOllamaClient runs inside one chat() call (mirrors
+  // runToolInner's effectiveTimeouts) — sum cloud+local. Local-only: just the
+  // local workhorse budget.
+  const budgetMs = ctx.cloud
+    ? ctx.cloud.timeouts.workhorse + ctx.timeouts.workhorse
+    : ctx.timeouts.workhorse;
+  const { value: resp } = await runWithTimeoutAndFallback<ChatResponse>({
+    tool: "ollama_chat",
+    tier: "workhorse",
+    logger: ctx.logger,
+    allowFallback: false,
+    modelFor: () => model,
+    timeoutOverrideMs: { instant: budgetMs, workhorse: budgetMs, deep: budgetMs, embed: budgetMs },
+    // chat was the ONLY generate-shaped tool not passing `think`; on a thinking
+    // model CoT consumed the whole num_predict and content came back empty (the
+    // 2026-06-09 minimax-m3:cloud incident). Suppress CoT like draft/extract.
+    run: (tier, signal) =>
+      ctx.client.chat({ model, messages, options, think: THINK_BY_SHAPE.chat }, signal, tier),
   });
+
+  // Backend routing provenance (cloud-primary). Undefined on the local-only
+  // path — every field below then behaves exactly as before.
+  const routing = getRoutingInfo(resp);
+  const actualModel = routing?.model ?? model;
   const tokens = countTokens(resp);
-  const residency = await ctx.client.residency(model);
+  // Residency is a local-VRAM concept: a cloud-served call has none.
+  const residency = routing?.backend === "cloud" ? null : await ctx.client.residency(actualModel);
 
   const envelope = buildEnvelope<ChatResult>({
     result: { reply: resp.message.content, last_resort: true },
     tier: "workhorse",
-    model,
+    model: actualModel,
     hardwareProfile: ctx.hardwareProfile,
     tokensIn: tokens.in,
     tokensOut: tokens.out,
     startedAt,
     residency,
+    ...(routing?.backend ? { backend: routing.backend } : {}),
+    ...(routing?.degraded ? { degraded: true } : {}),
+    ...(routing?.degrade_reason ? { degradeReason: routing.degrade_reason } : {}),
     ...(input.model !== undefined ? { modelRequested: input.model } : {}),
     ...(numCtx !== undefined ? { numCtxUsed: numCtx } : {}),
   });
