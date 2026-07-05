@@ -214,3 +214,43 @@ describe("backoff internals — deterministic bounds", () => {
     expect(__retryInternals.backoffDelayMs(2, 0)).toBe(800);
   });
 });
+
+describe("HttpOllamaClient — cloud 404 hint (H3)", () => {
+  it("a cloud-kind 404 hint names the cloud model env vars and never says 'ollama pull'", async () => {
+    const mock = vi.fn(async () =>
+      errorResponse(404, "model 'qwen3-coder-next:cloud' not found"),
+    ) as unknown as FetchFn;
+    globalThis.fetch = mock;
+    const client = new HttpOllamaClient({
+      baseUrl: "https://ollama.com",
+      kind: "cloud",
+      apiKey: "sk-test",
+    });
+
+    let caught: unknown;
+    try {
+      await client.generate({ model: "qwen3-coder-next:cloud", prompt: "hi" });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(InternError);
+    const err = caught as InternError;
+    expect(err.code).toBe("OLLAMA_MODEL_MISSING");
+    expect(err.hint).toMatch(/INTERN_CLOUD_MODEL/);
+    expect(err.hint).toMatch(/ollama\.com\/search\?c=cloud/);
+    expect(err.hint.toLowerCase()).not.toContain("ollama pull");
+  });
+
+  it("a local-kind 404 hint still tells the operator to 'ollama pull'", async () => {
+    const mock = vi.fn(async () => errorResponse(404, "model not found")) as unknown as FetchFn;
+    globalThis.fetch = mock;
+    const client = new HttpOllamaClient("http://127.0.0.1:11434"); // local
+    let caught: unknown;
+    try {
+      await client.generate({ model: "nope", prompt: "hi" });
+    } catch (e) {
+      caught = e;
+    }
+    expect((caught as InternError).hint.toLowerCase()).toContain("ollama pull");
+  });
+});

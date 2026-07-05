@@ -180,18 +180,38 @@ describe("RoutingOllamaClient — auth is sticky", () => {
   });
 });
 
-describe("RoutingOllamaClient — deterministic errors surface", () => {
-  it("rethrows a 404 model-missing instead of silently serving local", async () => {
-    const { routing, cloud, local } = makeRouting({
+describe("RoutingOllamaClient — cloud model-missing falls back loudly (H3)", () => {
+  it("a 404 model-missing falls back to local with a DISTINCT cloud_model_missing reason (not a total outage, not silent)", async () => {
+    const { routing, cloud, local, logger } = makeRouting({
       cloudGen: async () => {
         throw modelMissing();
       },
     });
-    await expect(
-      routing.generate({ model: "hermes3:8b", prompt: "x" }, undefined, "deep"),
-    ).rejects.toMatchObject({ code: "OLLAMA_MODEL_MISSING" });
+    const resp = await routing.generate({ model: "hermes3:8b", prompt: "x" }, undefined, "deep");
+    const info = getRoutingInfo(resp);
+    expect(info?.backend).toBe("local");
+    expect(info?.degraded).toBe(true);
+    // Distinct, actionable reason on the envelope — NOT silent, and NOT
+    // conflated with circuit_open / cloud_timeout.
+    expect(info?.degrade_reason).toBe("cloud_model_missing");
     expect(cloud.callCount.generate).toBe(1);
-    expect(local.callCount.generate).toBe(0); // no silent fallback
+    expect(local.callCount.generate).toBe(1); // served — a retired cloud model no longer breaks every call
+    const ev = logger.events.find((e) => e.kind === "backend_fallback");
+    expect((ev as { reason?: string }).reason).toBe("cloud_model_missing");
+  });
+
+  it("does NOT count a model-missing 404 toward the breaker (deterministic config error, not a cloud outage)", async () => {
+    const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 20_000, now: () => 0 });
+    const { routing } = makeRouting({
+      cloudGen: async () => {
+        throw modelMissing();
+      },
+      breaker,
+    });
+    for (let i = 0; i < 5; i++) {
+      await routing.generate({ model: "hermes3:8b", prompt: `m${i}` }, undefined, "deep");
+    }
+    expect(breaker.currentState).toBe("closed"); // never trips on a deterministic config error
   });
 });
 
@@ -253,5 +273,45 @@ describe("CircuitBreaker state machine", () => {
     expect(cloud.callCount.generate).toBe(beforeProbe + 1);
     expect(getRoutingInfo(probe)?.backend).toBe("cloud");
     expect(breaker.currentState).toBe("closed");
+  });
+});
+
+describe("CircuitBreaker — deterministic probe does not wedge half_open (H2)", () => {
+  it("a deterministic 404 on the half-open probe restores OPEN instead of wedging half_open forever", async () => {
+    let clock = 0;
+    let phase: "transient" | "deterministic" = "transient";
+    const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 1_000, now: () => clock });
+    const { routing, cloud } = makeRouting({
+      cloudGen: async () => {
+        throw phase === "transient" ? transient(503) : modelMissing();
+      },
+      breaker,
+    });
+
+    // Open the breaker with 3 transient failures.
+    for (let i = 0; i < 3; i++) {
+      await routing.generate({ model: "hermes3:8b", prompt: `o${i}` }, undefined, "deep");
+    }
+    expect(breaker.currentState).toBe("open");
+    const afterOpen = cloud.callCount.generate;
+
+    // Advance past cooldown → the next call is admitted as the half-open probe,
+    // which now throws a DETERMINISTIC 404.
+    clock = 2_000;
+    phase = "deterministic";
+    await routing.generate({ model: "hermes3:8b", prompt: "probe" }, undefined, "deep");
+    expect(cloud.callCount.generate).toBe(afterOpen + 1); // the probe was admitted
+
+    // The deterministic 404 must NOT leave the breaker stuck in half_open with
+    // halfOpenInFlight=true forever. It must be back to OPEN with a fresh
+    // cooldown. Before the fix, state stays half_open and allowCloud() returns
+    // false permanently → cloud is never attempted again.
+    expect(breaker.currentState).toBe("open");
+
+    // Advance past ANOTHER cooldown → a fresh probe must be admitted, proving
+    // the breaker recovered rather than wedging.
+    clock = 4_000;
+    await routing.generate({ model: "hermes3:8b", prompt: "probe2" }, undefined, "deep");
+    expect(cloud.callCount.generate).toBe(afterOpen + 2); // a new probe got through
   });
 });

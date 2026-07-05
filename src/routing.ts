@@ -50,6 +50,7 @@ export type DegradeReason =
   | "cloud_rate_limited"
   | "cloud_unreachable"
   | "cloud_auth_failed"
+  | "cloud_model_missing"
   | "circuit_open";
 
 export type Backend = "cloud" | "local";
@@ -167,6 +168,21 @@ export class CircuitBreaker {
   recordAuthFailure(): void {
     this.state = "misconfigured";
     this.halfOpenInFlight = false;
+  }
+
+  /**
+   * Release a half-open probe that neither succeeded nor is a countable
+   * failure — used when the probe threw a DETERMINISTIC error (e.g. a 404
+   * model-missing) that must not count toward the breaker but also must not
+   * wedge it in half_open forever. Clears the in-flight flag and, if we were
+   * probing, restores OPEN + re-arms the cooldown so a later probe can run.
+   */
+  releaseProbe(): void {
+    this.halfOpenInFlight = false;
+    if (this.state === "half_open") {
+      this.state = "open";
+      this.openedAt = this.now();
+    }
   }
 }
 
@@ -334,9 +350,18 @@ export class RoutingOllamaClient implements OllamaClient {
     } catch (err) {
       const cls = classifyCloudError(err);
       if (cls === "deterministic") {
-        // Surface the real error (e.g. retired cloud model id) — do NOT count
-        // toward the breaker and do NOT silently serve a different local model.
-        throw err;
+        // H2: release the half-open probe so a deterministic 404 can't wedge
+        // the breaker in half_open forever (it neither succeeds nor counts as
+        // a transient failure).
+        this.breaker.releaseProbe();
+        // H3: a retired/typo'd cloud model id is EXTERNAL and out of the
+        // operator's control — hard-failing every generative call while a
+        // healthy local sat idle was a total outage. Fall back to local with a
+        // DISTINCT, loud degrade_reason (the same posture as an auth misconfig,
+        // which also serves local). The reason rides every envelope + a
+        // backend_fallback event, so the misconfiguration surfaces WITHOUT
+        // breaking the server. Deterministic → not counted toward the breaker.
+        return this.serveLocal(req, signal, tier, "cloud_model_missing", call);
       }
       if (cls === "auth") {
         this.breaker.recordAuthFailure();
