@@ -618,15 +618,21 @@ export class HttpOllamaClient implements OllamaClient {
         // H3: a cloud client's 404 means the pinned CLOUD model id was not
         // found — Ollama Cloud rotates/retires cloud ids server-side with no
         // local change, so 'ollama pull' is the WRONG remedy there; the fix is
-        // INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL. Emit a kind-specific hint.
-        const hint =
-          this.kind === "cloud"
-            ? "The pinned CLOUD model was not found (404) — Ollama Cloud may have retired the id (cloud model ids rotate server-side). Set INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL to a current id from https://ollama.com/search?c=cloud (cloud models are served remotely, not downloaded to your machine). The server falls back to local meanwhile (degrade_reason: cloud_model_missing)."
-            : "Run 'ollama pull <model>' for the model named by your INTERN_PROFILE (check tiers in README or `intern profile`). See the full tier list in the README.";
+        // INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL. Two inline throws (not a
+        // hint variable) keep the grep-based errorHintQuality test able to see
+        // both hint literals.
+        if (this.kind === "cloud") {
+          throw new InternError(
+            "OLLAMA_MODEL_MISSING",
+            `Model not found (404): ${text}`,
+            "The pinned CLOUD model was not found (404) — Ollama Cloud may have retired the id (cloud model ids rotate server-side). Set INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL to a current id from https://ollama.com/search?c=cloud (cloud models are served remotely, not downloaded to your machine). The server falls back to local meanwhile (degrade_reason: cloud_model_missing).",
+            false,
+          );
+        }
         throw new InternError(
           "OLLAMA_MODEL_MISSING",
           `Model not found (404): ${text}`,
-          hint,
+          "Run 'ollama pull <model>' for the model named by your INTERN_PROFILE (check tiers in README or `intern profile`). See the full tier list in the README.",
           false,
         );
       }

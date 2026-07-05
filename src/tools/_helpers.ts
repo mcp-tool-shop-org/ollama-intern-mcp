@@ -53,7 +53,7 @@ export function sanitizePromptField(
     throw new InternError(
       "SCHEMA_INVALID",
       `${opts.fieldName} exceeds ${opts.maxChars} chars after stripping newlines/fences (got ${cleaned.length}).`,
-      `${opts.fieldName} is interpolated directly into the model prompt — keep it a concise single-line value under ${opts.maxChars} chars.`,
+      `Shorten ${opts.fieldName} to a concise single-line value under ${opts.maxChars} chars — it is interpolated directly into the model prompt, so newlines and code fences are stripped.`,
       false,
     );
   }

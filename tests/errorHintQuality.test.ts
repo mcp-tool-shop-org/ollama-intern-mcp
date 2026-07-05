@@ -117,17 +117,32 @@ describe("error hint quality", () => {
       ).toBe(true);
     }
 
-    // OLLAMA_MODEL_MISSING → mention `ollama pull` and the profile path
+    // OLLAMA_MODEL_MISSING has two flavors (H3): the LOCAL hint says `ollama
+    // pull` + names the profile path; the CLOUD hint names the cloud model env
+    // vars and deliberately NEVER says `ollama pull` (cloud models aren't
+    // pulled to the local machine).
     const missing = byCode.get("OLLAMA_MODEL_MISSING") ?? [];
     expect(missing.length).toBeGreaterThan(0);
-    for (const h of missing) {
-      expect(
-        /ollama pull/i.test(h),
-        `OLLAMA_MODEL_MISSING hint should mention 'ollama pull' — got: ${h}`,
-      ).toBe(true);
+    const localMissing = missing.filter((h) => /ollama pull/i.test(h));
+    const cloudMissing = missing.filter((h) => /INTERN_CLOUD_MODEL/i.test(h));
+    expect(
+      localMissing.length,
+      "expected a local `ollama pull` OLLAMA_MODEL_MISSING hint",
+    ).toBeGreaterThan(0);
+    for (const h of localMissing) {
       expect(
         /INTERN_PROFILE|README|tier/i.test(h),
-        `OLLAMA_MODEL_MISSING hint should point at INTERN_PROFILE / README / tier — got: ${h}`,
+        `local OLLAMA_MODEL_MISSING hint should point at INTERN_PROFILE / README / tier — got: ${h}`,
+      ).toBe(true);
+    }
+    for (const h of cloudMissing) {
+      expect(
+        /ollama pull/i.test(h),
+        `cloud OLLAMA_MODEL_MISSING hint must NOT say 'ollama pull' — got: ${h}`,
+      ).toBe(false);
+      expect(
+        /INTERN_CLOUD_MODEL|INTERN_CLOUD_DEEP_MODEL/i.test(h),
+        `cloud OLLAMA_MODEL_MISSING hint should name the cloud model env vars — got: ${h}`,
       ).toBe(true);
     }
 
