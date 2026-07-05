@@ -142,6 +142,12 @@ jobs:
 
   docker:
     name: Build & push image (GHCR)
+    # H8: gate the GHCR push on the npm job — it holds the ONLY verify
+    # (typecheck+build+test) and tag-vs-package.json guard. Without this, a tag
+    # on a failing-test / version-mismatched commit published nothing to npm but
+    # still built the broken tree and pushed :latest to GHCR. needs: npm means
+    # docker is skipped whenever verify or the tag guard fails.
+    needs: npm
     runs-on: ubuntu-latest
     permissions:
       contents: read

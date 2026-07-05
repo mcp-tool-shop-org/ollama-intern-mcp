@@ -12,6 +12,8 @@ on:
       - "tests/**"
       - ".github/workflows/**"
       - ".npmignore"
+      - "Dockerfile"
+      - ".dockerignore"
   pull_request:
     paths:
       - "package.json"
@@ -22,6 +24,8 @@ on:
       - "tests/**"
       - ".github/workflows/**"
       - ".npmignore"
+      - "Dockerfile"
+      - ".dockerignore"
   workflow_dispatch:
     inputs:
       run_generate:
@@ -105,6 +109,26 @@ jobs:
           npm install --no-audit --no-fund
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
+
+  docker-build:
+    # H8: the release docker job now `needs: npm`, so a broken Dockerfile would
+    # otherwise surface only AFTER npm already published. Prove the release
+    # image BUILDS on every push/PR that could affect it — build only
+    # (push: false); the real tagged push happens in release.yml.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # docker/* JS actions still ship Node 20 entrypoints (removed from runners
+    # 2026-09-16); force them onto Node 24 as release.yml does.
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
 
   # ── Cloud smoke (MANUAL ONLY) ──────────────────────────────────────────────
   # Smoke-tests the v2.7.0 opt-in cloud-routing path against the REAL Ollama
