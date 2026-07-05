@@ -47,7 +47,7 @@
 
 ## D. Shipping Hygiene
 
-- [x] `[all]` `verify` script exists (test + build + smoke in one command) (2026-05-12) — `npm run verify` = typecheck + build + test; <!-- TEST_COUNT:start -->1006<!-- TEST_COUNT:end --> tests pass
+- [x] `[all]` `verify` script exists (test + build + smoke in one command) (2026-05-12) — `npm run verify` = typecheck + build + test; <!-- TEST_COUNT:start -->1043<!-- TEST_COUNT:end --> tests pass
 - [x] `[all]` Version in manifest matches git tag (2026-05-12) — v<!-- VERSION:start -->2.7.2<!-- VERSION:end --> in package.json, tagged on publish; `src/version.ts` drift fixed in v2.3.0 (now reads from `package.json`)
 - [x] `[all]` Dependency scanning runs in CI (ecosystem-appropriate) (2026-05-12) — `npm audit --omit=dev --audit-level=high` in [.github/workflows/ci.yml](.github/workflows/ci.yml)
 - [x] `[all]` Automated dependency update mechanism exists (2026-05-12) — [.github/dependabot.yml](.github/dependabot.yml), monthly, grouped
