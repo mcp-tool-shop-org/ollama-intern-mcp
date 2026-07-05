@@ -239,3 +239,59 @@ describe("assertSafeFilePath — shell-injection guard", () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// H7: SECURITY.md #8 claims batch_proof_check validates cwd against
+// allowed_roots. The check did not exist — a caller could pass an
+// attacker-controlled cwd and eslint/pytest would execute config from
+// it (arbitrary code execution). An explicit cwd must be contained in a
+// caller-declared allowed_roots, validated BEFORE any child is spawned.
+// ═══════════════════════════════════════════════════════════════
+describe("ollama_batch_proof_check — cwd containment (H7)", () => {
+  it("refuses a cwd outside allowed_roots with SCHEMA_INVALID and spawns NO child", async () => {
+    let spawned = false;
+    __setSpawner(async () => {
+      spawned = true;
+      return fakeOk();
+    });
+    await expect(
+      handleBatchProofCheck(
+        {
+          checks: ["eslint"],
+          cwd: "/tmp/attacker-controlled",
+          allowed_roots: ["/home/me/project"],
+        },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+    expect(spawned).toBe(false); // never launched from the undeclared cwd
+  });
+
+  it("refuses a custom cwd when allowed_roots is omitted (must declare intent)", async () => {
+    let spawned = false;
+    __setSpawner(async () => {
+      spawned = true;
+      return fakeOk();
+    });
+    await expect(
+      handleBatchProofCheck({ checks: ["eslint"], cwd: "/tmp/whatever" }, makeCtx()),
+    ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+    expect(spawned).toBe(false);
+  });
+
+  it("runs when the cwd is contained in an allowed_root", async () => {
+    __setSpawner(async () => fakeOk());
+    const root = process.cwd(); // a real absolute dir; cwd === root is contained
+    const env = await handleBatchProofCheck(
+      { checks: ["eslint"], cwd: root, allowed_roots: [root] },
+      makeCtx(),
+    );
+    expect(env.result.checks[0].status).toBe("pass");
+  });
+
+  it("runs with no cwd + no allowed_roots (the server's own trusted cwd)", async () => {
+    __setSpawner(async () => fakeOk());
+    const env = await handleBatchProofCheck({ checks: ["eslint"] }, makeCtx());
+    expect(env.result.all_passed).toBe(true);
+  });
+});

@@ -21,6 +21,7 @@
 
 import { z } from "zod";
 import { spawn } from "node:child_process";
+import { resolve, relative, isAbsolute } from "node:path";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
@@ -65,6 +66,44 @@ export function assertSafeFilePath(p: string, fieldName = "files"): void {
   }
 }
 
+/**
+ * Canonical "is child contained in root" check — mirrors export.ts's
+ * allowed_roots gate. After resolving both, path.relative() from root to
+ * child must not climb out ("..") and must not be absolute (a different
+ * Windows drive resolves to an absolute relative path). Pure path math —
+ * does not touch the filesystem.
+ */
+function isContained(child: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * H7: refuse a caller-supplied cwd that isn't contained in a caller-declared
+ * allowed_root. batch_proof_check shells out to eslint/pytest/etc., which
+ * execute config + plugins FROM the cwd — an undeclared cwd is an
+ * arbitrary-code-execution surface. Throws SCHEMA_INVALID (before any child
+ * is spawned) when allowed_roots is missing/empty or the cwd escapes.
+ */
+function assertCwdContained(cwd: string, allowedRoots: string[] | undefined): void {
+  if (!allowedRoots || allowedRoots.length === 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      "batch_proof_check: a custom cwd requires a non-empty allowed_roots.",
+      "When you pass an explicit cwd, also declare allowed_roots (absolute directories the proof run may launch from) — the run executes tool config (eslint.config.js, plugins, pytest conftest) from the cwd, so an undeclared cwd is a code-execution surface. Omit cwd to run in the server's own working directory.",
+      false,
+    );
+  }
+  if (!allowedRoots.some((root) => isContained(cwd, root))) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `batch_proof_check: cwd is not contained in any allowed_roots: ${cwd}`,
+      `Allowed roots: ${allowedRoots.join(", ")}. Add the cwd's parent to allowed_roots, or pick a cwd inside a declared root.`,
+      false,
+    );
+  }
+}
+
 export const batchProofCheckSchema = z.object({
   checks: z
     .array(z.enum(["typescript", "eslint", "pytest", "ruff", "cargo-check"]))
@@ -81,7 +120,13 @@ export const batchProofCheckSchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe("Working directory for the spawned CLIs. Default: process.cwd()."),
+    .describe("Working directory for the spawned CLIs. Default: process.cwd(). When set, must be contained in allowed_roots."),
+  allowed_roots: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      "Absolute directories a custom `cwd` may launch from. REQUIRED when `cwd` is set — the proof run executes tool config (eslint.config.js, plugins, pytest conftest) FROM the cwd, so an undeclared cwd is a code-execution surface. Omit both to run in the server's own working directory.",
+    ),
   timeout_ms: z
     .number()
     .int()
@@ -324,6 +369,14 @@ export async function handleBatchProofCheck(
   ctx: RunContext,
 ): Promise<Envelope<BatchProofCheckResult>> {
   const startedAt = Date.now();
+  // H7: a caller-supplied cwd must be contained in a caller-declared
+  // allowed_roots — the proof run executes tool config (eslint.config.js,
+  // plugins, pytest conftest) FROM the cwd, so an undeclared cwd is an
+  // arbitrary-code-execution surface (SECURITY.md #8). Validate BEFORE
+  // spawning any child. Omitting cwd uses the server's own trusted cwd.
+  if (input.cwd !== undefined) {
+    assertCwdContained(resolve(input.cwd), input.allowed_roots);
+  }
   const cwd = input.cwd ?? process.cwd();
   const timeoutMs = input.timeout_ms ?? 60_000;
 
