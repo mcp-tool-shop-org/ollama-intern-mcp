@@ -89,6 +89,19 @@ export async function handleCorpusAmend(
   input: CorpusAmendInput,
   ctx: RunContext,
 ): Promise<Envelope<CorpusAmendResult>> {
+  // M2: registered via corpusAmendSchema.shape (index.ts), so the top-level
+  // .refine() (chunk_overlap < chunk_chars) is dropped at the transport layer.
+  // Re-run the full schema here so an invalid geometry fails loud with
+  // SCHEMA_INVALID before we take the corpus lock or mutate anything.
+  const parsed = corpusAmendSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      parsed.error.issues[0]?.message ?? "Invalid ollama_corpus_amend input.",
+      "chunk_overlap must be strictly less than chunk_chars; fix the flagged field and retry.",
+      false,
+    );
+  }
   const startedAt = Date.now();
   const activeModel = resolveTier("embed", ctx.tiers);
 
