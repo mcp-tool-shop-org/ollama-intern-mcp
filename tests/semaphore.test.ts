@@ -111,3 +111,57 @@ describe("parseConcurrency", () => {
     expect(() => parseConcurrency("")).toThrow(InternError);
   });
 });
+
+describe("Semaphore abort-aware acquire (H1)", () => {
+  it("aborting a queued waiter dequeues it immediately and never consumes a permit", async () => {
+    const sem = new Semaphore(1);
+    const release1 = await sem.acquire(); // hold the only permit
+    const controller = new AbortController();
+    const queued = sem.acquire(controller.signal);
+    queued.catch(() => {}); // pre-attach so the later rejection isn't "unhandled"
+    expect(sem.pending).toBe(1);
+
+    // Must settle NOW — not when release1 is eventually called.
+    controller.abort();
+    expect(sem.pending).toBe(0); // dequeued synchronously on abort
+    await expect(queued).rejects.toMatchObject({ name: "AbortError" });
+
+    // The aborted waiter never took the permit: a fresh acquire still blocks
+    // until the real holder frees it.
+    let granted = false;
+    const next = sem.acquire().then((r) => {
+      granted = true;
+      return r;
+    });
+    await Promise.resolve();
+    expect(granted).toBe(false); // permit still held by release1, not leaked
+    release1();
+    const releaseNext = await next;
+    expect(granted).toBe(true);
+    releaseNext();
+  });
+
+  it("acquire with an already-aborted signal rejects without taking a permit", async () => {
+    const sem = new Semaphore(1);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(sem.acquire(controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    // Permit untouched — a normal acquire still succeeds immediately.
+    const r = await sem.acquire();
+    expect(sem.wouldBlock).toBe(true);
+    r();
+  });
+
+  it("a waiter granted just before a late abort keeps its permit (no double-release)", async () => {
+    const sem = new Semaphore(1);
+    const r1 = await sem.acquire();
+    const controller = new AbortController();
+    const queued = sem.acquire(controller.signal);
+    r1(); // grant the queued waiter NOW, before abort
+    const r2 = await queued; // resolves — it got the permit
+    controller.abort(); // late abort: waiter already granted → must be a no-op
+    expect(sem.wouldBlock).toBe(true); // r2 still holds the permit
+    r2();
+    expect(sem.wouldBlock).toBe(false);
+  });
+});

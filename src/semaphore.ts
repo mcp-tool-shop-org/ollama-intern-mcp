@@ -11,6 +11,18 @@
 
 import { InternError } from "./errors.js";
 
+/**
+ * Build an AbortError-named Error for a cancelled acquire. The name matches
+ * the DOMException the fetch path throws on abort, so ollama.ts's
+ * `err.name === "AbortError"` mapping treats a permit-queue cancellation
+ * exactly like a fetch-abort (→ OLLAMA_TIMEOUT).
+ */
+function makeAbortError(): Error {
+  const err = new Error("Semaphore acquire aborted before a permit was free");
+  err.name = "AbortError";
+  return err;
+}
+
 export class Semaphore {
   private permits: number;
   private maxPermits: number;
@@ -31,20 +43,42 @@ export class Semaphore {
     this.maxPermits = permits;
   }
 
-  async acquire(): Promise<() => void> {
+  async acquire(signal?: AbortSignal): Promise<() => void> {
+    // H1: already cancelled before we even try — take no permit.
+    if (signal?.aborted) throw makeAbortError();
     if (this.permits > 0) {
       this.permits--;
       const ticket = this.nextTicket++;
       this.inFlightStartedAt.set(ticket, Date.now());
       return () => this.release(ticket);
     }
-    return new Promise<() => void>((resolve) => {
-      this.queue.push(() => {
+    // Out of permits — queue. H1: make the wait abortable so a tier timeout
+    // (or any caller signal) can DEQUEUE this waiter instead of leaving it
+    // stuck until an unrelated holder releases far past its budget. A
+    // cancelled waiter must never consume a permit.
+    return new Promise<() => void>((resolve, reject) => {
+      let cleanup = (): void => {};
+      const grant = (): void => {
+        cleanup();
         this.permits--;
         const ticket = this.nextTicket++;
         this.inFlightStartedAt.set(ticket, Date.now());
         resolve(() => this.release(ticket));
-      });
+      };
+      if (signal) {
+        const onAbort = (): void => {
+          // Remove this waiter so a later release() never runs it (which
+          // would consume a permit for a call that already gave up), and
+          // settle NOW rather than when an unrelated holder frees.
+          const idx = this.queue.indexOf(grant);
+          if (idx !== -1) this.queue.splice(idx, 1);
+          cleanup();
+          reject(makeAbortError());
+        };
+        cleanup = () => signal.removeEventListener("abort", onAbort);
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+      this.queue.push(grant);
     });
   }
 

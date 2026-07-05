@@ -478,7 +478,28 @@ export class HttpOllamaClient implements OllamaClient {
         ...(sideProfileName ? { profile_name: sideProfileName } : {}),
       });
     }
-    const release = await ollamaSemaphore.acquire();
+    let release: () => void;
+    try {
+      // H1: pass the tier-timeout signal so a call still QUEUED for a permit
+      // can be cancelled. Without it, a fired tier timeout couldn't dequeue
+      // the waiter — the call hung until an unrelated holder released (far
+      // past its budget), then failed instantly on the already-aborted signal.
+      release = await ollamaSemaphore.acquire(signal);
+    } catch (err) {
+      // Abort-while-queued → the same OLLAMA_TIMEOUT the fetch-abort path
+      // emits, so runWithTimeoutAndFallback and the routing breaker classify
+      // it uniformly (transient → fall back) instead of hanging or surfacing
+      // a raw AbortError.
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new InternError(
+          "OLLAMA_TIMEOUT",
+          "Ollama request aborted while queued for a concurrency permit",
+          "The tier timeout fired before a permit was free — the call was dequeued, not run. Reduce concurrent load (INTERN_MAX_CONCURRENT), raise the tier timeout, or check for a wedged in-flight call ('ollama ps').",
+          true,
+        );
+      }
+      throw err;
+    }
     try {
       return await this.postWithRetry<TReq, TRes>(path, body, signal);
     } finally {
