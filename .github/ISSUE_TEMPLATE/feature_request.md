@@ -14,7 +14,7 @@ Read this before filing:
 - The atom freeze was lifted at v2.1.0. New atoms are allowed when there is an
   audit-justified gap; each new atom needs tests + a handbook page + a
   CHANGELOG entry. Please describe the gap below — what job today can't be
-  done with the current 41 tools, and why composing existing ones doesn't fit.
+  done with the current 42 tools, and why composing existing ones doesn't fit.
 - Hardware profiles, bug fixes, docs, and internals work are always welcome
   without this checklist.
 
