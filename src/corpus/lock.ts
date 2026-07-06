@@ -17,6 +17,20 @@
  * the prior promise, then registers its own. Released in a `finally` so a
  * throw inside `fn` doesn't strand the lock.
  *
+ * H1-res (2026-07 health pass) — this queued wait is deliberately NOT
+ * abort-aware, unlike the Ollama semaphore (semaphore.ts, H1). Two reasons
+ * it's acceptable: (1) corpus mutations (index / refresh / amend) are NOT
+ * wrapped in the tier-timeout guardrail — they're bounded corpus operations,
+ * not generative tier calls — so no outer AbortSignal reaches this call path
+ * to cancel a wait (every caller — indexCorpus, refreshCorpus, corpusAmend —
+ * passes none). (2) A holder's runtime is bounded: its inner embed batches are
+ * tier-bounded (guardrails/embedTimeout.ts) and index/refresh/amend are finite
+ * passes over a finite corpus, so a waiter blocks at most one holder's bounded
+ * runtime, never indefinitely. Single-process, same-corpus concurrent mutation
+ * is also rare (one server process is the only supported config). Making the
+ * queued turn itself interruptible would break the serialization guarantee this
+ * lock exists to provide (torn corpus/manifest writes) for no real-world gain.
+ *
  * Phase 7 / FT-001 event-emission policy: `withCorpusLock` is silent
  * by default. A future wave can wire an optional `onWait` callback for
  * operators who want lock-contention visibility; today the only
