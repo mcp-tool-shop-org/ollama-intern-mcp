@@ -107,6 +107,19 @@ export type LogEvent = CorrelationFields &
         tier?: Tier;
         model?: string;
       }
+    // Emitted ONCE per routing client the first time a STANDBY-mode call
+    // actually escalates to Ollama Cloud — the runtime disclosure at the
+    // point of first egress (data leaves the machine), paired with a loud
+    // stderr line. Cloud-primary discloses at startup instead, so this
+    // event is standby-only today; `mode` is carried for future use.
+    | {
+        kind: "cloud_egress";
+        ts: string;
+        host: string;
+        model: string;
+        mode: "standby" | "primary";
+        tier?: Tier;
+      }
     | { kind: "guardrail"; ts: string; tool: string; rule: string; action: string; detail?: unknown }
     | {
         kind: "prewarm";

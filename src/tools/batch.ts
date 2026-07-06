@@ -29,6 +29,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
 import { getRoutingInfo, type Backend } from "../routing.js";
+import { cloudMayServe } from "../profiles.js";
 import { countTokens } from "../ollama.js";
 import { InternError, toErrorShape, type ErrorShape } from "../errors.js";
 import type { RunContext } from "../runContext.js";
@@ -174,14 +175,18 @@ async function runBatchInner<I extends BatchItem, R>(
   // window while the cloud attempt keeps its own timeout and the outer budget
   // always exceeds it (a raw sub-cloud-timeout override would otherwise abort
   // the outer signal mid-cloud, starving local and tripping the breaker).
+  // F2: batch carries no per-call backend directive, so under cloud STANDBY
+  // every item is pure local — budgets must not be inflated by cloud
+  // timeouts (cloudMayServe without a backend arg is false in standby).
+  const cloudForBudget = cloudMayServe(ctx.cloud) ? ctx.cloud : undefined;
   const effectiveTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? ctx.cloud
+      ? cloudForBudget
         ? {
-            instant: ctx.cloud.timeouts.instant + input.tierBudgetMsOverride,
-            workhorse: ctx.cloud.timeouts.workhorse + input.tierBudgetMsOverride,
-            deep: ctx.cloud.timeouts.deep + input.tierBudgetMsOverride,
-            embed: ctx.cloud.timeouts.embed + input.tierBudgetMsOverride,
+            instant: cloudForBudget.timeouts.instant + input.tierBudgetMsOverride,
+            workhorse: cloudForBudget.timeouts.workhorse + input.tierBudgetMsOverride,
+            deep: cloudForBudget.timeouts.deep + input.tierBudgetMsOverride,
+            embed: cloudForBudget.timeouts.embed + input.tierBudgetMsOverride,
           }
         : {
             instant: input.tierBudgetMsOverride,
@@ -189,12 +194,12 @@ async function runBatchInner<I extends BatchItem, R>(
             deep: input.tierBudgetMsOverride,
             embed: input.tierBudgetMsOverride,
           }
-      : ctx.cloud
+      : cloudForBudget
         ? {
-            instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,
-            workhorse: ctx.cloud.timeouts.workhorse + ctx.timeouts.workhorse,
-            deep: ctx.cloud.timeouts.deep + ctx.timeouts.deep,
-            embed: ctx.cloud.timeouts.embed + ctx.timeouts.embed,
+            instant: cloudForBudget.timeouts.instant + ctx.timeouts.instant,
+            workhorse: cloudForBudget.timeouts.workhorse + ctx.timeouts.workhorse,
+            deep: cloudForBudget.timeouts.deep + ctx.timeouts.deep,
+            embed: cloudForBudget.timeouts.embed + ctx.timeouts.embed,
           }
         : ctx.timeouts;
 

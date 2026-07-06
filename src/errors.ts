@@ -7,6 +7,10 @@ export type ErrorCode =
   | "OLLAMA_UNREACHABLE"
   | "OLLAMA_MODEL_MISSING"
   | "OLLAMA_AUTH_FAILED"
+  // A call requested backend:'cloud' but no cloud is configured (no
+  // OLLAMA_API_KEY). Distinct from CONFIG_INVALID so orchestrators can
+  // branch on "escalation unavailable" without string-matching hints.
+  | "CLOUD_NOT_CONFIGURED"
   | "OLLAMA_TIMEOUT"
   | "TIER_TIMEOUT"
   | "PROTECTED_PATH_WRITE"

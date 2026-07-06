@@ -53,6 +53,12 @@ export interface DoctorResult {
    */
   cloud?: {
     enabled: boolean;
+    /**
+     * 'primary' = cloud serves the generative tiers by default (v2.7.0);
+     * 'standby' = local-primary, cloud serves only per-call backend:'cloud'
+     * escalations (F2a, v2.9).
+     */
+    mode: "primary" | "standby";
     host: string;
     reachable: boolean;
     /**
@@ -259,6 +265,7 @@ export async function handleDoctor(
     const auth: "failed" | "unverified" = /HTTP 40[13]/.test(reason) ? "failed" : "unverified";
     cloudStatus = {
       enabled: true,
+      mode: ctx.cloud.standby ? "standby" : "primary",
       host: ctx.cloud.host,
       reachable,
       auth,

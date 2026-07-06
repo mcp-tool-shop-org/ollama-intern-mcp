@@ -511,9 +511,12 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  // Cloud is opt-in. loadCloudConfig returns null unless OLLAMA_CLOUD_PRIMARY
-  // is enabled, and throws CONFIG_INVALID (fail-fast) if it's enabled without
-  // a key. Catch here so the operator sees a one-liner, not a stack.
+  // Cloud is opt-in. loadCloudConfig returns null when neither
+  // OLLAMA_CLOUD_PRIMARY nor OLLAMA_API_KEY is set, a STANDBY config when
+  // only the key is set (F2a — local-primary, per-call escalation), a
+  // primary config when both are, and throws CONFIG_INVALID (fail-fast) if
+  // PRIMARY is enabled without a key. Catch here so the operator sees a
+  // one-liner, not a stack.
   let cloud: CloudConfig | null;
   try {
     cloud = loadCloudConfig();
@@ -532,9 +535,11 @@ async function main(): Promise<void> {
   const cloudClient = cloud
     ? new HttpOllamaClient({ baseUrl: cloud.host, apiKey: cloud.apiKey, kind: "cloud" })
     : null;
-  // When cloud is on, every tool talks to a RoutingOllamaClient that tries
-  // cloud first and falls back to the local profile. Otherwise ctx.client is
-  // the plain local client — byte-identical to pre-cloud behavior.
+  // When cloud is configured, every tool talks to a RoutingOllamaClient —
+  // cloud-primary tries cloud first with local fallback; STANDBY (F2a) stays
+  // local-primary and serves cloud only on per-call backend:'cloud'
+  // escalations. Otherwise ctx.client is the plain local client —
+  // byte-identical to pre-cloud behavior.
   const client: OllamaClient =
     cloud && cloudClient
       ? new RoutingOllamaClient({
@@ -545,6 +550,8 @@ async function main(): Promise<void> {
           cloudTimeouts: cloud.timeouts,
           cloudNumCtx: cloud.numCtx,
           logger,
+          standby: cloud.standby,
+          cloudHost: cloud.host,
         })
       : local;
 
@@ -557,10 +564,15 @@ async function main(): Promise<void> {
     cloud,
   };
 
-  if (cloud) {
+  if (cloud && !cloud.standby) {
     // eslint-disable-next-line no-console
     console.error(
       `ollama-intern: cloud-primary ON — ${cloud.tiers.instant} (deep: ${cloud.tiers.deep}) via ${cloud.host}; local fallback profile=${profile.name}. Embeddings stay local.`,
+    );
+  } else if (cloud) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern: cloud STANDBY — local-primary (profile=${profile.name}); per-call backend:'cloud' escalation available → ${cloud.host} (${cloud.tiers.instant}; deep: ${cloud.tiers.deep}). Zero egress until a call requests it. Embeddings stay local.`,
     );
   }
 
@@ -606,10 +618,14 @@ async function main(): Promise<void> {
         op: "startup",
       });
     }
-    // Cloud reachability + auth probe (cloud-primary mode). Never crashes
+    // Cloud reachability + auth probe (cloud-primary ONLY). Never crashes
     // startup — a down/misconfigured cloud just means calls fall back to
     // local. Surfaces the auth status immediately so a bad key is obvious.
-    if (cloudClient && cloud) {
+    // STANDBY skips this deliberately: a startup probe would itself be
+    // egress before any call opted in — a globally-exported OLLAMA_API_KEY
+    // must not make the server phone home on boot (the zero-egress
+    // guarantee covers startup, not just tool calls).
+    if (cloudClient && cloud && !cloud.standby) {
       const cloudProbe = await cloudClient.probe(5_000);
       if (!cloudProbe.ok) {
         // eslint-disable-next-line no-console
@@ -876,7 +892,7 @@ async function runCliDoctor(): Promise<void> {
   if (r.ollama.error) out.push(`  error:     ${r.ollama.error}`);
   out.push(``);
   if (r.cloud) {
-    out.push(`Cloud (primary):`);
+    out.push(`Cloud (${r.cloud.mode}):`);
     out.push(`  host:      ${r.cloud.host}`);
     out.push(`  reachable: ${r.cloud.reachable ? "yes" : "no"}`);
     out.push(

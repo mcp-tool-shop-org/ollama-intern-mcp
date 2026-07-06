@@ -13,7 +13,9 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent, timestamp } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
-import { getRoutingInfo } from "../routing.js";
+import { getRoutingInfo, setRouteDirective } from "../routing.js";
+import { cloudMayServe } from "../profiles.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 import {
   withRunContext as withRunCorrelation,
@@ -114,6 +116,19 @@ export interface RunToolInput<T> {
    * `runWithTimeoutAndFallback` honor the operator's intent.
    */
   tierBudgetMsOverride?: number;
+  /**
+   * F2b (v2.9) — optional per-call backend directive.
+   *
+   * 'cloud' escalates THIS call to Ollama Cloud: it is the only way a call
+   * reaches cloud in standby mode (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY
+   * unset), a no-op under cloud-primary (cloud is already the default),
+   * and a hard CLOUD_NOT_CONFIGURED refusal when no cloud is configured —
+   * the call is never silently served local while claiming escalation.
+   * 'local' pins THIS call local (zero egress) even under cloud-primary.
+   * Omitted → the mode default. Envelope `backend`/`degraded`/
+   * `degrade_reason` carry the provenance either way.
+   */
+  backend?: "cloud" | "local";
 }
 
 export async function runTool<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
@@ -142,6 +157,19 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   const startedAt = Date.now();
   const { ctx } = input;
   const initialTier = input.tier;
+
+  // F2b: a backend:'cloud' directive with no cloud configured is a
+  // configuration error the caller must see. Refusing loudly beats silently
+  // running the local model while the caller believes a cloud flagship
+  // answered — the verify-claims jury's validity depends on this refusal.
+  if (input.backend === "cloud" && !ctx.cloud) {
+    throw new InternError(
+      "CLOUD_NOT_CONFIGURED",
+      `Tool ${input.tool} requested backend:'cloud' but no Ollama Cloud is configured.`,
+      "Set OLLAMA_API_KEY (create a key at https://ollama.com/settings/keys) to arm cloud standby — calls stay local unless they request backend:'cloud'. Optionally set OLLAMA_CLOUD_PRIMARY=1 for cloud-primary routing. This call was refused, not silently served by the local model.",
+      false,
+    );
+  }
   // Track the num_ctx that actually went on the wire for the final
   // (successful) attempt. Per-tier, so a fallback from workhorse→instant
   // picks up the instant num_ctx (or undefined if instant has none set).
@@ -164,14 +192,19 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   // (cloud aborts on ITS timer, leaving the outer signal live for local). A raw
   // sub-cloud-timeout override would otherwise abort the outer signal mid-cloud
   // and hand local an already-dead signal (also spuriously tripping the breaker).
+  // F2: cloud can serve this call only in primary mode or on an explicit
+  // per-call escalation (cloudMayServe). Standby calls without a directive
+  // are pure local — their budgets must NOT be inflated by cloud timeouts
+  // (a standby key would otherwise triple every local tier ceiling).
+  const cloudForBudget = cloudMayServe(ctx.cloud, input.backend) ? ctx.cloud : undefined;
   const effectiveTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? ctx.cloud
+      ? cloudForBudget
         ? {
-            instant: ctx.cloud.timeouts.instant + input.tierBudgetMsOverride,
-            workhorse: ctx.cloud.timeouts.workhorse + input.tierBudgetMsOverride,
-            deep: ctx.cloud.timeouts.deep + input.tierBudgetMsOverride,
-            embed: ctx.cloud.timeouts.embed + input.tierBudgetMsOverride,
+            instant: cloudForBudget.timeouts.instant + input.tierBudgetMsOverride,
+            workhorse: cloudForBudget.timeouts.workhorse + input.tierBudgetMsOverride,
+            deep: cloudForBudget.timeouts.deep + input.tierBudgetMsOverride,
+            embed: cloudForBudget.timeouts.embed + input.tierBudgetMsOverride,
           }
         : {
             instant: input.tierBudgetMsOverride,
@@ -179,12 +212,12 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
             deep: input.tierBudgetMsOverride,
             embed: input.tierBudgetMsOverride,
           }
-      : ctx.cloud
+      : cloudForBudget
         ? {
-            instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,
-            workhorse: ctx.cloud.timeouts.workhorse + ctx.timeouts.workhorse,
-            deep: ctx.cloud.timeouts.deep + ctx.timeouts.deep,
-            embed: ctx.cloud.timeouts.embed + ctx.timeouts.embed,
+            instant: cloudForBudget.timeouts.instant + ctx.timeouts.instant,
+            workhorse: cloudForBudget.timeouts.workhorse + ctx.timeouts.workhorse,
+            deep: cloudForBudget.timeouts.deep + ctx.timeouts.deep,
+            embed: cloudForBudget.timeouts.embed + ctx.timeouts.embed,
           }
         : ctx.timeouts;
 
@@ -218,6 +251,18 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
           ? { ...built, options: { ...(built.options ?? {}), num_ctx: numCtx } }
           : built;
       const req: GenerateRequest = input.think === undefined ? withNumCtx : { ...withNumCtx, think: input.think };
+      // F2b: attach the per-call route directive AFTER the request object is
+      // final (the spreads above would drop a non-enumerable Symbol). The
+      // model-override flag rides only the initial-tier attempt — fallback
+      // tiers resolve their own model, so the cloud path must not treat
+      // those as caller-explicit.
+      const modelExplicit = input.modelOverride !== undefined && tier === initialTier;
+      if (input.backend !== undefined || modelExplicit) {
+        setRouteDirective(req, {
+          ...(input.backend !== undefined ? { backend: input.backend } : {}),
+          ...(modelExplicit ? { modelExplicit: true } : {}),
+        });
+      }
       // Pre-flight context-window check — emit a guardrail event when
       // the estimated prompt tokens exceed the active num_ctx. Ollama
       // silently truncates over-budget prompts (no error, no warning)

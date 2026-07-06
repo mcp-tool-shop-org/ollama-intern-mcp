@@ -10,11 +10,13 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import type { ChatMessage, ChatResponse } from "../ollama.js";
+import type { ChatMessage, ChatRequest, ChatResponse } from "../ollama.js";
 import { countTokens } from "../ollama.js";
 import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE, THINK_BY_SHAPE } from "../tiers.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
-import { getRoutingInfo } from "../routing.js";
+import { getRoutingInfo, setRouteDirective } from "../routing.js";
+import { cloudMayServe } from "../profiles.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 export const chatSchema = z.object({
@@ -41,6 +43,19 @@ export const chatSchema = z.object({
         "fallback. Use for receipt-backed orchestration that requires explicit " +
         "model identity (e.g., research-os reviewer profiles).",
     ),
+  backend: z
+    .enum(["cloud", "local"])
+    .optional()
+    .describe(
+      "Optional per-call backend directive (v2.9). 'cloud' escalates THIS " +
+        "call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, " +
+        "OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with " +
+        "CLOUD_NOT_CONFIGURED when no cloud is configured (never silently " +
+        "runs local while claiming escalation). 'local' pins the call to " +
+        "the local backend (zero egress) even under cloud-primary. Omit " +
+        "for the mode default. Escalated calls disclose egress loudly and " +
+        "carry backend provenance on the envelope.",
+    ),
 });
 
 export type ChatInput = z.infer<typeof chatSchema>;
@@ -55,6 +70,18 @@ export async function handleChat(
   ctx: RunContext,
 ): Promise<Envelope<ChatResult>> {
   const startedAt = Date.now();
+
+  // F2b: refuse a cloud escalation when no cloud is configured — mirror of
+  // the runner's gate, since chat drives the client directly.
+  if (input.backend === "cloud" && !ctx.cloud) {
+    throw new InternError(
+      "CLOUD_NOT_CONFIGURED",
+      "ollama_chat requested backend:'cloud' but no Ollama Cloud is configured.",
+      "Set OLLAMA_API_KEY (create a key at https://ollama.com/settings/keys) to arm cloud standby — calls stay local unless they request backend:'cloud'. Optionally set OLLAMA_CLOUD_PRIMARY=1 for cloud-primary routing. This call was refused, not silently served by the local model.",
+      false,
+    );
+  }
+
   // Per-call model override (v2.3.0). Falls back to tier-resolved model when
   // omitted. chat is a single workhorse attempt — no TIER_FALLBACK — so the
   // override (or the resolved workhorse model) is the only model used.
@@ -83,12 +110,13 @@ export async function handleChat(
   // and pass tier='workhorse' so routing can reach cloud. allowFallback:false
   // preserves chat's deliberate single-attempt shape (no tier cascade).
   //
-  // Cloud-primary: the outer budget must cover BOTH the cloud attempt and the
-  // local fallback the RoutingOllamaClient runs inside one chat() call (mirrors
-  // runToolInner's effectiveTimeouts) — sum cloud+local. Local-only: just the
-  // local workhorse budget.
-  const budgetMs = ctx.cloud
-    ? ctx.cloud.timeouts.workhorse + ctx.timeouts.workhorse
+  // When cloud may serve this call (primary mode, or a per-call escalation —
+  // F2), the outer budget must cover BOTH the cloud attempt and the local
+  // fallback the RoutingOllamaClient runs inside one chat() call (mirrors
+  // runToolInner's effectiveTimeouts) — sum cloud+local. Standby-without-
+  // directive and local-only: just the local workhorse budget.
+  const budgetMs = cloudMayServe(ctx.cloud, input.backend)
+    ? ctx.cloud!.timeouts.workhorse + ctx.timeouts.workhorse
     : ctx.timeouts.workhorse;
   const { value: resp } = await runWithTimeoutAndFallback<ChatResponse>({
     tool: "ollama_chat",
@@ -100,8 +128,20 @@ export async function handleChat(
     // chat was the ONLY generate-shaped tool not passing `think`; on a thinking
     // model CoT consumed the whole num_predict and content came back empty (the
     // 2026-06-09 minimax-m3:cloud incident). Suppress CoT like draft/extract.
-    run: (tier, signal) =>
-      ctx.client.chat({ model, messages, options, think: THINK_BY_SHAPE.chat }, signal, tier),
+    run: (tier, signal) => {
+      const chatReq: ChatRequest = { model, messages, options, think: THINK_BY_SHAPE.chat };
+      // F2b: per-call directive — backend escalation/pin, and mark an
+      // explicit caller model so the cloud path honors it instead of
+      // clobbering it with the tier map (the v2.3.0-override audit fix).
+      const modelExplicit = input.model !== undefined;
+      if (input.backend !== undefined || modelExplicit) {
+        setRouteDirective(chatReq, {
+          ...(input.backend !== undefined ? { backend: input.backend } : {}),
+          ...(modelExplicit ? { modelExplicit: true } : {}),
+        });
+      }
+      return ctx.client.chat(chatReq, signal, tier);
+    },
   });
 
   // Backend routing provenance (cloud-primary). Undefined on the local-only

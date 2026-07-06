@@ -7,6 +7,17 @@
  * server touches Ollama through a single `ctx.client`, wrapping here means
  * every tool inherits cloud routing with zero per-tool change.
  *
+ * Two ROUTING MODES (F2, v2.9):
+ *   - cloud-primary (v2.7.0): every tiered call tries cloud first.
+ *   - STANDBY: local-primary; cloud serves ONLY calls carrying an explicit
+ *     per-call `backend:'cloud'` route directive. Zero egress otherwise —
+ *     the deterministic guarantee the model never overrides.
+ * Per-call route directives ride the REQUEST as a non-enumerable Symbol
+ * (mirror of the response provenance tag below) so they can never serialize
+ * onto the wire: `backend` escalates one call (standby) or pins one local
+ * (primary); `modelExplicit` marks req.model as a caller override the cloud
+ * attempt must honor instead of clobbering with the tier map.
+ *
  * Two axes of fallback exist and are ORTHOGONAL:
  *   - BACKEND fallback (this module): cloud→local, gated by a circuit breaker.
  *   - TIER degradation (guardrails/timeouts.ts): deep→workhorse→instant model
@@ -91,6 +102,49 @@ function tag<T extends object>(resp: T, info: RoutingInfo): T {
 export function getRoutingInfo(resp: unknown): RoutingInfo | undefined {
   if (resp && typeof resp === "object" && ROUTING in resp) {
     return (resp as { [ROUTING]?: RoutingInfo })[ROUTING];
+  }
+  return undefined;
+}
+
+// ── Per-call route directive (F2b) ──────────────────────────────────────────
+
+/**
+ * Per-call routing instruction, attached to a REQUEST by the runner (or a
+ * handler like chat) right before the client call. Carried on a
+ * non-enumerable Symbol — JSON.stringify and the object spreads at the HTTP
+ * layer never see it, so it cannot leak onto the wire.
+ */
+export interface RouteDirective {
+  /**
+   * 'cloud' escalates this one call to the cloud backend (the only way a
+   * call reaches cloud in standby mode); 'local' pins this one call local
+   * (zero egress) even under cloud-primary.
+   */
+  backend?: Backend;
+  /**
+   * True when req.model is an explicit caller override (per-call `model`,
+   * v2.3.0) — the cloud attempt must send req.model verbatim instead of
+   * the tier→cloud-model map. Absent for tier-resolved models.
+   */
+  modelExplicit?: boolean;
+}
+
+const ROUTE_DIRECTIVE = Symbol("ollama_intern_route_directive");
+
+/** Attach a route directive to a request. Returns the same object for chaining. */
+export function setRouteDirective<T extends object>(req: T, directive: RouteDirective): T {
+  Object.defineProperty(req, ROUTE_DIRECTIVE, {
+    value: directive,
+    enumerable: false,
+    configurable: true,
+  });
+  return req;
+}
+
+/** Read a request's route directive. Undefined when none was attached. */
+export function getRouteDirective(req: unknown): RouteDirective | undefined {
+  if (req && typeof req === "object" && ROUTE_DIRECTIVE in req) {
+    return (req as { [ROUTE_DIRECTIVE]?: RouteDirective })[ROUTE_DIRECTIVE];
   }
   return undefined;
 }
@@ -277,6 +331,13 @@ export interface RoutingOllamaClientOptions {
   cloudNumCtx?: number;
   breaker?: CircuitBreaker;
   logger?: Logger;
+  /**
+   * Standby mode (F2a): local-primary; cloud serves only per-call
+   * backend:'cloud' escalations. Default false = cloud-primary (v2.7.0).
+   */
+  standby?: boolean;
+  /** Cloud host, named in the first-egress disclosure line. */
+  cloudHost?: string;
 }
 
 export class RoutingOllamaClient implements OllamaClient {
@@ -288,6 +349,10 @@ export class RoutingOllamaClient implements OllamaClient {
   private readonly cloudNumCtx?: number;
   readonly breaker: CircuitBreaker;
   private readonly logger?: Logger;
+  private readonly standby: boolean;
+  private readonly cloudHost?: string;
+  /** True once the standby first-egress disclosure has been emitted. */
+  private egressDisclosed = false;
 
   constructor(opts: RoutingOllamaClientOptions) {
     this.cloud = opts.cloud;
@@ -298,6 +363,8 @@ export class RoutingOllamaClient implements OllamaClient {
     this.cloudNumCtx = opts.cloudNumCtx;
     this.breaker = opts.breaker ?? new CircuitBreaker();
     this.logger = opts.logger;
+    this.standby = opts.standby ?? false;
+    this.cloudHost = opts.cloudHost;
   }
 
   generate(req: GenerateRequest, signal?: AbortSignal, tier?: Tier): Promise<GenerateResponse> {
@@ -350,7 +417,30 @@ export class RoutingOllamaClient implements OllamaClient {
       });
     }
 
-    const cloudModel = resolveTier(tier, this.cloudTiers);
+    const directive = getRouteDirective(req);
+
+    // Per-call local pin (cloud-primary), or standby without an explicit
+    // escalation → serve local AS-IS. NOT a degradation: the caller (or the
+    // standby default) chose local, so no degrade_reason, no breaker touch,
+    // and — load-bearing for the standby zero-egress guarantee — no cloud
+    // attempt of any kind.
+    if (directive?.backend === "local" || (this.standby && directive?.backend !== "cloud")) {
+      const resp = await call(this.local, req, signal, tier);
+      return tag(resp, {
+        backend: "local",
+        model: req.model,
+        degraded: false,
+        circuit_state: this.breaker.currentState,
+        ...(req.options?.num_ctx !== undefined ? { num_ctx: req.options.num_ctx } : {}),
+      });
+    }
+
+    // F2b: an explicit caller model override (per-call `model`, v2.3.0) is
+    // honored on the cloud attempt — previously the tier map clobbered it,
+    // silently substituting the tier's cloud model for the one the caller
+    // named (the verify-claims jury depends on per-juror model identity).
+    const modelExplicit = directive?.modelExplicit === true;
+    const cloudModel = modelExplicit ? req.model : resolveTier(tier, this.cloudTiers);
 
     // Breaker says no cloud (OPEN within cooldown, or sticky misconfigured) →
     // straight to local, no cloud latency tax.
@@ -365,6 +455,27 @@ export class RoutingOllamaClient implements OllamaClient {
             ? "cloud_model_missing"
             : "circuit_open";
       return this.serveLocal(req, signal, tier, reason, call);
+    }
+
+    // First-egress disclosure (standby): the first call that actually leaves
+    // the machine says so loudly AT THE POINT of egress — not only in docs
+    // (the Homebrew #142 lesson; GDPR Art. 25 privacy-by-default). Once per
+    // client. Cloud-primary discloses at startup instead.
+    if (this.standby && !this.egressDisclosed) {
+      this.egressDisclosed = true;
+      const host = this.cloudHost ?? "Ollama Cloud";
+      // eslint-disable-next-line no-console
+      console.error(
+        `ollama-intern: CLOUD ESCALATION — this call is being sent to ${host} (model ${cloudModel}, tier ${tier}). Standby mode sends ONLY calls that request backend:'cloud'; everything else stays local.`,
+      );
+      void this.logger?.log({
+        kind: "cloud_egress",
+        ts: timestamp(),
+        host,
+        model: cloudModel,
+        mode: "standby",
+        tier,
+      });
     }
 
     // Cloud attempt — own timeout so a cloud hang can fall to local BEFORE the
@@ -385,9 +496,15 @@ export class RoutingOllamaClient implements OllamaClient {
       const cloudReq = { ...req, model: cloudModel, options: cloudOptions } as TReq;
       const resp = await call(this.cloud, cloudReq, cloudController.signal, tier);
       this.breaker.recordSuccess();
+      // Prefer the backend's own served-model echo over what we requested —
+      // live cloud strips the tag suffix (deepseek-v4-pro:cloud → served
+      // "deepseek-v4-pro"), and any divergence beyond that is exactly the
+      // substitution a caller-side served-model check (verify_claims) must
+      // see. Fall back to the requested model when the echo is absent.
+      const servedModel = (resp as { model?: unknown }).model;
       return tag(resp, {
         backend: "cloud",
-        model: cloudModel,
+        model: typeof servedModel === "string" && servedModel.length > 0 ? servedModel : cloudModel,
         degraded: false,
         circuit_state: this.breaker.currentState,
         ...(cloudOptions?.num_ctx !== undefined ? { num_ctx: cloudOptions.num_ctx } : {}),
@@ -403,11 +520,20 @@ export class RoutingOllamaClient implements OllamaClient {
       if (signal?.aborted) throw err;
       const cls = classifyCloudError(err);
       if (cls === "deterministic") {
-        // H2: release the half-open probe so a deterministic 404 can't wedge
-        // the breaker in half_open forever (it neither succeeds nor counts as
-        // a transient failure). H3-res: also arm a short deterministic cooldown
-        // so a persistently-retired model isn't re-probed on every call.
-        this.breaker.recordDeterministicFailure();
+        if (modelExplicit) {
+          // A per-call override 404 is CALL-scoped config: release any
+          // half-open probe (H2) but do NOT arm the process-wide H3
+          // cooldown — one caller's typo'd/retired model must not suppress
+          // cloud for every other call for 60s (a verify-claims juror that
+          // goes retired would otherwise degrade the whole panel's process).
+          this.breaker.releaseProbe();
+        } else {
+          // H2: release the half-open probe so a deterministic 404 can't wedge
+          // the breaker in half_open forever (it neither succeeds nor counts as
+          // a transient failure). H3-res: also arm a short deterministic cooldown
+          // so a persistently-retired model isn't re-probed on every call.
+          this.breaker.recordDeterministicFailure();
+        }
         // H3: a retired/typo'd cloud model id is EXTERNAL and out of the
         // operator's control — hard-failing every generative call while a
         // healthy local sat idle was a total outage. Fall back to local with a
