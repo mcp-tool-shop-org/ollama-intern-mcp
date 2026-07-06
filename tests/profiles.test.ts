@@ -334,6 +334,31 @@ describe("profiles", () => {
       expect(OLLAMA_MODEL_NAME_RE.test("Hermes3:8B")).toBe(false);
       expect(OLLAMA_MODEL_NAME_RE.test("hermes 3:8b")).toBe(false);
     });
+
+    // L1 (2026-07 health pass) — the dash-typo lookahead used to fire on ANY
+    // colonless name ending in `-<digits>[letter]`, hard-rejecting legitimate
+    // bare version-numbered ids like `glm-5`/`qwen-3` at startup with a wrong
+    // "Did you mean 'glm:5'?" hint. The size-tag typo it exists to catch always
+    // carries a trailing letter (`-8b`, `-120b`); a bare `-<digits>` is a
+    // version number. The lookahead now requires the trailing letter, so
+    // version-numbered ids pass while `hermes3-8b` still rejects.
+    it("accepts bare version-numbered ids (glm-5) but still rejects size-tag dash-typos", () => {
+      // Legit bare version numbers — no trailing letter after the digits.
+      expect(OLLAMA_MODEL_NAME_RE.test("glm-5"), "glm-5").toBe(true);
+      expect(OLLAMA_MODEL_NAME_RE.test("qwen-3"), "qwen-3").toBe(true);
+      expect(OLLAMA_MODEL_NAME_RE.test("qwen3-coder-next"), "qwen3-coder-next").toBe(true);
+      expect(OLLAMA_MODEL_NAME_RE.test("glm-4.6"), "glm-4.6").toBe(true);
+      // Size-tag dash-typos (digits + trailing letter) are still caught.
+      expect(OLLAMA_MODEL_NAME_RE.test("hermes3-8b"), "hermes3-8b").toBe(false);
+      expect(OLLAMA_MODEL_NAME_RE.test("gpt-oss-120b"), "gpt-oss-120b").toBe(false);
+    });
+
+    it("accepts a bare version-numbered id end-to-end (loadProfile glm-5)", () => {
+      // Regression for the startup false-reject: loadProfile must accept
+      // `glm-5` as a legitimate INTERN_TIER_DEEP override, not throw.
+      const p = loadProfile({ INTERN_TIER_DEEP: "glm-5" });
+      expect(p.tiers.deep).toBe("glm-5");
+    });
   });
 
   // ── FT-002 — num_ctx validator (Phase 7) ─────────────────────────
