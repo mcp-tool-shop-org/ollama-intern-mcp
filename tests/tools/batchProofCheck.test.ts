@@ -383,4 +383,29 @@ describe("ollama_batch_proof_check — cwd hardening (H7-res)", () => {
       else process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = orig;
     }
   });
+
+  it("the operator env cap ALSO gates the default cwd — omitting cwd can't bypass it (jury follow-up)", async () => {
+    // The cross-family jury caught this: the handler skipped ALL containment
+    // when cwd was omitted, so an operator who set the cap could be bypassed by
+    // simply not passing cwd (the run defaults to process.cwd()).
+    const orig = process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+    let spawned = false;
+    __setSpawner(async () => {
+      spawned = true;
+      return fakeOk();
+    });
+    try {
+      // Operator restricts to a root that does NOT contain the server's own cwd.
+      process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = resolve("operator-only-elsewhere");
+      // Caller omits cwd — the default process.cwd() is OUTSIDE the cap and must
+      // be refused, not silently allowed.
+      await expect(
+        handleBatchProofCheck({ checks: ["eslint"] }, makeCtx()),
+      ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+      expect(spawned).toBe(false);
+    } finally {
+      if (orig === undefined) delete process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+      else process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = orig;
+    }
+  });
 });

@@ -123,12 +123,23 @@ function assertCwdContained(cwd: string, allowedRoots: string[] | undefined): vo
     );
   }
   // H7-res: the operator cap wins over the (self-satisfiable) caller roots.
+  assertCwdWithinOperatorCap(cwd);
+}
+
+/**
+ * H7-res: enforce ONLY the optional operator cap (INTERN_BATCH_PROOF_ALLOWED_ROOTS).
+ * Split out from assertCwdContained so it can ALSO gate the DEFAULT cwd
+ * (`process.cwd()`) when the caller omits `cwd` — otherwise an operator who
+ * restricts the exec surface is bypassed by simply omitting the parameter (the
+ * jury caught exactly this). No-op when the cap is unset.
+ */
+function assertCwdWithinOperatorCap(cwd: string): void {
   const opRoots = operatorAllowedRoots();
   if (opRoots && !opRoots.some((root) => isContained(cwd, root))) {
     throw new InternError(
       "SCHEMA_INVALID",
       `batch_proof_check: cwd is outside the operator-declared INTERN_BATCH_PROOF_ALLOWED_ROOTS: ${cwd}`,
-      `The operator restricted proof runs to: ${opRoots.join(", ")}. A caller's allowed_roots cannot widen this — pick a cwd inside an operator-allowed root, or ask the operator to adjust INTERN_BATCH_PROOF_ALLOWED_ROOTS.`,
+      `The operator restricted proof runs to: ${opRoots.join(", ")}. A caller cannot widen this — pick a cwd inside an operator-allowed root, or ask the operator to adjust INTERN_BATCH_PROOF_ALLOWED_ROOTS.`,
       false,
     );
   }
@@ -418,6 +429,12 @@ export async function handleBatchProofCheck(
   const cwd = input.cwd !== undefined ? resolve(input.cwd) : process.cwd();
   if (input.cwd !== undefined) {
     assertCwdContained(cwd, input.allowed_roots);
+  } else {
+    // H7-res follow-up (jury finding): no caller cwd, but the operator cap (if
+    // set) still bounds the exec surface — an operator restricting proof runs
+    // must not be bypassed by omitting cwd. The default is the server's own
+    // process.cwd(); a cap that excludes it is honored.
+    assertCwdWithinOperatorCap(cwd);
   }
   const timeoutMs = input.timeout_ms ?? 60_000;
 
