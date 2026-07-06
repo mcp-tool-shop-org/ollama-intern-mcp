@@ -284,7 +284,14 @@ describe("CircuitBreaker — deterministic probe does not wedge half_open (H2)",
   it("a deterministic 404 on the half-open probe restores OPEN instead of wedging half_open forever", async () => {
     let clock = 0;
     let phase: "transient" | "deterministic" = "transient";
-    const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 1_000, now: () => clock });
+    // deterministicCooldownMs kept small so the H3 deterministic-failure cooldown
+    // (armed by the 404 probe below) expires within this test's clock window.
+    const breaker = new CircuitBreaker({
+      threshold: 3,
+      cooldownMs: 1_000,
+      deterministicCooldownMs: 1_000,
+      now: () => clock,
+    });
     const { routing, cloud } = makeRouting({
       cloudGen: async () => {
         throw phase === "transient" ? transient(503) : modelMissing();
@@ -312,8 +319,9 @@ describe("CircuitBreaker — deterministic probe does not wedge half_open (H2)",
     // false permanently → cloud is never attempted again.
     expect(breaker.currentState).toBe("open");
 
-    // Advance past ANOTHER cooldown → a fresh probe must be admitted, proving
-    // the breaker recovered rather than wedging.
+    // Advance past ANOTHER cooldown (both the transient re-open cooldown AND the
+    // H3 deterministic cooldown armed by the 404) → a fresh probe must be
+    // admitted, proving the breaker recovered rather than wedging.
     clock = 4_000;
     await routing.generate({ model: "hermes3:8b", prompt: "probe2" }, undefined, "deep");
     expect(cloud.callCount.generate).toBe(afterOpen + 2); // a new probe got through
@@ -397,5 +405,50 @@ describe("CircuitBreaker — failed half-open probe re-opens the breaker (M11)",
     expect(getRoutingInfo(next)?.degrade_reason).toBe("circuit_open");
     expect(cloud.callCount.generate).toBe(afterOpen + 1); // frozen — no new cloud attempt
     expect(local.callCount.generate).toBe(5); // 3 trips + probe fallback + this one
+  });
+});
+
+describe("RoutingOllamaClient — deterministic-failure cooldown (H3-res)", () => {
+  it("a cloud 404 suppresses further cloud attempts for a cooldown, then retries one probe", async () => {
+    let clock = 0;
+    const breaker = new CircuitBreaker({
+      threshold: 3,
+      cooldownMs: 20_000,
+      deterministicCooldownMs: 1_000,
+      now: () => clock,
+    });
+    const { routing, cloud } = makeRouting({
+      cloudGen: async () => {
+        throw modelMissing(); // a retired cloud model 404s on every attempt
+      },
+      breaker,
+    });
+
+    // Call 1: cloud IS attempted, 404 -> local, deterministic cooldown armed.
+    const first = await routing.generate({ model: "hermes3:8b", prompt: "a" }, undefined, "deep");
+    expect(getRoutingInfo(first)?.degrade_reason).toBe("cloud_model_missing");
+    expect(cloud.callCount.generate).toBe(1);
+
+    // Calls WITHIN the cooldown: cloud is NOT re-attempted (no per-call round-trip
+    // tax), but they still serve local with the actionable cloud_model_missing
+    // reason — NOT a misleading circuit_open.
+    for (let i = 0; i < 3; i++) {
+      clock += 100; // 100, 200, 300 — all < 1000
+      const r = await routing.generate({ model: "hermes3:8b", prompt: `b${i}` }, undefined, "deep");
+      expect(getRoutingInfo(r)?.backend).toBe("local");
+      expect(getRoutingInfo(r)?.degrade_reason).toBe("cloud_model_missing");
+    }
+    expect(cloud.callCount.generate).toBe(1); // frozen — the retired model wasn't re-probed every call
+
+    // After the cooldown elapses: exactly ONE cloud probe is retried (the model
+    // may have been restored server-side / the operator may have fixed the id).
+    clock = 2_000;
+    const after = await routing.generate({ model: "hermes3:8b", prompt: "c" }, undefined, "deep");
+    expect(cloud.callCount.generate).toBe(2); // one probe retried, not per-call
+    expect(getRoutingInfo(after)?.degrade_reason).toBe("cloud_model_missing");
+
+    // The deterministic 404s never OPENED the transient breaker (config error,
+    // not a cloud outage) — it stays closed throughout.
+    expect(breaker.currentState).toBe("closed");
   });
 });

@@ -23,7 +23,9 @@
  *                                                   loud `cloud_model_missing` degrade reason + a
  *                                                   cloud-specific hint (a retired/typo'd cloud model
  *                                                   id degrades visibly, never a silent swap nor a
- *                                                   total outage). See H2/H3 (2026-07 health pass).
+ *                                                   total outage), and arm a short auto-expiring
+ *                                                   cooldown so a persistently-missing model isn't
+ *                                                   re-probed on every call. See H2/H3 (2026-07).
  *
  * Observability: every response is tagged (non-enumerable Symbol) with which
  * backend served it + whether it was degraded, and a `backend_fallback` NDJSON
@@ -102,6 +104,13 @@ export interface BreakerOptions {
   threshold?: number;
   /** OPEN→HALF-OPEN cooldown in ms. Default 20_000. */
   cooldownMs?: number;
+  /**
+   * Deterministic-failure (cloud 404 model-missing) cooldown in ms. During this
+   * window after a cloud 404, cloud attempts are suppressed so a retired/typo'd
+   * cloud model doesn't pay a round-trip on every call. Auto-expires (NOT sticky
+   * like auth) so a restored model / fixed id recovers on its own. Default 60_000.
+   */
+  deterministicCooldownMs?: number;
   /** Injectable clock for deterministic tests. Default Date.now. */
   now?: () => number;
 }
@@ -120,13 +129,17 @@ export class CircuitBreaker {
   private consecutiveFailures = 0;
   private openedAt = 0;
   private halfOpenInFlight = false;
+  /** Wall-clock (via `now`) until which cloud is suppressed after a 404 (H3). */
+  private deterministicCooldownUntil = 0;
   private readonly threshold: number;
   private readonly cooldownMs: number;
+  private readonly deterministicCooldownMs: number;
   private readonly now: () => number;
 
   constructor(opts: BreakerOptions = {}) {
     this.threshold = opts.threshold ?? 3;
     this.cooldownMs = opts.cooldownMs ?? 20_000;
+    this.deterministicCooldownMs = opts.deterministicCooldownMs ?? 60_000;
     this.now = opts.now ?? Date.now;
   }
 
@@ -134,9 +147,18 @@ export class CircuitBreaker {
     return this.state;
   }
 
+  /** True while the deterministic-failure (cloud 404) cooldown is active (H3). */
+  inDeterministicCooldown(): boolean {
+    return this.now() < this.deterministicCooldownUntil;
+  }
+
   /** Decide whether to attempt cloud now. May transition OPEN→HALF-OPEN. */
   allowCloud(): boolean {
     if (this.state === "misconfigured") return false;
+    // H3: a recent cloud 404 (model-missing) suppresses cloud attempts briefly,
+    // independent of the transient breaker state, so a retired model doesn't tax
+    // every call. Auto-expires — not sticky.
+    if (this.inDeterministicCooldown()) return false;
     if (this.state === "closed") return true;
     if (this.state === "open") {
       if (this.now() - this.openedAt >= this.cooldownMs) {
@@ -187,6 +209,18 @@ export class CircuitBreaker {
       this.state = "open";
       this.openedAt = this.now();
     }
+  }
+
+  /**
+   * A deterministic cloud failure (404 model-missing). Does NOT count toward the
+   * transient breaker (it's an external config/availability fact, not a cloud
+   * outage) and is NOT sticky like auth. Releases any half-open probe (so a 404
+   * can't wedge half_open — H2) and arms a short cooldown during which cloud is
+   * skipped (H3), so a persistently-retired model isn't re-probed on every call.
+   */
+  recordDeterministicFailure(): void {
+    this.releaseProbe();
+    this.deterministicCooldownUntil = this.now() + this.deterministicCooldownMs;
   }
 }
 
@@ -321,8 +355,15 @@ export class RoutingOllamaClient implements OllamaClient {
     // Breaker says no cloud (OPEN within cooldown, or sticky misconfigured) →
     // straight to local, no cloud latency tax.
     if (!this.breaker.allowCloud()) {
+      // Report WHY cloud was skipped: sticky auth misconfig, the H3 deterministic
+      // (cloud-404) cooldown, or the transient breaker being OPEN — never a
+      // misleading circuit_open when the real cause is a missing cloud model.
       const reason: DegradeReason =
-        this.breaker.currentState === "misconfigured" ? "cloud_auth_failed" : "circuit_open";
+        this.breaker.currentState === "misconfigured"
+          ? "cloud_auth_failed"
+          : this.breaker.inDeterministicCooldown()
+            ? "cloud_model_missing"
+            : "circuit_open";
       return this.serveLocal(req, signal, tier, reason, call);
     }
 
@@ -356,8 +397,9 @@ export class RoutingOllamaClient implements OllamaClient {
       if (cls === "deterministic") {
         // H2: release the half-open probe so a deterministic 404 can't wedge
         // the breaker in half_open forever (it neither succeeds nor counts as
-        // a transient failure).
-        this.breaker.releaseProbe();
+        // a transient failure). H3-res: also arm a short deterministic cooldown
+        // so a persistently-retired model isn't re-probed on every call.
+        this.breaker.recordDeterministicFailure();
         // H3: a retired/typo'd cloud model id is EXTERNAL and out of the
         // operator's control — hard-failing every generative call while a
         // healthy local sat idle was a total outage. Fall back to local with a
