@@ -325,6 +325,43 @@ describe("indexCorpus + searchCorpus", () => {
     expect(report.failed_paths[0].reason).toContain("symlink");
   });
 
+  it("re-index with changed chunk params re-chunks unchanged files, no stale geometry (L2)", async () => {
+    const p = join(tempDir, "geo.md");
+    await writeFile(p, "sentence one here. ".repeat(80), "utf8"); // ~1520 chars
+
+    const client = new HashEmbedMock();
+    const r1 = await indexCorpus({
+      name: "geo",
+      paths: [p],
+      model: "nomic-embed-text",
+      chunk_chars: 500,
+      chunk_overlap: 50,
+      client,
+    });
+
+    // Re-index the SAME unchanged file with DIFFERENT (smaller) chunk params.
+    const r2 = await indexCorpus({
+      name: "geo",
+      paths: [p],
+      model: "nomic-embed-text",
+      chunk_chars: 150,
+      chunk_overlap: 20,
+      client,
+    });
+
+    // The unchanged file was RE-CHUNKED under the new params, NOT reused with
+    // the old geometry (which would leave the manifest's stamped params lying
+    // about the on-disk chunk sizes).
+    expect(r2.reused_chunks).toBe(0);
+    expect(r2.newly_embedded_chunks).toBeGreaterThan(0);
+
+    const corpus = (await loadCorpus("geo"))!;
+    expect(corpus.chunk_chars).toBe(150);
+    expect(corpus.chunk_overlap).toBe(20);
+    // Smaller chunk_chars → strictly more chunks than the first (500-char) index.
+    expect(corpus.chunks.length).toBeGreaterThan(r1.chunks);
+  });
+
   it("distinct paths with identical content get globally-unique chunk IDs (M8)", async () => {
     const p1 = join(tempDir, "dup-a.md");
     const p2 = join(tempDir, "dup-b.md");

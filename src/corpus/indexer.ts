@@ -227,18 +227,32 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
       false,
     );
   }
+  // L2: reuse (skip re-embedding) is only valid when the chunk GEOMETRY also
+  // matches. The reuse key is (path, content-hash) and ignored chunk_chars /
+  // chunk_overlap, so a re-index with changed params kept the OLD chunking for
+  // unchanged files while the manifest stamped the NEW params — a corpus whose
+  // recorded geometry lied about the on-disk chunks. When params change, don't
+  // populate the reuse map: every readable file re-chunks under the new geometry.
+  const paramsChanged =
+    existing != null &&
+    (existing.chunk_chars !== opts.chunk_chars || existing.chunk_overlap !== opts.chunk_overlap);
   const reusable = new Map<string, CorpusChunk[]>();
   // H5: also index prior chunks by path alone, so a transient (non-ENOENT)
   // read failure below can carry a path's existing chunks forward verbatim
   // instead of silently dropping already-indexed content on a Windows file
-  // lock / antivirus hold / editor atomic-save window.
+  // lock / antivirus hold / editor atomic-save window. This carry stays
+  // populated even when params change: a FAILED path can't be re-chunked (we
+  // can't read it), and preserving its data beats losing it — the file is
+  // already flagged in failed_paths.
   const priorChunksByPath = new Map<string, CorpusChunk[]>();
   if (existing && existing.model_version === params.model) {
     for (const c of existing.chunks) {
-      const key = `${c.path}::${c.file_hash}`;
-      const arr = reusable.get(key) ?? [];
-      arr.push(c);
-      reusable.set(key, arr);
+      if (!paramsChanged) {
+        const key = `${c.path}::${c.file_hash}`;
+        const arr = reusable.get(key) ?? [];
+        arr.push(c);
+        reusable.set(key, arr);
+      }
       const byPath = priorChunksByPath.get(c.path) ?? [];
       byPath.push(c);
       priorChunksByPath.set(c.path, byPath);
