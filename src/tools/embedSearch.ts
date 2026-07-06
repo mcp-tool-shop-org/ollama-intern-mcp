@@ -17,6 +17,7 @@ import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
 import { rankByCosine } from "../embedMath.js";
 import { InternError } from "../errors.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import type { RunContext } from "../runContext.js";
 
 export const embedSearchSchema = z.object({
@@ -66,7 +67,10 @@ export async function handleEmbedSearch(
 
   // One embed call for query + all candidates; split the result by index.
   const inputs = [input.query, ...input.candidates.map((c) => c.text)];
-  const resp = await ctx.client.embed({ model, input: inputs });
+  const resp = await embedWithTimeout(ctx.client, { model, input: inputs }, ctx.timeouts.embed, {
+    tool: "ollama_embed_search",
+    logger: ctx.logger,
+  });
   if (resp.embeddings.length !== inputs.length) {
     // Defensive — shouldn't happen, but if the embed server returns the wrong
     // count we can't trust the ranking. Retryable because a mid-request model

@@ -27,6 +27,7 @@ import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type C
 import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest, assertSafePath } from "./manifest.js";
 import { withCorpusLock } from "./lock.js";
 import { InternError } from "../errors.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 
 const EMBED_BATCH = 64;
 /** Hard cap on input file size. Prevents OOM from a user pointing at a 100GB file. */
@@ -322,7 +323,9 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   if (toEmbedTexts.length > 0) {
     for (let i = 0; i < toEmbedTexts.length; i += EMBED_BATCH) {
       const batch = toEmbedTexts.slice(i, i + EMBED_BATCH);
-      const resp = await params.client.embed({ model: params.model, input: batch });
+      // Bounded per-batch by the canonical embed budget so a wedged embed can't
+      // hold a semaphore permit un-timed (H4-res).
+      const resp = await embedWithTimeout(params.client, { model: params.model, input: batch });
       if (resp.embeddings.length !== batch.length) {
         throw new Error(
           `Embed returned ${resp.embeddings.length} vectors for ${batch.length} inputs`,

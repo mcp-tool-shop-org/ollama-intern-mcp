@@ -25,6 +25,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import { loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "../corpus/storage.js";
 import { loadManifest, saveManifest, assertSafePath } from "../corpus/manifest.js";
 import { withCorpusLock } from "../corpus/lock.js";
@@ -194,7 +195,12 @@ export async function handleCorpusAmend(
     const newChunks: CorpusChunk[] = [];
     if (fresh.length > 0) {
       const texts = fresh.map((c) => c.text);
-      const resp = await ctx.client.embed({ model: activeModel, input: texts });
+      const resp = await embedWithTimeout(
+        ctx.client,
+        { model: activeModel, input: texts },
+        ctx.timeouts.embed,
+        { tool: "ollama_corpus_amend", logger: ctx.logger },
+      );
       if (resp.embeddings.length !== texts.length) {
         throw new InternError(
           "CORPUS_AMEND_FAILED",
