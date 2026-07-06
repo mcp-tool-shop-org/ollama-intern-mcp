@@ -79,6 +79,7 @@ import { chatSchema, handleChat } from "./tools/chat.js";
 import { doctorSchema, handleDoctor } from "./tools/doctor.js";
 import { artifactPruneSchema, handleArtifactPrune } from "./tools/artifactPrune.js";
 import { logTailSchema, handleLogTail } from "./tools/logTail.js";
+import { logStatsSchema, handleLogStats } from "./tools/logStats.js";
 import { codeMapSchema, handleCodeMap } from "./tools/codeMap.js";
 // ── Feature-pass tools (agent: Tools-new) — refactor/proof/citation/drill ──
 import { multiFileRefactorProposeSchema, handleMultiFileRefactorPropose } from "./tools/multiFileRefactorPropose.js";
@@ -423,6 +424,14 @@ export function createServer(ctx: RunContext): McpServer {
     "OPS. Structured tail of the NDJSON observability log at ~/.ollama-intern/log.ndjson (override via INTERN_LOG_PATH). No model call. Optional filters: `limit` (default 50, max 500), `filter_kind` ('call' | 'timeout' | 'fallback' | 'guardrail' | 'pack_step' | 'semaphore:wait' | 'prewarm' | 'prewarm:in_progress_request'), `filter_tool`, `since` (ISO-8601). Truncated final lines are skipped silently. Missing log file is a soft-empty case, not an error. Returns `{events, total_returned, log_path, log_present}`. Use this to debug why a call was slow / what timed out / what the last failures were.",
     logTailSchema.shape,
     (args, extra) => wrap(() => handleLogTail(args, ctx), "ollama_log_tail", extra),
+  );
+
+  // OPS — ollama_log_stats (aggregate the NDJSON receipts — measured economics)
+  server.tool(
+    "ollama_log_stats",
+    "OPS. Aggregate the NDJSON receipts into measured economics — no model call, no egress, instant. Optional `since` (ISO-8601) bounds the window ('tokens this week'). Returns `{totals:{calls, tokens_in, tokens_out}, by_tool:{calls, tokens, cloud_calls, degraded_calls, p50/p95 elapsed_ms}, by_tier, backend:{cloud_calls, local_calls, degraded_calls, unrouted_calls, backend_fallback_events, fallback_rate}, tier_events:{timeouts, fallbacks}, elapsed_ms:{p50, p95}, events_scanned, log_path, log_present}`. fallback_rate = degraded/(cloud-intended) — the early-warning that cloud is degrading; null when nothing intended cloud. Answers 'cloud vs local split', 'fallback rate', 'p95 per tool' without jq. Empty/absent log → zeros, never an error. Use ollama_log_tail for the raw events behind any number here.",
+    logStatsSchema.shape,
+    (args, extra) => wrap(() => handleLogStats(args, ctx), "ollama_log_stats", extra),
   );
 
   // ORIENT — ollama_code_map (fast structural repo summary, deterministic)

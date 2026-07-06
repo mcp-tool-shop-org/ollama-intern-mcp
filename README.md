@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-> **The local intern for Claude Code.** <!-- TOOL_COUNT:start -->43<!-- TOOL_COUNT:end --> job-shaped tools, evidence-first briefs, durable artifacts.
+> **The local intern for Claude Code.** <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> job-shaped tools, evidence-first briefs, durable artifacts.
 
 An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
@@ -292,21 +292,21 @@ If `frame` is omitted, behavior is unchanged from v2.1.0. When supplied, `frame_
 
 ---
 
-## What's in here — four tiers, <!-- TOOL_COUNT:start -->43<!-- TOOL_COUNT:end --> tools
+## What's in here — four tiers, <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> tools
 
 **Job-shaped** means each tool names a job you'd hand to an intern — classify this, extract that, triage these logs, draft this release note, pack this incident. The tool's input is the job spec; the output is the deliverable. No generic `run_model` / `chat_with_llm` primitive at the top.
 
 | Tier | Count | What lives here |
 |---|---|---|
-| **Atoms** | 30 | Job-shaped primitives. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 added in v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (ops); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactor); `artifact_prune`, `hypothesis_drill` (artifact/brief); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 review atom:** `code_review` (structured PR-review findings, workhorse; review-only). **+1 verification atom (v2.9):** `verify_claims` (cross-family cloud flagship panel adjudicates claims; cloud-required). Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{id, text}]`. |
+| **Atoms** | 31 | Job-shaped primitives. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 added in v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (ops); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactor); `artifact_prune`, `hypothesis_drill` (artifact/brief); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 review atom:** `code_review` (structured PR-review findings, workhorse; review-only). **+2 in v2.9:** `verify_claims` (cross-family cloud flagship panel adjudicates claims; cloud-required) and `log_stats` (aggregate the NDJSON receipts into measured economics — cloud/local split, fallback rate, p50/p95 per tool; no model call). Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{id, text}]`. |
 | **Briefs** | 3 | Evidence-backed structured operator briefs. `incident_brief`, `repo_brief`, `change_brief`. Every claim cites an evidence id; unknowns stripped server-side. Weak evidence surfaces `weak: true` rather than fake narrative. |
 | **Packs** | 3 | Fixed-pipeline compound jobs that write durable markdown + JSON to `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Deterministic renderers — no model calls on the artifact shape. |
 | **Artifacts** | 7 | Continuity surface over pack outputs. `artifact_list` / `read` / `diff` / `export_to_path`, plus three deterministic snippets: `incident_note`, `onboarding_section`, `release_note`. |
 
-Total: **30 atoms + 3 briefs + 3 packs + 7 artifact tools = <!-- TOOL_COUNT:start -->43<!-- TOOL_COUNT:end -->**.
+Total: **31 atoms + 3 briefs + 3 packs + 7 artifact tools = <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->**.
 
 Freeze lines:
-- Atoms: freeze **lifted at v2.1.0** (30 today; +13 added in the v2.1.0 feature pass, +1 `code_review` later, +1 `verify_claims` in v2.9). New atoms still require an audit-justified gap, tests, handbook page, and CHANGELOG entry — no casual additions.
+- Atoms: freeze **lifted at v2.1.0** (31 today; +13 added in the v2.1.0 feature pass, +1 `code_review` later, +2 in v2.9: `verify_claims`, `log_stats`). New atoms still require an audit-justified gap, tests, handbook page, and CHANGELOG entry — no casual additions.
 - Packs frozen at 3. No new pack types.
 - Artifact tier frozen at 7.
 

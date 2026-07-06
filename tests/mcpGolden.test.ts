@@ -290,6 +290,7 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
       "ollama_doctor",
       "ollama_artifact_prune",
       "ollama_log_tail",
+      "ollama_log_stats",
       "ollama_code_map",
       "ollama_multi_file_refactor_propose",
       "ollama_batch_proof_check",

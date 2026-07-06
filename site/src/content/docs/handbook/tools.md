@@ -1,11 +1,11 @@
 ---
 title: Tool Reference
-description: All 43 tools grouped by tier.
+description: All 44 tools grouped by tier.
 sidebar:
   order: 2
 ---
 
-Tools are grouped into four tiers. **At-a-glance:** 30 atoms (15 original + 13 added in v2.1.0 + `code_review` + `verify_claims`) + 3 briefs + 3 packs + 7 artifact tools = **43 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
+Tools are grouped into four tiers. **At-a-glance:** 31 atoms (15 original + 13 added in v2.1.0 + `code_review` + the v2.9 pair `verify_claims` / `log_stats`) + 3 briefs + 3 packs + 7 artifact tools = **44 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
 
 ## Per-tool deep-dives
 
@@ -22,7 +22,7 @@ The remaining 37 tools are documented inline below — open an issue if you'd li
 
 ---
 
-## Atoms (30 total)
+## Atoms (31 total)
 
 ### Original atoms (15)
 
@@ -199,6 +199,7 @@ Tier freeze stays at 4 — everything here extends existing tiers, no new tier c
 |---|---|
 | `ollama_doctor` | First-run prereqs + status snapshot: Ollama reachability, loaded vs pulled vs required models, profile/tiers, allowed_roots, recent errors. Returns `healthy: boolean` for a quick gate. |
 | `ollama_log_tail` | Tail the NDJSON call log from inside an MCP session, with filters. See [Observability → ollama_log_tail](../observability/#the-ollama_log_tail-tool). |
+| `ollama_log_stats` | Aggregate the NDJSON receipts into **measured economics** (no model call): totals + per-tool/per-tier tokens, cloud/local/degraded split, cloud→local `fallback_rate`, tier timeout/fallback counts, p50/p95 `elapsed_ms` overall and per tool, bounded by `since`. The rollup behind "cloud vs local split" and "tokens this week" — `log_tail` shows the raw events behind any number here. Added v2.9. |
 | `ollama_batch_proof_check` | Run `tsc` / `eslint` / `pytest` / `ruff` / `cargo-check` over a set of paths; single envelope with per-check pass/fail. Executes under cwd validation + per-check timeouts — new security surface, see [SECURITY.md](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md). |
 
 ### Refactor & verification tools

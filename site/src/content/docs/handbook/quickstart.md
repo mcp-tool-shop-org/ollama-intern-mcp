@@ -232,7 +232,7 @@ calls in the same tier reuse the resident model.
 
 ## Where to go next
 
-- **[Tool reference](../tools/)** — all 43 tools grouped by tier
+- **[Tool reference](../tools/)** — all 44 tools grouped by tier
 - **[Per-tool pages](../tools/)** — schema + example + pitfalls for the
   most-used tools
 - **[Envelope & tiers](../envelope-and-tiers/)** — every field of the
