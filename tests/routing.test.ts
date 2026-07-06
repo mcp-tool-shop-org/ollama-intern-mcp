@@ -452,3 +452,38 @@ describe("RoutingOllamaClient — deterministic-failure cooldown (H3-res)", () =
     expect(breaker.currentState).toBe("closed");
   });
 });
+
+describe("RoutingOllamaClient — outer-signal abort does not pollute the breaker (M4)", () => {
+  it("an abort from the OUTER signal (caller / outer tier budget) is rethrown and never counts toward the breaker", async () => {
+    const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 20_000, now: () => 0 });
+    const { routing, cloud, local } = makeRouting({
+      // Cloud hangs until ITS signal aborts. With a large cloud timeout the only
+      // thing that can end the attempt here is the OUTER signal (the runner's
+      // tier budget or the caller cancelling) — exactly the M4 scenario where a
+      // sub-cloud-timeout tier_budget_ms_override aborts the outer signal.
+      cloudGen: (_req, signal) =>
+        new Promise((_resolve, reject) => {
+          const abort = (): void => reject(new DOMException("outer aborted", "AbortError"));
+          if (signal?.aborted) return abort();
+          signal?.addEventListener("abort", abort, { once: true });
+        }),
+      breaker,
+      cloudTimeouts: { instant: 60_000, workhorse: 60_000, deep: 60_000, embed: 60_000 },
+    });
+
+    // 5 calls, each torn down by its OWN outer signal mid cloud-attempt.
+    for (let i = 0; i < 5; i++) {
+      const outer = new AbortController();
+      const p = routing.generate({ model: "hermes3:8b", prompt: `x${i}` }, outer.signal, "deep");
+      outer.abort(); // the outer tier budget expired / caller gave up
+      await expect(p).rejects.toThrow(); // the abort PROPAGATES — not swallowed into a local serve
+    }
+
+    // An outer/caller abort is operator/caller config, NOT a cloud outage: the
+    // breaker must be untouched (5 recordFailure calls would have OPENED it).
+    expect(breaker.currentState).toBe("closed");
+    // And local was never invoked on the already-dead outer signal (no pointless
+    // fallback attempt that instantly fails).
+    expect(local.callCount.generate).toBe(0);
+  });
+});

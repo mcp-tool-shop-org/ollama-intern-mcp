@@ -165,19 +165,30 @@ async function runBatchInner<I extends BatchItem, R>(
   // context budget consistently.
   const batchNumCtx = resolveNumCtx(input.tier, ctx.tiers);
 
-  // R-019 — when a per-call tier-budget override is supplied, replace EVERY
-  // tier's budget with the operator's value so the cascade honors the
-  // operator's intent on initial AND fallback tiers (same semantics as
-  // runner.ts). Computed once outside the loop because every batch item
-  // shares the same per-call budget.
+  // R-019 — a per-call tier-budget override (same semantics as runner.ts).
+  // Computed once outside the loop because every batch item shares the same
+  // per-call budget. Local-only: the override replaces every tier's budget.
+  // Cloud-primary: the OUTER per-tier budget must cover cloud attempt + local
+  // fallback, so we sum cloud + local — profile-local when no override, or
+  // cloud + the override (M4) when one is set — so the override sizes the LOCAL
+  // window while the cloud attempt keeps its own timeout and the outer budget
+  // always exceeds it (a raw sub-cloud-timeout override would otherwise abort
+  // the outer signal mid-cloud, starving local and tripping the breaker).
   const effectiveTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? {
-          instant: input.tierBudgetMsOverride,
-          workhorse: input.tierBudgetMsOverride,
-          deep: input.tierBudgetMsOverride,
-          embed: input.tierBudgetMsOverride,
-        }
+      ? ctx.cloud
+        ? {
+            instant: ctx.cloud.timeouts.instant + input.tierBudgetMsOverride,
+            workhorse: ctx.cloud.timeouts.workhorse + input.tierBudgetMsOverride,
+            deep: ctx.cloud.timeouts.deep + input.tierBudgetMsOverride,
+            embed: ctx.cloud.timeouts.embed + input.tierBudgetMsOverride,
+          }
+        : {
+            instant: input.tierBudgetMsOverride,
+            workhorse: input.tierBudgetMsOverride,
+            deep: input.tierBudgetMsOverride,
+            embed: input.tierBudgetMsOverride,
+          }
       : ctx.cloud
         ? {
             instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,

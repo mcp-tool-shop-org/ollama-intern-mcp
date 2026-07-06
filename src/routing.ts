@@ -393,6 +393,14 @@ export class RoutingOllamaClient implements OllamaClient {
         ...(cloudOptions?.num_ctx !== undefined ? { num_ctx: cloudOptions.num_ctx } : {}),
       });
     } catch (err) {
+      // M4: an abort from the OUTER signal (the runner's tier budget expired, or
+      // the caller cancelled) is NOT a cloud failure — the whole attempt is being
+      // torn down from outside. Don't count it toward the breaker (operator/caller
+      // config must never trip the cloud breaker) and don't serve local on the
+      // already-dead signal; rethrow so the outer runWithTimeoutAndFallback drives
+      // the tier cascade / TIER_TIMEOUT. A cloud-attempt-timer abort, by contrast,
+      // leaves the outer signal live and falls through to the transient path below.
+      if (signal?.aborted) throw err;
       const cls = classifyCloudError(err);
       if (cls === "deterministic") {
         // H2: release the half-open probe so a deterministic 404 can't wedge
