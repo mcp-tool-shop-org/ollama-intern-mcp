@@ -22,7 +22,9 @@
  */
 import { access, mkdir, open } from "node:fs/promises";
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import { atomicWriteFile } from "../../corpus/atomicWrite.js";
+import { InternError } from "../../errors.js";
 
 export interface ArtifactPaths {
   slug: string;
@@ -82,14 +84,23 @@ export async function resolveUniqueArtifactPaths(
     c = candidate(`${baseSlug}-${n}`);
     if (await tryReserve(c)) return c;
   }
-  // Pathological: ~1000 same-slug artifacts already exist. A millisecond suffix
-  // — still exclusive-create so even this fallback never clobbers a live pair.
-  c = candidate(`${baseSlug}-${Date.now()}`);
-  if (await tryReserve(c)) return c;
-  // Astronomically unlikely double-collision on the ms suffix — return it and
-  // let writeArtifactPair's atomic (salted-tmp, torn-free) write land, rather
-  // than loop forever.
-  return c;
+  // Pathological: ~1000 same-slug artifacts already exist. Fall back to a
+  // RANDOM-salted suffix — still exclusive-create, so a returned slug is one
+  // this call has atomically claimed and can never clobber a live pair. Bounded
+  // retries; if even 64 random 48-bit salts all collide (astronomically
+  // unlikely), throw loud rather than return an UNRESERVED slug a concurrent
+  // run could clobber. The invariant is reserve-or-throw — the jury caught the
+  // old code returning the unreserved ms-suffix candidate on a double-collision.
+  for (let attempt = 0; attempt < 64; attempt++) {
+    c = candidate(`${baseSlug}-${randomBytes(6).toString("hex")}`);
+    if (await tryReserve(c)) return c;
+  }
+  throw new InternError(
+    "INTERNAL",
+    `Could not reserve a unique artifact slug for "${baseSlug}" after ~1064 attempts.`,
+    "The artifact directory holds an extraordinary number of same-slug artifacts. Prune old artifacts with ollama_artifact_prune, or point INTERN_ARTIFACT_DIR at a fresh directory.",
+    false,
+  );
 }
 
 /**

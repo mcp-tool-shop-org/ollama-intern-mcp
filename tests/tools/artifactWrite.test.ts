@@ -5,10 +5,26 @@
  *   - collision-safe slugs (never silently overwrite an existing pair)
  *   - atomic, torn-pair-free writes (.json is the last commit marker)
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Surgical seam for the reserve-or-throw test: real fs everywhere, but when
+// `forceOpenEexist.on` is set, node:fs/promises `open` rejects with EEXIST so
+// every exclusive-create reservation collides (the astronomical corner).
+const { forceOpenEexist } = vi.hoisted(() => ({ forceOpenEexist: { on: false } }));
+vi.mock("node:fs/promises", async (importActual) => {
+  const actual = await importActual<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    default: actual,
+    open: (...args: unknown[]) =>
+      forceOpenEexist.on
+        ? Promise.reject(Object.assign(new Error("EEXIST: file already exists"), { code: "EEXIST" }))
+        : (actual.open as (...a: unknown[]) => unknown)(...args),
+  };
+});
 
 import {
   resolveUniqueArtifactPaths,
@@ -42,6 +58,21 @@ describe("resolveUniqueArtifactPaths (H6)", () => {
     await writeFile(join(dir, "s.md"), "x", "utf8");
     const r = await resolveUniqueArtifactPaths(dir, "s");
     expect(r.slug).toBe("s-2");
+  });
+
+  it("throws (reserve-or-throw) rather than returning an UNRESERVED slug when every reservation collides — advisor-jury-surfaced", async () => {
+    // Two cross-family jurors converged: the old fallback returned the
+    // ms-suffix candidate WITHOUT a held reservation on a double-collision, so
+    // two concurrent runs could clobber. Force every exclusive-create to EEXIST
+    // and assert the resolver THROWS instead of returning an unclaimed slug.
+    forceOpenEexist.on = true;
+    try {
+      await expect(resolveUniqueArtifactPaths(dir, "collide")).rejects.toThrow(
+        /Could not reserve a unique artifact slug/,
+      );
+    } finally {
+      forceOpenEexist.on = false;
+    }
   });
 
   it("keeps incrementing past multiple existing pairs", async () => {
