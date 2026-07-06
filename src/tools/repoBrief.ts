@@ -23,7 +23,7 @@ import type { EvidenceItem } from "./briefs/evidence.js";
 import {
   assembleEvidence,
   normalizeRefs,
-  parseJsonObject,
+  parseModelJsonObject,
   readString,
   readObjectArray,
   type AssembledEvidence,
@@ -209,7 +209,7 @@ export async function synthesizeRepoBrief(
       },
     }),
     parse: (raw): RepoBriefResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
       let stripped = 0;
 
       const repo_thesis = readString(o, "repo_thesis");

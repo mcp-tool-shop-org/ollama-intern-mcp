@@ -180,10 +180,62 @@ export function normalizeConfidence(c: unknown): "high" | "medium" | "low" {
   return "low";
 }
 
-/** Tolerant JSON parse: returns an empty object if the model didn't follow the contract. */
+/**
+ * Tolerant JSON parse: returns an empty object if the model didn't follow
+ * the contract. NOT fence-tolerant — model-facing callers should prefer
+ * `parseModelJsonObject` below (cloud models fence their JSON).
+ */
 export function parseJsonObject(raw: string): Record<string, unknown> {
   try {
     const obj = JSON.parse(raw.trim());
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj as Record<string, unknown>;
+  } catch {
+    /* fall through */
+  }
+  return {};
+}
+
+/**
+ * JSON.parse with markdown-fence tolerance — the model-output parse
+ * primitive (Phase 3b, Slice A; promoted from verifyClaims' parseJurorJson).
+ *
+ * Observed live (F1 dogfood jury, 2026-07-06): glm-5.2 and kimi-k2.7 on
+ * Ollama Cloud wrap replies in ```json fences even under `format:"json"` —
+ * the cloud side doesn't grammar-enforce every model (deepseek emits raw).
+ * Every runTool-driven parser is cloud-reachable (always was under
+ * cloud-primary; F2 added per-call escalation), so this is the shared fix.
+ *
+ * Contract: direct parse FIRST (the overwhelmingly common case, and it
+ * keeps raw JSON that legitimately contains a fence inside a string value
+ * from being mis-extracted), then the FIRST fenced block, else RETHROW the
+ * ORIGINAL error. Bespoke callers (extract's unparseable path, classify's
+ * abstain, triage's empty fallback) swap `JSON.parse(raw.trim())` for this
+ * one-for-one and keep their catch blocks byte-equivalent.
+ */
+export function parseModelJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw.trim());
+  } catch (err) {
+    const fence = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
+    if (fence) {
+      try {
+        return JSON.parse(fence[1].trim());
+      } catch {
+        throw err; // report the ORIGINAL failure, not the fence retry's
+      }
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fence-tolerant successor to `parseJsonObject` for model-facing callers:
+ * `parseModelJson` + object narrowing, `{}` when the reply isn't parseable
+ * as a JSON object at all. Never throws.
+ */
+export function parseModelJsonObject(raw: string): Record<string, unknown> {
+  try {
+    const obj = parseModelJson(raw);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj as Record<string, unknown>;
   } catch {
     /* fall through */

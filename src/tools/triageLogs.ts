@@ -16,6 +16,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
+import { parseModelJson } from "./briefs/common.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -105,7 +106,7 @@ function buildPromptFor(logText: string, patterns?: string[]): string {
 function parse(raw: string): TriageLogsResult {
   let parsedJson: unknown;
   try {
-    parsedJson = JSON.parse(raw.trim());
+    parsedJson = parseModelJson(raw);
   } catch {
     // Model returned non-JSON output. Empty triage is the honest fallback —
     // a hallucinated "root cause" from non-JSON text would be worse than a

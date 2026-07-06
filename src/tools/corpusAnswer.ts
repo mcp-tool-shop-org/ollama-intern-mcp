@@ -28,6 +28,7 @@ import { buildEnvelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE, resolveTier } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { callEvent, timestamp } from "../observability.js";
+import { parseModelJson } from "./briefs/common.js";
 import { loadCorpus } from "../corpus/storage.js";
 import {
   searchCorpus,
@@ -174,7 +175,7 @@ interface ModelOutput {
 
 function parseModelOutput(raw: string): ModelOutput {
   try {
-    const obj = JSON.parse(raw.trim()) as unknown;
+    const obj = parseModelJson(raw);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
       const o = obj as { answer?: unknown; citations?: unknown };
       const answer = typeof o.answer === "string" ? o.answer : "";

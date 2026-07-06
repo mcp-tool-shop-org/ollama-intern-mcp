@@ -26,7 +26,7 @@ import {
   assembleEvidence,
   normalizeRefs,
   normalizeConfidence,
-  parseJsonObject,
+  parseModelJsonObject,
   readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
@@ -261,7 +261,7 @@ export async function synthesizeIncidentBrief(
       },
     }),
     parse: (raw): IncidentBriefResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
       let stripped = 0;
 
       const hypotheses: Hypothesis[] = [];

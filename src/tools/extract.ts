@@ -19,6 +19,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
 import { loadSources } from "../sources.js";
+import { parseModelJson } from "./briefs/common.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -153,7 +154,7 @@ function liftFrameAlignment(
 function parseFactory(frameSupplied: boolean, warnings: string[]) {
   return function parse(raw: string): ExtractResult {
     try {
-      const obj = JSON.parse(raw.trim());
+      const obj = parseModelJson(raw);
       if (obj && typeof obj === "object" && !Array.isArray(obj)) {
         const asObj = obj as Record<string, unknown>;
         if (frameSupplied) {

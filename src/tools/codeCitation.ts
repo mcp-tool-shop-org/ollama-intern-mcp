@@ -23,7 +23,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, type LoadedSource } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
-import { parseJsonObject, readArray, readObjectArray } from "./briefs/common.js";
+import { parseModelJsonObject, readArray, readObjectArray } from "./briefs/common.js";
 import { timestamp } from "../observability.js";
 import type { RunContext } from "../runContext.js";
 
@@ -169,7 +169,7 @@ export async function handleCodeCitation(
       },
     }),
     parse: (raw): CodeCitationResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
       const answer = typeof o.answer === "string" ? o.answer.trim() : "";
 
       const cites: CodeCitation[] = [];

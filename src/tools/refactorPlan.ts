@@ -15,7 +15,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
-import { parseJsonObject, readObjectArray } from "./briefs/common.js";
+import { parseModelJsonObject, readObjectArray } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
 
 export const refactorPlanSchema = z.object({
@@ -144,7 +144,7 @@ export async function handleRefactorPlan(
       },
     }),
     parse: (raw): RefactorPlanResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
 
       const rawPhases: RefactorPhase[] = [];
       for (const e of readObjectArray(o, "phases")) {

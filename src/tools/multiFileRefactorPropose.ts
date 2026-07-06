@@ -23,7 +23,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
-import { parseJsonObject, readArray, readObjectArray } from "./briefs/common.js";
+import { parseModelJsonObject, readArray, readObjectArray } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
 
 export const multiFileRefactorProposeSchema = z.object({
@@ -191,7 +191,7 @@ export async function handleMultiFileRefactorPropose(
       },
     }),
     parse: (raw): MultiFileRefactorProposeResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
 
       const perFileChanges: PerFileChange[] = [];
       for (const e of readObjectArray(o, "per_file_changes")) {
