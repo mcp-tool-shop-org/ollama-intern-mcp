@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.9.0] — 2026-07-06
 
-The cloud CORE of the feature pass (dogfood swarm Phase 3): per-call cloud escalation infrastructure + the cross-family verification atom it exists to power. Local-first defaults are unchanged; with no key set, behavior is byte-identical to v2.8.0.
+Minor — the **cloud feature pass** (dogfood swarm Phase 3, built + independently cross-family-verified across two courier-loop cycles). The strategic payload is a **cross-family verification lane** — `ollama_verify_claims` runs a disjoint-family Ollama Cloud flagship panel to adjudicate claims — powered by **per-call cloud escalation** (a new local-first *standby* mode: local-primary with zero egress until a single call opts in with `backend:'cloud'`). Rounded out with the "measured economics" rollup (`ollama_log_stats`), a CI-persona doctor, machine-readable tool annotations across the surface, and finished cloud onboarding. **Local-first defaults are unchanged — with no key set, behavior is byte-identical to v2.8.0** (zero egress, no startup cloud probe). No public tool contract was removed.
 
 ### Added
 
@@ -25,6 +25,7 @@ The cloud CORE of the feature pass (dogfood swarm Phase 3): per-call cloud escal
 - **Per-call `model` override is honored on the cloud path.** Since v2.7.0, cloud-primary routing clobbered the v2.3.0 per-call override with the tier→cloud-model map — the caller's named model was silently substituted. The override now rides the cloud attempt verbatim (`model_requested` vs `model` on the envelope proves it), which per-juror panel selection depends on.
 - **A per-call override's cloud 404 no longer arms the process-wide deterministic cooldown.** One caller's typo'd/retired model id used to suppress cloud for *every* call for 60s; now it releases the breaker probe only (the tier-default 404 cooldown is unchanged).
 - **Standby never inflates local budgets.** The cloud+local budget summing in runner/chat/batch/corpus-search explain applies only when cloud may actually serve the call (`cloudMayServe`), so a standby key doesn't triple local tier ceilings.
+- **`ollama_log_stats` no longer crashes if the log is rotated mid-read.** The read-only stats call checked `existsSync` then `readFile`; a log deleted in that non-atomic window raised `LOG_READ_FAILED` instead of the soft-empty zeros the tool otherwise returns for an absent log. An `ENOENT` on the read path is now treated as "no log yet" (the same discipline the corpus refresh and doctor's error-tail reader already use); only a genuine read failure (permissions/I-O) is raised.
 
 ### Changed
 

@@ -27,6 +27,17 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 
 ---
 
+## New in v2.9.0
+
+**The cloud feature pass — a cross-family verification lane, on-demand cloud escalation, and the economics to see it.** Local-first is unchanged: with no key set, behavior is byte-identical to v2.8.0 (zero egress, no startup cloud probe).
+
+- **`ollama_verify_claims` — cross-family verification.** `ollama_code_review` *generates* findings; this *adjudicates* them. It runs a disjoint-family Ollama Cloud flagship panel (deepseek / kimi / glm by default) over your claims + evidence and returns per-claim CONFIRMED / REFUTED / NEEDS_REVIEW. Aggregation is lone-dissent-never-decides (≥2 to refute, ≥2 to confirm), every juror is served-model-verified (a local fallback or substituted model is excluded, never counted), and claim inputs are structurally reasoning-stripped. The honest ceiling is documented: a CONFIRMED is supporting evidence, not proof — reliable at flagging gross errors, weaker on a frontier model's subtle ones.
+- **Per-call cloud escalation + standby mode.** Set `OLLAMA_API_KEY` *alone* (without `OLLAMA_CLOUD_PRIMARY`) and you're in **standby**: local-primary, zero egress, no startup probe — until a single call opts in with `backend:'cloud'`. Escalate one high-stakes review to a 600B model without flipping every call to cloud. The first escalation discloses egress loudly at the point it happens; a per-call `model` override now rides the cloud attempt verbatim.
+- **`ollama_log_stats` — the measured economics the tagline promises.** A no-LLM rollup of your NDJSON receipts: cloud/local split, cloud→local fallback rate, tokens per tool, p50/p95 latency, bounded by a `since` window.
+- **Doctor for CI + machine-readable tools.** `doctor --json --fail-unhealthy` gives pipelines a real gate (with a cloud-aware `healthy` flag), and every tool now carries MCP `readOnlyHint`/`destructiveHint`/`title` annotations so clients get correct permission UX. Plus `init --claude` scaffolds a paste-ready `.mcp.json`.
+
+Full detail in [CHANGELOG.md](./CHANGELOG.md).
+
 ## New in v2.8.0
 
 **Reliability, durability, and security hardening — 25 fixes, every one test-first and cross-family-verified.** Local-first behavior is unchanged and no tool contract was removed; existing callers keep working. The load-bearing wins:
