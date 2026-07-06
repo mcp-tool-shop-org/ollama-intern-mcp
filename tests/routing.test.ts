@@ -54,12 +54,16 @@ interface Harness {
 }
 
 function makeRouting(opts: {
-  cloudGen?: (req: { model: string }) => Promise<unknown>;
+  // Cloud gen impl. Receives the cloud-attempt AbortSignal so a test can model
+  // a hang that only settles when routing's per-attempt timer aborts it (M10).
+  cloudGen?: (req: { model: string }, signal?: AbortSignal) => Promise<unknown>;
   breaker?: CircuitBreaker;
+  /** Override the per-tier cloud-attempt timeout (ms). Default CLOUD_TIMEOUTS. */
+  cloudTimeouts?: Record<Tier, number>;
 }): Harness {
   const cloud = createFakeOllama({
     generateImpl: opts.cloudGen
-      ? (async (req) => opts.cloudGen!(req) as never)
+      ? (async (req, signal) => opts.cloudGen!(req, signal) as never)
       : undefined,
     defaultGenerateResponse: "cloud-ok",
     errorOnUnused: false,
@@ -71,7 +75,7 @@ function makeRouting(opts: {
     local,
     cloudTiers: CLOUD_TIERS,
     localTiers: LOCAL_TIERS,
-    cloudTimeouts: CLOUD_TIMEOUTS,
+    cloudTimeouts: opts.cloudTimeouts ?? CLOUD_TIMEOUTS,
     cloudNumCtx: 32_768,
     breaker: opts.breaker,
     logger,
@@ -313,5 +317,85 @@ describe("CircuitBreaker — deterministic probe does not wedge half_open (H2)",
     clock = 4_000;
     await routing.generate({ model: "hermes3:8b", prompt: "probe2" }, undefined, "deep");
     expect(cloud.callCount.generate).toBe(afterOpen + 2); // a new probe got through
+  });
+});
+
+describe("RoutingOllamaClient — cloud-attempt timeout falls back to local (M10)", () => {
+  it("aborts a hung cloud attempt at cloudTimeouts[tier] and serves local tagged cloud_timeout", async () => {
+    // The cloud gen hangs until its AbortSignal fires; routing's per-attempt
+    // setTimeout(cloudTimeouts[tier]) must abort it and fall to local with
+    // degrade_reason 'cloud_timeout', bounded by the cloud timeout — NOT by any
+    // outer runner budget (route() here is called with no outer signal). If the
+    // setTimeout+AbortController wiring regresses, this cloud promise never
+    // settles and the test times out — a strong RED for the whole path.
+    const { routing, cloud, local, logger } = makeRouting({
+      cloudGen: (_req, signal) =>
+        new Promise((_resolve, reject) => {
+          const abort = (): void =>
+            reject(new DOMException("The cloud attempt was aborted", "AbortError"));
+          if (signal?.aborted) return abort();
+          signal?.addEventListener("abort", abort, { once: true });
+        }),
+      // Tiny per-attempt cloud timeout so the hang aborts in ~5ms.
+      cloudTimeouts: { instant: 5, workhorse: 5, deep: 5, embed: 5 },
+    });
+
+    const resp = await routing.generate(
+      { model: "hermes3:8b", prompt: "hang" },
+      undefined,
+      "workhorse",
+    );
+
+    const info = getRoutingInfo(resp);
+    expect(info?.backend).toBe("local");
+    expect(info?.degraded).toBe(true);
+    expect(info?.degrade_reason).toBe("cloud_timeout");
+    expect(info?.model).toBe("hermes3:8b");
+    expect(cloud.callCount.generate).toBe(1);
+    expect(local.callCount.generate).toBe(1);
+    const ev = logger.events.find((e) => e.kind === "backend_fallback");
+    expect((ev as { reason?: string }).reason).toBe("cloud_timeout");
+  });
+});
+
+describe("CircuitBreaker — failed half-open probe re-opens the breaker (M11)", () => {
+  it("a transient failure on the half-open probe returns the breaker to OPEN and re-arms the cooldown", async () => {
+    let clock = 0;
+    const breaker = new CircuitBreaker({ threshold: 3, cooldownMs: 1_000, now: () => clock });
+    const { routing, cloud, local } = makeRouting({
+      cloudGen: async () => {
+        throw transient(503); // cloud stays down the whole time
+      },
+      breaker,
+    });
+
+    // Trip it OPEN with 3 consecutive transient failures (all at clock 0).
+    for (let i = 0; i < 3; i++) {
+      await routing.generate({ model: "hermes3:8b", prompt: `o${i}` }, undefined, "deep");
+    }
+    expect(breaker.currentState).toBe("open");
+    const afterOpen = cloud.callCount.generate; // 3
+
+    // Advance past cooldown → the next call is admitted as the half-open probe,
+    // which FAILS (transient). recordFailure() from half_open must re-open AND
+    // re-arm the cooldown (openedAt = now = 2000).
+    clock = 2_000;
+    const probe = await routing.generate({ model: "hermes3:8b", prompt: "probe" }, undefined, "deep");
+    expect(cloud.callCount.generate).toBe(afterOpen + 1); // the probe WAS admitted
+    expect(getRoutingInfo(probe)?.backend).toBe("local"); // and fell back to local
+    // The failed probe must NOT leave the breaker stuck in half_open (which would
+    // admit a fresh probe on every subsequent call — the thundering herd the
+    // breaker exists to prevent). It must be OPEN.
+    expect(breaker.currentState).toBe("open");
+
+    // A call within the FRESH cooldown (2000 + 1000) must route straight to
+    // local — cloud NOT attempted (callCount frozen), reason circuit_open. If
+    // openedAt were not re-armed, cooldown would be measured from the original
+    // open (clock 0) and this call would wrongly re-probe cloud.
+    clock = 2_500;
+    const next = await routing.generate({ model: "hermes3:8b", prompt: "after" }, undefined, "deep");
+    expect(getRoutingInfo(next)?.degrade_reason).toBe("circuit_open");
+    expect(cloud.callCount.generate).toBe(afterOpen + 1); // frozen — no new cloud attempt
+    expect(local.callCount.generate).toBe(5); // 3 trips + probe fallback + this one
   });
 });
