@@ -216,11 +216,20 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
  * blast-radius (hours-later OLLAMA_MODEL_MISSING) is exactly what
  * FT-002 exists to prevent.
  *
+ * The leading negative lookahead catches the `<name>-<digits><letter>`
+ * dash-for-colon typo (`hermes3-8b`, `gpt-oss-120b`) where a `:` was
+ * meant — the size-tag shape always carries a trailing letter (`8b`,
+ * `120b`). It requires that trailing letter, so it does NOT fire on a
+ * bare trailing version number (`glm-5`, `qwen-3`), which is a real,
+ * colonless model id — narrowing a false-reject found in the 2026-07
+ * health pass (L1). Colon-tagged ids (`…:8b`, `…:cloud`) are unaffected:
+ * the lookahead is anchored to `$` and `:` is not in its character class.
+ *
  * Exported so tests + the doctor CLI subcommand can reference the same
  * pattern (single source of truth for what counts as a model identifier).
  */
 export const OLLAMA_MODEL_NAME_RE =
-  /^(?![a-z0-9._-]+-\d{1,4}[a-z]?$)[a-z0-9._-]+(:[A-Za-z0-9._-]+)?$/;
+  /^(?![a-z0-9._-]+-\d{1,4}[a-z]$)[a-z0-9._-]+(:[A-Za-z0-9._-]+)?$/;
 
 /**
  * Validation bounds for Ollama `num_ctx` (FT-002).
@@ -244,11 +253,12 @@ export const NUM_CTX_MAX = 1_048_576;
  * form when detected; returns `null` when the value looks like a
  * legitimate hyphenated identifier such as `nomic-embed-text`.
  *
- * Used to ENRICH error hints — not to drive rejection. The validator's
- * regex is intentionally permissive on hyphens (matches the FT-002 spec
- * literal regex `^[a-z0-9._-]+(:[a-z0-9._-]+)?$`); detection of the
- * typo shape powers the suggestion but doesn't itself throw, so a
- * legitimate-but-unusual hyphenated name doesn't false-positive.
+ * Used to ENRICH the rejection hint: `OLLAMA_MODEL_NAME_RE`'s negative
+ * lookahead is what REJECTS the size-tag dash-typo; this helper runs
+ * afterward on the already-rejected value to suggest the colon form
+ * (`hermes3-8b` → `hermes3:8b`). It returns `null` for a name with no
+ * trailing `-<digits>[letter]` segment, so a name rejected for some
+ * other reason (uppercase, whitespace) gets no misleading suggestion.
  */
 function suggestColonForm(value: string): string | null {
   if (value.includes(":")) return null;
@@ -266,14 +276,12 @@ function suggestColonForm(value: string): string | null {
  * bad value, the valid pattern, and (where reasonable) a most-likely-
  * typo suggestion via `suggestColonForm`.
  *
- * Per the v2.5 contract, the regex `OLLAMA_MODEL_NAME_RE` is the sole
- * gate — the dash-form `hermes3-8b` syntactically matches the regex
- * (hyphens are valid in the name segment) so it currently passes
- * validation and the failure surfaces later as OLLAMA_MODEL_MISSING
- * from /api/generate. The full typo-rejection version is tracked as
- * an open question on the test surface; tightening the regex without
- * also widening the doctrine would break `nomic-embed-text` style
- * legitimate names.
+ * `OLLAMA_MODEL_NAME_RE` is the sole gate. Its negative lookahead
+ * rejects the `<name>-<digits><letter>` dash-for-colon typo
+ * (`hermes3-8b`) at the structural step; `validateEnvModel` then adds
+ * the `suggestColonForm` colon-form hint. Bare trailing version numbers
+ * (`glm-5`) and letter-suffixed names (`nomic-embed-text`) are NOT the
+ * typo shape and pass (narrowed in the L1 2026-07 health pass).
  */
 function validateEnvModel(varName: string, value: string | undefined): void {
   if (value === undefined || value === "") return;

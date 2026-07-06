@@ -242,15 +242,20 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
   if (found === 1) {
     // v1 → v2 migration: v1 didn't capture the resolved tag. Treat as
     // "unknown at index time" — refresh will record it on the next embed
-    // call and the drift check activates from there forward. failed_paths
-    // defaults to empty and completed_at stays undefined (we don't know
-    // whether the prior run landed cleanly, but legacy manifests in the
-    // wild are almost certainly intact, so skip the interrupted-write
-    // warning for them).
+    // call and the drift check activates from there forward.
+    //
+    // M5: v1 also predates the completed_at torn-write marker, so it has none.
+    // A legacy manifest in the wild is almost certainly intact — stamp
+    // completed_at from a real prior timestamp so it migrates as "complete" and
+    // does NOT trip the false-positive interrupted-write warning. This is the
+    // sentinel that distinguishes "legacy, assumed complete" from a genuinely
+    // torn v2 manifest (which has NO completed_at because the two-phase marker
+    // cleared it and a crash prevented the restore).
     return {
       ...(parsed as CorpusManifest),
       schema_version: MANIFEST_SCHEMA_VERSION,
       embed_model_resolved: null,
+      completed_at: parsed.updated_at ?? parsed.created_at ?? new Date(0).toISOString(),
     };
   }
   if (found !== MANIFEST_SCHEMA_VERSION) {
@@ -290,4 +295,23 @@ export async function saveManifest(manifest: CorpusManifest): Promise<void> {
   // truncated JSON that loadManifest's silent catch swallows, breaking
   // the lock's "one logical state" guarantee.
   await atomicWriteFile(path, JSON.stringify(stamped, null, 2));
+}
+
+/**
+ * M5 two-phase torn-write marker (phase 1). Before a mutation overwrites the
+ * corpus JSON, clear the manifest's `completed_at` so that a crash landing
+ * between the corpus write and the final manifest write leaves NO completed_at
+ * on disk — corpus_list / corpus_health then correctly report
+ * `write_complete: false`. Without this, the PRIOR (still-valid) completed_at
+ * from the last clean run would falsely report the torn state as complete: the
+ * detector "structurally can't see a tear after the first index". No-op when
+ * there is no manifest yet (first index) or it already lacks the marker. The
+ * mutation's own final saveManifest (with completed_at) restores it on success.
+ */
+export async function clearCompletedMarker(name: string): Promise<void> {
+  const prev = await loadManifest(name).catch(() => null);
+  if (!prev || prev.completed_at === undefined) return;
+  const dirty: CorpusManifest = { ...prev };
+  delete dirty.completed_at;
+  await saveManifest(dirty);
 }

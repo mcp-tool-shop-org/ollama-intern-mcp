@@ -795,7 +795,7 @@ function printHelp(): void {
     `  OLLAMA_CLOUD_PRIMARY   Enable cloud-primary routing (1/true/yes/on).`,
     `  OLLAMA_API_KEY         Bearer key for Ollama Cloud (required when cloud is on).`,
     `  OLLAMA_CLOUD_HOST      Cloud base URL (default: https://ollama.com).`,
-    `  INTERN_CLOUD_MODEL     Cloud model for instant+workhorse+deep (default: minimax-m3:cloud).`,
+    `  INTERN_CLOUD_MODEL     Cloud model for instant+workhorse+deep (default: qwen3-coder-next:cloud).`,
     `  INTERN_CLOUD_DEEP_MODEL  Deep-tier-only cloud override (e.g. deepseek-v3.1:671b).`,
     ``,
     `DOCS`,

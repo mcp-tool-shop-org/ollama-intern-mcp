@@ -18,8 +18,14 @@
  *   - transient (timeout / 5xx / 429 / network)  → count toward the breaker, fall to local.
  *   - auth (401/403, OLLAMA_AUTH_FAILED)          → sticky 'misconfigured' breaker that does NOT
  *                                                   auto-recover on a timer; serve local but surface loudly.
- *   - deterministic (404 model-missing)           → do NOT count; rethrow (a retired/typo'd cloud
- *                                                   model id must surface, not silently degrade).
+ *   - deterministic (404 model-missing)           → do NOT count toward the breaker; release the
+ *                                                   half-open probe and fall back to local with a
+ *                                                   loud `cloud_model_missing` degrade reason + a
+ *                                                   cloud-specific hint (a retired/typo'd cloud model
+ *                                                   id degrades visibly, never a silent swap nor a
+ *                                                   total outage), and arm a short auto-expiring
+ *                                                   cooldown so a persistently-missing model isn't
+ *                                                   re-probed on every call. See H2/H3 (2026-07).
  *
  * Observability: every response is tagged (non-enumerable Symbol) with which
  * backend served it + whether it was degraded, and a `backend_fallback` NDJSON
@@ -50,6 +56,7 @@ export type DegradeReason =
   | "cloud_rate_limited"
   | "cloud_unreachable"
   | "cloud_auth_failed"
+  | "cloud_model_missing"
   | "circuit_open";
 
 export type Backend = "cloud" | "local";
@@ -97,6 +104,13 @@ export interface BreakerOptions {
   threshold?: number;
   /** OPEN→HALF-OPEN cooldown in ms. Default 20_000. */
   cooldownMs?: number;
+  /**
+   * Deterministic-failure (cloud 404 model-missing) cooldown in ms. During this
+   * window after a cloud 404, cloud attempts are suppressed so a retired/typo'd
+   * cloud model doesn't pay a round-trip on every call. Auto-expires (NOT sticky
+   * like auth) so a restored model / fixed id recovers on its own. Default 60_000.
+   */
+  deterministicCooldownMs?: number;
   /** Injectable clock for deterministic tests. Default Date.now. */
   now?: () => number;
 }
@@ -115,13 +129,17 @@ export class CircuitBreaker {
   private consecutiveFailures = 0;
   private openedAt = 0;
   private halfOpenInFlight = false;
+  /** Wall-clock (via `now`) until which cloud is suppressed after a 404 (H3). */
+  private deterministicCooldownUntil = 0;
   private readonly threshold: number;
   private readonly cooldownMs: number;
+  private readonly deterministicCooldownMs: number;
   private readonly now: () => number;
 
   constructor(opts: BreakerOptions = {}) {
     this.threshold = opts.threshold ?? 3;
     this.cooldownMs = opts.cooldownMs ?? 20_000;
+    this.deterministicCooldownMs = opts.deterministicCooldownMs ?? 60_000;
     this.now = opts.now ?? Date.now;
   }
 
@@ -129,9 +147,18 @@ export class CircuitBreaker {
     return this.state;
   }
 
+  /** True while the deterministic-failure (cloud 404) cooldown is active (H3). */
+  inDeterministicCooldown(): boolean {
+    return this.now() < this.deterministicCooldownUntil;
+  }
+
   /** Decide whether to attempt cloud now. May transition OPEN→HALF-OPEN. */
   allowCloud(): boolean {
     if (this.state === "misconfigured") return false;
+    // H3: a recent cloud 404 (model-missing) suppresses cloud attempts briefly,
+    // independent of the transient breaker state, so a retired model doesn't tax
+    // every call. Auto-expires — not sticky.
+    if (this.inDeterministicCooldown()) return false;
     if (this.state === "closed") return true;
     if (this.state === "open") {
       if (this.now() - this.openedAt >= this.cooldownMs) {
@@ -167,6 +194,33 @@ export class CircuitBreaker {
   recordAuthFailure(): void {
     this.state = "misconfigured";
     this.halfOpenInFlight = false;
+  }
+
+  /**
+   * Release a half-open probe that neither succeeded nor is a countable
+   * failure — used when the probe threw a DETERMINISTIC error (e.g. a 404
+   * model-missing) that must not count toward the breaker but also must not
+   * wedge it in half_open forever. Clears the in-flight flag and, if we were
+   * probing, restores OPEN + re-arms the cooldown so a later probe can run.
+   */
+  releaseProbe(): void {
+    this.halfOpenInFlight = false;
+    if (this.state === "half_open") {
+      this.state = "open";
+      this.openedAt = this.now();
+    }
+  }
+
+  /**
+   * A deterministic cloud failure (404 model-missing). Does NOT count toward the
+   * transient breaker (it's an external config/availability fact, not a cloud
+   * outage) and is NOT sticky like auth. Releases any half-open probe (so a 404
+   * can't wedge half_open — H2) and arms a short cooldown during which cloud is
+   * skipped (H3), so a persistently-retired model isn't re-probed on every call.
+   */
+  recordDeterministicFailure(): void {
+    this.releaseProbe();
+    this.deterministicCooldownUntil = this.now() + this.deterministicCooldownMs;
   }
 }
 
@@ -301,8 +355,15 @@ export class RoutingOllamaClient implements OllamaClient {
     // Breaker says no cloud (OPEN within cooldown, or sticky misconfigured) →
     // straight to local, no cloud latency tax.
     if (!this.breaker.allowCloud()) {
+      // Report WHY cloud was skipped: sticky auth misconfig, the H3 deterministic
+      // (cloud-404) cooldown, or the transient breaker being OPEN — never a
+      // misleading circuit_open when the real cause is a missing cloud model.
       const reason: DegradeReason =
-        this.breaker.currentState === "misconfigured" ? "cloud_auth_failed" : "circuit_open";
+        this.breaker.currentState === "misconfigured"
+          ? "cloud_auth_failed"
+          : this.breaker.inDeterministicCooldown()
+            ? "cloud_model_missing"
+            : "circuit_open";
       return this.serveLocal(req, signal, tier, reason, call);
     }
 
@@ -332,11 +393,29 @@ export class RoutingOllamaClient implements OllamaClient {
         ...(cloudOptions?.num_ctx !== undefined ? { num_ctx: cloudOptions.num_ctx } : {}),
       });
     } catch (err) {
+      // M4: an abort from the OUTER signal (the runner's tier budget expired, or
+      // the caller cancelled) is NOT a cloud failure — the whole attempt is being
+      // torn down from outside. Don't count it toward the breaker (operator/caller
+      // config must never trip the cloud breaker) and don't serve local on the
+      // already-dead signal; rethrow so the outer runWithTimeoutAndFallback drives
+      // the tier cascade / TIER_TIMEOUT. A cloud-attempt-timer abort, by contrast,
+      // leaves the outer signal live and falls through to the transient path below.
+      if (signal?.aborted) throw err;
       const cls = classifyCloudError(err);
       if (cls === "deterministic") {
-        // Surface the real error (e.g. retired cloud model id) — do NOT count
-        // toward the breaker and do NOT silently serve a different local model.
-        throw err;
+        // H2: release the half-open probe so a deterministic 404 can't wedge
+        // the breaker in half_open forever (it neither succeeds nor counts as
+        // a transient failure). H3-res: also arm a short deterministic cooldown
+        // so a persistently-retired model isn't re-probed on every call.
+        this.breaker.recordDeterministicFailure();
+        // H3: a retired/typo'd cloud model id is EXTERNAL and out of the
+        // operator's control — hard-failing every generative call while a
+        // healthy local sat idle was a total outage. Fall back to local with a
+        // DISTINCT, loud degrade_reason (the same posture as an auth misconfig,
+        // which also serves local). The reason rides every envelope + a
+        // backend_fallback event, so the misconfiguration surfaces WITHOUT
+        // breaking the server. Deterministic → not counted toward the breaker.
+        return this.serveLocal(req, signal, tier, "cloud_model_missing", call);
       }
       if (cls === "auth") {
         this.breaker.recordAuthFailure();

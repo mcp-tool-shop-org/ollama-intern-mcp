@@ -24,13 +24,34 @@ import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
-import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest, assertSafePath } from "./manifest.js";
+import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, clearCompletedMarker, type CorpusManifest, assertSafePath } from "./manifest.js";
 import { withCorpusLock } from "./lock.js";
 import { InternError } from "../errors.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 
 const EMBED_BATCH = 64;
 /** Hard cap on input file size. Prevents OOM from a user pointing at a 100GB file. */
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Mint a globally-unique chunk id. Folds a PATH digest into the id so two
+ * DIFFERENT files with IDENTICAL content (duplicate LICENSE / template / stub
+ * docs — common in doc trees) don't collide into one id and shadow each other
+ * in the searcher's chunkById map / RRF fusion (M8, 2026-07 health pass).
+ * Deterministic in (name, path, fileHash, index): re-indexing is stable AND
+ * heals any corpus minted under the old path-less `name-contentHash-index`
+ * scheme, since reused/carried chunks are re-minted through this same helper.
+ */
+export function mintChunkId(
+  corpusName: string,
+  path: string,
+  fileHash: string,
+  chunkIndex: number,
+): string {
+  const pathHash = createHash("sha256").update(path).digest("hex").slice(0, 8);
+  const contentHash = fileHash.replace(/^sha256:/, "").slice(0, 8);
+  return `${corpusName}-${pathHash}-${contentHash}-${chunkIndex.toString(16).padStart(6, "0")}`;
+}
 
 export interface IndexParams {
   name: string;
@@ -104,7 +125,7 @@ export interface IndexReport {
  * after read and fail if size or mtime drifted — that means the file
  * mutated mid-read and the hash doesn't match the returned content.
  */
-async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
+export async function sha256File(path: string): Promise<{ hash: string; mtime: string; content: string }> {
   // Symlink check FIRST — reject before any size/read or realpath work so
   // a symlink can't bypass the size cap (pointing the symlink at a 100GB
   // file after the stat but before the read) and can't leak even partial
@@ -138,7 +159,7 @@ async function sha256File(path: string): Promise<{ hash: string; mtime: string; 
     const stBefore = await fh.stat();
     if (stBefore.size > MAX_FILE_BYTES) {
       throw new InternError(
-        "SOURCE_PATH_NOT_FOUND",
+        "SOURCE_FILE_TOO_LARGE",
         `File exceeds max size (${stBefore.size} bytes > ${MAX_FILE_BYTES} bytes cap): ${path}`,
         `Split the file or raise the cap. The 50MB limit exists to prevent OOM from a user pointing at a huge file.`,
         false,
@@ -206,13 +227,35 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
       false,
     );
   }
+  // L2: reuse (skip re-embedding) is only valid when the chunk GEOMETRY also
+  // matches. The reuse key is (path, content-hash) and ignored chunk_chars /
+  // chunk_overlap, so a re-index with changed params kept the OLD chunking for
+  // unchanged files while the manifest stamped the NEW params — a corpus whose
+  // recorded geometry lied about the on-disk chunks. When params change, don't
+  // populate the reuse map: every readable file re-chunks under the new geometry.
+  const paramsChanged =
+    existing != null &&
+    (existing.chunk_chars !== opts.chunk_chars || existing.chunk_overlap !== opts.chunk_overlap);
   const reusable = new Map<string, CorpusChunk[]>();
+  // H5: also index prior chunks by path alone, so a transient (non-ENOENT)
+  // read failure below can carry a path's existing chunks forward verbatim
+  // instead of silently dropping already-indexed content on a Windows file
+  // lock / antivirus hold / editor atomic-save window. This carry stays
+  // populated even when params change: a FAILED path can't be re-chunked (we
+  // can't read it), and preserving its data beats losing it — the file is
+  // already flagged in failed_paths.
+  const priorChunksByPath = new Map<string, CorpusChunk[]>();
   if (existing && existing.model_version === params.model) {
     for (const c of existing.chunks) {
-      const key = `${c.path}::${c.file_hash}`;
-      const arr = reusable.get(key) ?? [];
-      arr.push(c);
-      reusable.set(key, arr);
+      if (!paramsChanged) {
+        const key = `${c.path}::${c.file_hash}`;
+        const arr = reusable.get(key) ?? [];
+        arr.push(c);
+        reusable.set(key, arr);
+      }
+      const byPath = priorChunksByPath.get(c.path) ?? [];
+      byPath.push(c);
+      priorChunksByPath.set(c.path, byPath);
     }
   }
 
@@ -259,13 +302,40 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
         path: rawPath,
         reason: (err as Error).message ?? String(err),
       });
+      // H5: a TRANSIENT read failure (Windows file lock, antivirus hold,
+      // editor atomic-save rename window, size-cap/symlink rejection) must
+      // not delete already-indexed content. Carry this path's prior chunks
+      // forward verbatim — it stays in seenPaths (→ manifest.paths) and was
+      // recorded in failed_paths above, so retry_failed can re-verify it.
+      // Only a genuinely-absent file (ENOENT) drops: there is nothing to
+      // carry, and it must fall out per the living-corpus delete law.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        const prior = priorChunksByPath.get(absPath);
+        if (prior && prior.length > 0) {
+          allChunks.push(
+            ...prior.map((c) => ({
+              ...c,
+              id: mintChunkId(params.name, c.path, c.file_hash, c.chunk_index),
+            })),
+          );
+          reusedCount += prior.length;
+        }
+      }
       continue;
     }
     totalChars += fileInfo.content.length;
     const reuseKey = `${absPath}::${fileInfo.hash}`;
     const reused = reusable.get(reuseKey);
     if (reused && reused.length > 0) {
-      allChunks.push(...reused);
+      // Re-mint ids through mintChunkId so a corpus indexed under the old
+      // path-less scheme heals its collisions on re-index (deterministic — a
+      // no-op for chunks already minted with the current path-folded scheme).
+      allChunks.push(
+        ...reused.map((c) => ({
+          ...c,
+          id: mintChunkId(params.name, c.path, c.file_hash, c.chunk_index),
+        })),
+      );
       reusedCount += reused.length;
       continue;
     }
@@ -300,7 +370,9 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   if (toEmbedTexts.length > 0) {
     for (let i = 0; i < toEmbedTexts.length; i += EMBED_BATCH) {
       const batch = toEmbedTexts.slice(i, i + EMBED_BATCH);
-      const resp = await params.client.embed({ model: params.model, input: batch });
+      // Bounded per-batch by the canonical embed budget so a wedged embed can't
+      // hold a semaphore permit un-timed (H4-res).
+      const resp = await embedWithTimeout(params.client, { model: params.model, input: batch });
       if (resp.embeddings.length !== batch.length) {
         throw new Error(
           `Embed returned ${resp.embeddings.length} vectors for ${batch.length} inputs`,
@@ -319,9 +391,8 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
         // flips the hash so IDs can't collide across runs. Width of 6
         // hex on the index is still >16M per file, but it's now scoped
         // to file+content not to global run order.
-        const hashShort = meta.file_hash.replace(/^sha256:/, "").slice(0, 8);
         allChunks.push({
-          id: `${params.name}-${hashShort}-${meta.chunk_index.toString(16).padStart(6, "0")}`,
+          id: mintChunkId(params.name, meta.path, meta.file_hash, meta.chunk_index),
           path: meta.path,
           file_hash: meta.file_hash,
           file_mtime: meta.file_mtime,
@@ -372,6 +443,12 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     chunks: allChunks,
   };
 
+  // M5 two-phase marker (phase 1): clear the prior manifest's completed_at
+  // BEFORE overwriting the corpus, so a crash between this saveCorpus and the
+  // final saveManifest below is DETECTED as a torn write (write_complete:false)
+  // instead of hiding behind the last clean run's still-valid marker. No-op on
+  // a first index. The final saveManifest (with completed_at) restores it.
+  await clearCompletedMarker(params.name);
   await saveCorpus(corpus);
 
   // Within-refresh drift: more than one distinct resolved tag across the

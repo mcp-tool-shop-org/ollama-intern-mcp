@@ -277,4 +277,59 @@ describe("handleCorpusSearch — explain integration", () => {
       expect(h.why_matched).toBeUndefined();
     }
   });
+
+  it("bounds the explain sub-calls with a tier signal so a hung LLM can't hold a permit un-timed (H4-res)", async () => {
+    const p = await writeSource("a.md", "alpha content body here with some detail to rank");
+    await indexCorpus({ name: "ex4", paths: [p], model: MODEL, client: new HashEmbedMock() });
+
+    // An explain LLM that HANGS until its signal aborts. If the explain
+    // sub-calls were NOT given a bounded signal (the H4 sibling fix at
+    // corpusSearch.ts), Promise.all never settles and the whole search hangs
+    // to a test timeout — a strong RED for the whole path.
+    class HangingExplainClient implements OllamaClient {
+      public explainCalls = 0;
+      async generate(_req: GenerateRequest, signal?: AbortSignal): Promise<GenerateResponse> {
+        this.explainCalls += 1;
+        return new Promise<GenerateResponse>((_resolve, reject) => {
+          const abort = (): void => reject(new Error("aborted"));
+          if (signal?.aborted) return abort();
+          signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
+      async chat(_: ChatRequest): Promise<ChatResponse> {
+        throw new Error("not used");
+      }
+      async embed(req: EmbedRequest): Promise<EmbedResponse> {
+        const inputs = Array.isArray(req.input) ? req.input : [req.input];
+        return { model: req.model, embeddings: inputs.map((t) => toVec(t)) };
+      }
+      async residency(_: string): Promise<Residency | null> {
+        return { in_vram: true, size_bytes: 1, size_vram_bytes: 1, evicted: false, expires_at: null };
+      }
+    }
+
+    const client = new HangingExplainClient();
+    // Tiny instant budget so the explain batch aborts in ~50ms instead of hanging.
+    const ctx: RunContext = {
+      client,
+      tiers: PROFILES["dev-rtx5080"].tiers,
+      timeouts: { ...PROFILES["dev-rtx5080"].timeouts, instant: 50 },
+      hardwareProfile: "dev-rtx5080",
+      logger: new NullLogger(),
+    };
+
+    const env = await handleCorpusSearch(
+      { corpus: "ex4", query: "alpha", mode: "lexical", explain: true, top_k: 2 },
+      ctx,
+    );
+
+    // Search still returns hits (explain is best-effort); the hung explanations
+    // were aborted at the instant budget -> no why_matched + a graceful warning.
+    expect(env.result.hits.length).toBeGreaterThan(0);
+    for (const h of env.result.hits) {
+      expect(h.why_matched).toBeUndefined();
+    }
+    expect(env.warnings?.some((w) => /explain/i.test(w))).toBe(true);
+    expect(client.explainCalls).toBeGreaterThan(0); // the explain path WAS entered
+  });
 });

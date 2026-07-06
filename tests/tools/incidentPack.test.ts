@@ -12,7 +12,7 @@
  *   - no log_text → triage step skipped, not faked
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -446,6 +446,47 @@ describe("handleIncidentPack — pack_step progress events", () => {
     ]);
     for (const e of steps) {
       if (e.kind === "pack_step") expect(e.total_steps).toBe(4);
+    }
+  });
+});
+
+// ── H6: artifact collision safety ───────────────────────────
+//
+// Slugs are minute-resolution. A retry after a timed-out MCP response, or
+// two same-minute runs with the same title, computes an IDENTICAL slug —
+// the old plain writeFile('w') silently overwrote the first artifact pair.
+describe("handleIncidentPack — artifact collision safety (H6)", () => {
+  it("two same-slug runs never overwrite — the second uniquifies and both survive", async () => {
+    // Freeze the clock so both runs compute the SAME minute-resolution slug.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-05T18:30:20Z"));
+    try {
+      const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT);
+      const env1 = await handleIncidentPack(
+        { log_text: LONG_LOG, title: "Auth outage", artifact_dir: tempArtifactDir },
+        makeCtx(client),
+      );
+      const env2 = await handleIncidentPack(
+        { log_text: LONG_LOG, title: "Auth outage", artifact_dir: tempArtifactDir },
+        makeCtx(client),
+      );
+
+      // The second run must NOT land on the first run's paths.
+      expect(env2.result.artifact.json_path).not.toBe(env1.result.artifact.json_path);
+      expect(env2.result.artifact.markdown_path).not.toBe(env1.result.artifact.markdown_path);
+
+      // Both PAIRS survive on disk — the first was not clobbered.
+      const entries = await readdir(tempArtifactDir);
+      expect(entries.filter((e) => e.endsWith(".json"))).toHaveLength(2);
+      expect(entries.filter((e) => e.endsWith(".md"))).toHaveLength(2);
+
+      // Both artifacts are complete + parseable (no torn pair).
+      for (const p of [env1.result.artifact.json_path, env2.result.artifact.json_path]) {
+        const obj = JSON.parse(await readFile(p, "utf8"));
+        expect(obj.pack).toBe("incident_pack");
+      }
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

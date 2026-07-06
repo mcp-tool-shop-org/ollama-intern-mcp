@@ -18,6 +18,8 @@ import { describe, it, expect } from "vitest";
 import { handleChat, chatSchema } from "../../src/tools/chat.js";
 import { PROFILES } from "../../src/profiles.js";
 import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
+import { RoutingOllamaClient } from "../../src/routing.js";
+import type { Tier, TierConfig } from "../../src/tiers.js";
 
 describe("handleChat — baseline", () => {
   it("returns reply + last_resort marker", async () => {
@@ -118,5 +120,79 @@ describe("handleChat — per-call model override (v2.3.0)", () => {
         model: "   ",
       }),
     ).toThrow();
+  });
+});
+
+describe("handleChat — routing seam + tier-bounded timeout (H4)", () => {
+  it("passes tier='workhorse' and a live tier-bounded AbortSignal into the chat call", async () => {
+    let capturedTier: string | undefined;
+    let capturedSignal: AbortSignal | undefined;
+    const client = createFakeOllama({
+      chatImpl: async (req, signal, tier) => {
+        capturedTier = tier;
+        capturedSignal = signal;
+        return {
+          model: req.model,
+          message: { role: "assistant", content: "ok" },
+          done: true,
+          prompt_eval_count: 1,
+          eval_count: 1,
+        };
+      },
+    });
+    await handleChat({ messages: [{ role: "user", content: "hi" }] }, makeFakeCtx({ client }));
+    // Was undefined → cloud-primary routing served local unconditionally.
+    expect(capturedTier).toBe("workhorse");
+    // Was undefined → a wedged model held a semaphore permit un-timed despite
+    // the schema claiming a timeout. Now a real, un-aborted signal is passed.
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal?.aborted).toBe(false);
+  });
+
+  it("routes to cloud (not local) and lifts backend provenance onto the envelope", async () => {
+    const cloudTiers: TierConfig = {
+      instant: "cloud-m",
+      workhorse: "cloud-m",
+      deep: "cloud-m",
+      embed: "nomic-embed-text",
+    };
+    const localTiers: TierConfig = {
+      instant: "local-m",
+      workhorse: "local-m",
+      deep: "local-m",
+      embed: "nomic-embed-text",
+    };
+    const cloudTimeouts: Record<Tier, number> = {
+      instant: 30_000,
+      workhorse: 120_000,
+      deep: 300_000,
+      embed: 10_000,
+    };
+    const cloud = createFakeOllama({
+      chatImpl: async (req) => ({
+        model: req.model,
+        message: { role: "assistant", content: "from cloud" },
+        done: true,
+        prompt_eval_count: 1,
+        eval_count: 1,
+      }),
+    });
+    const local = createFakeOllama({
+      chatImpl: async (req) => ({
+        model: req.model,
+        message: { role: "assistant", content: "from local" },
+        done: true,
+        prompt_eval_count: 1,
+        eval_count: 1,
+      }),
+    });
+    const routing = new RoutingOllamaClient({ cloud, local, cloudTiers, localTiers, cloudTimeouts });
+    const env = await handleChat(
+      { messages: [{ role: "user", content: "hi" }] },
+      makeFakeCtx({ client: routing }),
+    );
+    // With a tier now passed, routing reaches cloud instead of serving local.
+    expect(env.result.reply).toBe("from cloud");
+    expect((env as unknown as { backend?: string }).backend).toBe("cloud");
   });
 });

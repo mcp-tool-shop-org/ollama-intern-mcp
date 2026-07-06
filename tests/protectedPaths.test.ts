@@ -106,18 +106,31 @@ describe("normalizePath / matchesProtectedPath — Windows case-insensitive guar
     expect(matchesProtectedPath("Security.md").protected).toBe(true);
   });
 
-  it("[posix] case is preserved (matches POSIX filesystem semantics)", () => {
+  it("[linux] case is preserved (case-SENSITIVE POSIX filesystem)", () => {
     stubPlatform("linux");
-    // On POSIX, Memory/foo.md and memory/foo.md are DIFFERENT paths —
-    // case is preserved by normalizePath, and the lowercase rule does
-    // not match the upper-case input. This is correct behavior; an
-    // attacker can't bypass on POSIX because the upper-case directory
-    // simply does not exist (or is a separate, unprotected one).
+    // On case-sensitive Linux, Memory/foo.md and memory/foo.md are DIFFERENT
+    // paths — case is preserved and the lowercase rule doesn't match the
+    // upper-case input. Correct here: the upper-case dir is a separate,
+    // unprotected one. (darwin is POSIX too but case-INSENSITIVE — see below.)
     expect(normalizePath("Memory/foo.md")).toBe("Memory/foo.md");
     expect(normalizePath(".Claude/x.md")).toBe(".Claude/x.md");
     expect(matchesProtectedPath("Memory/foo.md").protected).toBe(false);
     expect(matchesProtectedPath(".Claude/x.md").protected).toBe(false);
     // But the canonical lowercase form still matches:
     expect(matchesProtectedPath("memory/foo.md").protected).toBe(true);
+  });
+
+  it("[darwin] catches every case variant — APFS is case-insensitive (M3 bypass)", () => {
+    stubPlatform("darwin");
+    // macOS's default APFS volume is case-insensitive/case-preserving, so
+    // "Memory/x" IS the protected "memory/" file. Before the fix, normalizePath
+    // only lowercased on win32, leaving these as silent bypasses of the
+    // confirm_write gate on the project's own declared m5-max prod target.
+    expect(normalizePath("Memory/foo.md")).toBe("memory/foo.md");
+    expect(matchesProtectedPath("Memory/foo.md").protected).toBe(true);
+    expect(matchesProtectedPath("MEMORY.MD").protected).toBe(true);
+    expect(matchesProtectedPath(".CLAUDE/rules.md").protected).toBe(true);
+    expect(matchesProtectedPath("docs/CANON/x.md").protected).toBe(true);
+    expect(matchesProtectedPath("subdir/.Claude/x.md").protected).toBe(true);
   });
 });

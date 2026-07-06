@@ -12,6 +12,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import type { RunContext } from "../runContext.js";
 
 export const embedSchema = z.object({
@@ -62,7 +63,10 @@ export async function handleEmbed(
   const model = resolveTier("embed", ctx.tiers);
   const batch = Array.isArray(input.input) ? input.input : [input.input];
 
-  const resp = await ctx.client.embed({ model, input: batch });
+  const resp = await embedWithTimeout(ctx.client, { model, input: batch }, ctx.timeouts.embed, {
+    tool: "ollama_embed",
+    logger: ctx.logger,
+  });
   const residency = await ctx.client.residency(model);
 
   const result: EmbedResult = {

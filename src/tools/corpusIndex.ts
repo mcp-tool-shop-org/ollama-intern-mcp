@@ -13,6 +13,7 @@ import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
 import { indexCorpus, type IndexReport } from "../corpus/indexer.js";
 import { assertValidCorpusName } from "../corpus/storage.js";
+import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
 export const corpusIndexSchema = z
@@ -58,6 +59,21 @@ export async function handleCorpusIndex(
   input: CorpusIndexInput,
   ctx: RunContext,
 ): Promise<Envelope<IndexReport>> {
+  // M2: index.ts registers this tool via corpusIndexSchema.shape, which hands
+  // the MCP SDK only the field map — the top-level .refine() rules
+  // (chunk_overlap < chunk_chars) never run at the transport layer. Re-run the
+  // FULL schema here so a violation fails loud with SCHEMA_INVALID BEFORE we
+  // embed or write a manifest (defense-in-depth like corpusRerank; also guards
+  // any future top-level .refine()).
+  const parsed = corpusIndexSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      parsed.error.issues[0]?.message ?? "Invalid ollama_corpus_index input.",
+      "chunk_overlap must be strictly less than chunk_chars; fix the flagged field and retry.",
+      false,
+    );
+  }
   assertValidCorpusName(input.name);
   const startedAt = Date.now();
   const model = resolveTier("embed", ctx.tiers);

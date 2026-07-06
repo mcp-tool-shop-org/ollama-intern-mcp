@@ -7,11 +7,13 @@
 
 import { describe, it, expect } from "vitest";
 import { handleClassify } from "../src/tools/classify.js";
+import { runTool } from "../src/tools/runner.js";
 import { RoutingOllamaClient } from "../src/routing.js";
 import { createFakeOllama } from "./_helpers/fakeOllama.js";
 import { NullLogger } from "../src/observability.js";
 import { PROFILES, type CloudConfig } from "../src/profiles.js";
 import { InternError } from "../src/errors.js";
+import type { GenerateResponse } from "../src/ollama.js";
 import type { RunContext } from "../src/runContext.js";
 
 const CLOUD: CloudConfig = {
@@ -95,5 +97,93 @@ describe("runner + routing — envelope provenance", () => {
     const ev = logger.events.find((e) => e.kind === "backend_fallback");
     expect(ev).toBeDefined();
     expect((ev as { reason?: string }).reason).toBe("cloud_5xx");
+  });
+});
+
+describe("runner + routing — cloud + tier_budget_ms_override gives local a real window (M4)", () => {
+  it("a sub-cloud-timeout override no longer starves local: cloud is bounded by its own timeout and local answers, instead of the call dying on an already-aborted signal", async () => {
+    const logger = new NullLogger();
+    // Cloud hangs until aborted (a slow cloud). Its OWN per-attempt timer
+    // (cloudTimeouts.deep) must abort it — NOT the outer tier budget.
+    const cloud = createFakeOllama({
+      generateImpl: (_req, signal) =>
+        new Promise<GenerateResponse>((_resolve, reject) => {
+          const abort = (): void => reject(new DOMException("aborted", "AbortError"));
+          if (signal?.aborted) return abort();
+          signal?.addEventListener("abort", abort, { once: true });
+        }),
+      errorOnUnused: false,
+    });
+    // Local REJECTS immediately on an already-aborted signal (as a real HTTP
+    // client does), else answers in 50ms. Under the bug the outer signal is dead
+    // by the time local runs -> instant reject -> total failure. Under the fix
+    // local gets a live ~override-sized window -> it answers.
+    const local = createFakeOllama({
+      generateImpl: (req, signal) =>
+        new Promise<GenerateResponse>((resolve, reject) => {
+          if (signal?.aborted) return reject(new DOMException("aborted", "AbortError"));
+          const timer = setTimeout(
+            () =>
+              resolve({
+                model: req.model,
+                response: JSON.stringify({ ok: true }),
+                done: true,
+                prompt_eval_count: 1,
+                eval_count: 1,
+              }),
+            50,
+          );
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(new DOMException("aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }),
+      errorOnUnused: false,
+    });
+    // override (150) < cloud deep timeout (300): the exact sub-cloud-timeout
+    // override that used to kill the cloud attempt via the OUTER signal and hand
+    // local an already-dead signal. Fixed outer budget = cloud(300) + override(150).
+    const cloudTimeouts = { instant: 300, workhorse: 300, deep: 300, embed: 300 };
+    const routing = new RoutingOllamaClient({
+      cloud,
+      local,
+      cloudTiers: CLOUD.tiers,
+      localTiers: PROFILES["dev-rtx5080"].tiers,
+      cloudTimeouts,
+      cloudNumCtx: CLOUD.numCtx,
+      logger,
+    });
+    const ctx: RunContext = {
+      client: routing,
+      tiers: PROFILES["dev-rtx5080"].tiers,
+      timeouts: PROFILES["dev-rtx5080"].timeouts,
+      hardwareProfile: "dev-rtx5080",
+      logger,
+      cloud: { ...CLOUD, timeouts: cloudTimeouts },
+    };
+
+    // Under the bug this THROWS TIER_TIMEOUT (local never got a live window);
+    // under the fix it resolves from local, degraded cloud_timeout.
+    const env = await runTool<{ ok: boolean }>({
+      tool: "m4_probe",
+      tier: "deep",
+      ctx,
+      allowFallback: false, // single tier — the override must give THIS tier's local a window
+      tierBudgetMsOverride: 150,
+      build: (_t, model) => ({ model, prompt: "x", format: "json", options: {} }),
+      parse: (raw) => JSON.parse(raw) as { ok: boolean },
+    });
+
+    expect(env.backend).toBe("local");
+    expect(env.degraded).toBe(true);
+    expect(env.degrade_reason).toBe("cloud_timeout");
+    expect(cloud.callCount.generate).toBe(1); // cloud WAS attempted (aborted at its own 300ms)
+    expect(local.callCount.generate).toBe(1); // and local got a live window to answer
+    const ev = logger.events.find((e) => e.kind === "backend_fallback");
+    expect((ev as { reason?: string } | undefined)?.reason).toBe("cloud_timeout");
   });
 });

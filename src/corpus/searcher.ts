@@ -21,6 +21,7 @@
 import type { OllamaClient } from "../ollama.js";
 import { rankByCosine } from "../embedMath.js";
 import { InternError } from "../errors.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import type { ChunkType } from "./chunker.js";
 import { buildLexicalIndex, scoreLexical, type LexicalIndex } from "./lexical.js";
 import { applyFactBoost, rrfFuse, toRanked } from "./fusion.js";
@@ -96,7 +97,9 @@ function toHit(
 async function scoreDense(
   params: SearchParams,
 ): Promise<Array<{ chunkId: string; score: number }>> {
-  const resp = await params.client.embed({ model: params.model, input: params.query });
+  // Bounded by the canonical embed budget so a wedged embed can't hold a
+  // semaphore permit un-timed (H4-res). Search is a single embed, no cascade.
+  const resp = await embedWithTimeout(params.client, { model: params.model, input: params.query });
   if (resp.embeddings.length === 0) {
     throw new Error("Embed returned no vectors for query");
   }

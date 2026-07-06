@@ -25,9 +25,11 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
+import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import { loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "../corpus/storage.js";
-import { loadManifest, saveManifest, assertSafePath } from "../corpus/manifest.js";
+import { loadManifest, saveManifest, clearCompletedMarker, assertSafePath } from "../corpus/manifest.js";
 import { withCorpusLock } from "../corpus/lock.js";
+import { mintChunkId } from "../corpus/indexer.js";
 import { chunkDocument, type ChunkOptions } from "../corpus/chunker.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
@@ -89,6 +91,19 @@ export async function handleCorpusAmend(
   input: CorpusAmendInput,
   ctx: RunContext,
 ): Promise<Envelope<CorpusAmendResult>> {
+  // M2: registered via corpusAmendSchema.shape (index.ts), so the top-level
+  // .refine() (chunk_overlap < chunk_chars) is dropped at the transport layer.
+  // Re-run the full schema here so an invalid geometry fails loud with
+  // SCHEMA_INVALID before we take the corpus lock or mutate anything.
+  const parsed = corpusAmendSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      parsed.error.issues[0]?.message ?? "Invalid ollama_corpus_amend input.",
+      "chunk_overlap must be strictly less than chunk_chars; fix the flagged field and retry.",
+      false,
+    );
+  }
   const startedAt = Date.now();
   const activeModel = resolveTier("embed", ctx.tiers);
 
@@ -181,7 +196,12 @@ export async function handleCorpusAmend(
     const newChunks: CorpusChunk[] = [];
     if (fresh.length > 0) {
       const texts = fresh.map((c) => c.text);
-      const resp = await ctx.client.embed({ model: activeModel, input: texts });
+      const resp = await embedWithTimeout(
+        ctx.client,
+        { model: activeModel, input: texts },
+        ctx.timeouts.embed,
+        { tool: "ollama_corpus_amend", logger: ctx.logger },
+      );
       if (resp.embeddings.length !== texts.length) {
         throw new InternError(
           "CORPUS_AMEND_FAILED",
@@ -193,11 +213,10 @@ export async function handleCorpusAmend(
       if (typeof resp.model === "string" && resp.model.length > 0) {
         embedModelResolved = resp.model;
       }
-      const hashShort = fileHash.replace(/^sha256:/, "").slice(0, 8);
       for (let i = 0; i < fresh.length; i++) {
         const ck = fresh[i];
         newChunks.push({
-          id: `${corpus.name}-${hashShort}-${ck.index.toString(16).padStart(6, "0")}`,
+          id: mintChunkId(corpus.name, absPath, fileHash, ck.index),
           path: absPath,
           file_hash: fileHash,
           file_mtime: fileMtime,
@@ -234,6 +253,11 @@ export async function handleCorpusAmend(
       },
       indexed_at: new Date().toISOString(),
     };
+    // M5 two-phase marker (phase 1): clear completed_at BEFORE overwriting the
+    // corpus so a crash between this saveCorpus and the saveManifest below is
+    // detected as a torn write (write_complete:false), not hidden behind the
+    // prior run's still-valid marker. The saveManifest below restores it.
+    await clearCompletedMarker(input.corpus);
     await saveCorpus(updatedCorpus);
 
     // Manifest bookkeeping:
@@ -263,6 +287,10 @@ export async function handleCorpusAmend(
       ],
       embed_model_resolved: embedModelResolved ?? manifest.embed_model_resolved ?? null,
       updated_at: amendedAt,
+      // M5 two-phase marker (phase 2): re-stamp completed_at fresh — this amend
+      // IS a completed corpus write, and clearCompletedMarker removed the prior
+      // marker before saveCorpus above.
+      completed_at: amendedAt,
     };
     await saveManifest(updatedManifest);
 

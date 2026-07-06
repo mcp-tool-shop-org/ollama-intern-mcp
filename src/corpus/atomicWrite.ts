@@ -31,6 +31,7 @@
  */
 import { open, rename, unlink, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { randomBytes } from "node:crypto";
 
 /**
  * Optional callback invoked when a `.tmp` file orphan was left behind
@@ -133,7 +134,13 @@ export async function atomicWriteFile(
   onOrphan?: OrphanCallback,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp`;
+  // H6-res: salt the tmp name so two genuinely-concurrent writes to the SAME
+  // path don't share one `${path}.tmp` — which they would truncate out from
+  // under each other, and whose single rename the loser hits as ENOENT. With a
+  // per-write random suffix each write owns its tmp; the two renames are each
+  // atomic and the last one wins with a fully-intact payload (never a torn mix).
+  // Still ends in `.tmp` so listCorpora's `.tmp` filter + cleanup still match.
+  const tmpPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
 
   // Phase 1: write + fsync the tmp file. On ANY failure (ENOSPC during
   // writeFile, EIO during sync, fh.close itself throwing), best-effort

@@ -445,7 +445,7 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
         method: "tools/call",
         params: {
           name: "ollama_artifact_read",
-          arguments: { artifact_id: 12345 }, // wrong type — should be a string
+          arguments: { json_path: 12345 }, // wrong type — json_path must be a string
         },
       },
       // And a follow-up healthy call to prove the server stayed alive.
@@ -457,10 +457,23 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
     ]);
     const callResp = resp.get(1);
     expect(callResp).toBeDefined();
-    const hasError = callResp?.error !== undefined
-      || (callResp?.result as { isError?: boolean })?.isError === true
-      || ((callResp?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text?.includes("error") ?? false);
-    expect(hasError, `expected a structured error for malformed args, got: ${JSON.stringify(callResp)}`).toBe(true);
+    // M12: prove INPUT-SCHEMA validation rejected the bad type BEFORE the
+    // handler ran — not merely that "something errored". The MCP SDK surfaces a
+    // zod -32602 "Input validation error" that names the offending field and
+    // the invalid_type code. The old loose "contains 'error'" check passed even
+    // when the arg reached the handler and IT errored (a not-found envelope also
+    // says "error"), so removing input-schema validation would have gone
+    // undetected. Here json_path:12345 must be caught at the schema boundary.
+    const validationText =
+      (callResp?.error?.message ?? "") +
+      ((callResp?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text ?? "");
+    expect(
+      validationText,
+      `expected an input-schema validation error, got: ${JSON.stringify(callResp)}`,
+    ).toMatch(/invalid_type|input validation error|invalid arguments for tool/i);
+    // …and it must name the offending field, so it can't be a coincidental
+    // downstream error that merely mentions "validation".
+    expect(validationText).toContain("json_path");
 
     // Server stayed alive — tools/list still answers.
     const listResp = resp.get(2);

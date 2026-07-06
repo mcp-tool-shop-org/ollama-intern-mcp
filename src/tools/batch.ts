@@ -165,19 +165,30 @@ async function runBatchInner<I extends BatchItem, R>(
   // context budget consistently.
   const batchNumCtx = resolveNumCtx(input.tier, ctx.tiers);
 
-  // R-019 — when a per-call tier-budget override is supplied, replace EVERY
-  // tier's budget with the operator's value so the cascade honors the
-  // operator's intent on initial AND fallback tiers (same semantics as
-  // runner.ts). Computed once outside the loop because every batch item
-  // shares the same per-call budget.
+  // R-019 — a per-call tier-budget override (same semantics as runner.ts).
+  // Computed once outside the loop because every batch item shares the same
+  // per-call budget. Local-only: the override replaces every tier's budget.
+  // Cloud-primary: the OUTER per-tier budget must cover cloud attempt + local
+  // fallback, so we sum cloud + local — profile-local when no override, or
+  // cloud + the override (M4) when one is set — so the override sizes the LOCAL
+  // window while the cloud attempt keeps its own timeout and the outer budget
+  // always exceeds it (a raw sub-cloud-timeout override would otherwise abort
+  // the outer signal mid-cloud, starving local and tripping the breaker).
   const effectiveTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? {
-          instant: input.tierBudgetMsOverride,
-          workhorse: input.tierBudgetMsOverride,
-          deep: input.tierBudgetMsOverride,
-          embed: input.tierBudgetMsOverride,
-        }
+      ? ctx.cloud
+        ? {
+            instant: ctx.cloud.timeouts.instant + input.tierBudgetMsOverride,
+            workhorse: ctx.cloud.timeouts.workhorse + input.tierBudgetMsOverride,
+            deep: ctx.cloud.timeouts.deep + input.tierBudgetMsOverride,
+            embed: ctx.cloud.timeouts.embed + input.tierBudgetMsOverride,
+          }
+        : {
+            instant: input.tierBudgetMsOverride,
+            workhorse: input.tierBudgetMsOverride,
+            deep: input.tierBudgetMsOverride,
+            embed: input.tierBudgetMsOverride,
+          }
       : ctx.cloud
         ? {
             instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,
@@ -194,6 +205,12 @@ async function runBatchInner<I extends BatchItem, R>(
   let anyDegraded = false;
   let lastDegradeReason: string | undefined;
   let lastNumCtx: number | undefined;
+  // M1: capture the actual tier + model of the FIRST item that fell back, so
+  // the degraded batch envelope reports the tier actually used — not the
+  // original requested tier, which would make tier_used === fallback_from and
+  // contradict the (fallback-tier) model.
+  let degradedTier: Tier | undefined;
+  let degradedModel: string | undefined;
 
   for (const item of input.items) {
     try {
@@ -239,14 +256,18 @@ async function runBatchInner<I extends BatchItem, R>(
         lastDegradeReason = routing.degrade_reason;
       }
       if (routing?.num_ctx !== undefined) lastNumCtx = routing.num_ctx;
-      if (fallbackFrom && !sawFallback) sawFallback = fallbackFrom;
+      if (fallbackFrom && !sawFallback) {
+        sawFallback = fallbackFrom; // the original (more expensive) tier
+        // The tier + model this item actually landed on after degrading —
+        // used for the batch envelope's tier_used/model so they name a tier
+        // actually used, not the original. Per-item actualTier is otherwise
+        // captured by the NDJSON log via runWithTimeoutAndFallback.
+        degradedTier = actualTier;
+        degradedModel = routing?.model ?? model;
+      }
       const parsed = input.parse(resp.response, item);
       entries.push({ id: item.id, ok: true, result: parsed });
       okCount += 1;
-      // actualTier is per-item metadata that the NDJSON log captures via
-      // runWithTimeoutAndFallback; we deliberately don't surface it per
-      // item to keep the batch shape tight.
-      void actualTier;
     } catch (err) {
       const shape = toErrorShape(err);
       entries.push({
@@ -264,8 +285,11 @@ async function runBatchInner<I extends BatchItem, R>(
   const numCtxUsed = lastNumCtx ?? batchNumCtx;
   const envelope = buildEnvelope<BatchResult<R>>({
     result: { items: entries },
-    tier: input.tier,
-    model: lastModel,
+    // M1: report the tier actually used to serve items. When any item
+    // degraded, that's the fallback tier (degradedTier) — NOT the original
+    // (which is fallback_from); model resolves from that same tier.
+    tier: degradedTier ?? input.tier,
+    model: degradedModel ?? lastModel,
     hardwareProfile: ctx.hardwareProfile,
     tokensIn,
     tokensOut,

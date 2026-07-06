@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import { mkdir, writeFile } from "node:fs/promises";
+import { resolveUniqueArtifactPaths, writeArtifactPair } from "./artifactWrite.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -407,9 +407,12 @@ async function handleIncidentPackInner(
   const artifactDir = input.artifact_dir ?? defaultArtifactDir();
   const when = new Date();
   const firstHypothesis = brief.root_cause_hypotheses[0]?.hypothesis;
-  const slug = buildSlug({ title: input.title, hypothesis: firstHypothesis, when });
-  const mdPath = join(artifactDir, `${slug}.md`);
-  const jsonPath = join(artifactDir, `${slug}.json`);
+  const baseSlug = buildSlug({ title: input.title, hypothesis: firstHypothesis, when });
+  // H6: never silently overwrite an existing artifact pair — a retry after a
+  // timed-out response (or two same-minute runs with the same title) yields
+  // the same minute-resolution slug. Uniquify (-2, -3, …) BEFORE building the
+  // artifact object that embeds slug + paths.
+  const { slug, mdPath, jsonPath } = await resolveUniqueArtifactPaths(artifactDir, baseSlug);
 
   const writeStart = Date.now();
   const title = input.title ?? firstHypothesis ?? "incident";
@@ -444,9 +447,14 @@ async function handleIncidentPackInner(
   let artifactWritten = true;
   let writeErrorReason: string | null = null;
   try {
-    await mkdir(artifactDir, { recursive: true });
-    await writeFile(mdPath, markdown, "utf8");
-    await writeFile(jsonPath, JSON.stringify(jsonArtifact, null, 2), "utf8");
+    // H6: atomic writes, .json LAST as the commit marker (see artifactWrite.ts).
+    await writeArtifactPair(
+      artifactDir,
+      mdPath,
+      markdown,
+      jsonPath,
+      JSON.stringify(jsonArtifact, null, 2),
+    );
   } catch (err) {
     artifactWritten = false;
     writeErrorReason = err instanceof Error ? err.message : String(err);

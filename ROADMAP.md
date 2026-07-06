@@ -14,52 +14,42 @@ For protocol / framing, see [`memory/ollama-intern-state-2026-04-22.md`](https:/
 
 ---
 
-## Now (M5 Max validation cycle, 2026-04 → 2026-05)
+## Now (2026-07 — post-v2.8.0 hardening; cloud feature pass next)
 
-### M5 Max benchmark run — 🟢 unblocked
+The **dogfood-swarm health passes shipped as [v2.8.0](./CHANGELOG.md)** — a 25-finding reliability, durability, and security hardening pass (routing/cloud robustness, corpus durability, security hardening, test-honesty), every fix test-first and independently cross-family-verified. The **next cycle is the cloud feature pass** below. The M5-Max bench-and-tune cycle that used to head this section is superseded and demoted to **Deferred** below (it needs measured M5 Max hardware access, not projections).
 
-Hardware arrived 2026-04-24. The Day-1 deliverable in [`bench/README.md`](./bench/README.md) was queued for this moment.
+### Cloud feature pass — 🟢 unblocked (next)
 
-- Run `bench/run.py` against the `m5-max` profile (Qwen 3 14b/32b ladder + nomic-embed-text)
-- Capture the 36-cell matrix (4 models × 3 context lengths × 3 prompt shapes × 3 trials), embed throughput batches, concurrency test
-- Output: `results/<ISO-timestamp>.{json,md}` with cloud-vs-local callout
-- Budget: ~2 hours
+Builds on the v2.7.0 opt-in cloud routing. Candidate atoms + enhancements:
 
-**Acceptance:** measured `tok_per_sec_gen`, `prompt_eval_rate`, peak RSS, KV growth, cold-load wall time per (model × shape × ctx) cell. Not projections.
+- **`ollama_verify_claims`** — a job-shaped cross-family verification atom: take claims/findings + sources, return per-claim CONFIRMED/REFUTED verdicts from a big cloud model. This is the verify muscle a role-os `EXTERNAL_VERIFIER` / verify-citations step can call; today that loop has to be lashed up through `ollama_chat` (no verdict enum, no citations).
+- **Per-call cloud escalation** — a `backend` override + a cloud-on-demand mode (key set, `PRIMARY` unset) so a local-first operator escalates ONE high-stakes call to a flagship without flipping every call to cloud-primary.
+- **`ollama_log_stats`** — aggregate the per-call NDJSON receipts (tokens, cloud/local split, fallback rate, p50/p95 latency) into the "measured economics" the tagline promises.
+- **Doctor for the CI persona** — `--json` + a `--fail-unhealthy` exit gate + a cloud-aware `healthy` flag.
+- **MCP tool annotations** — `readOnlyHint` / `destructiveHint` / `title` across the tool surface so clients get correct permission UX + a machine-readable taxonomy.
 
-### M5 Max profile tuning — 🔴 blocked on bench run
+**Acceptance:** each atom ships with tests, a handbook page, and a CHANGELOG entry — the freeze-lift discipline the v2.1.0 pass established.
 
-Current values in [`src/profiles.ts:99-110`](./src/profiles.ts) are best-guess. Replace with measured numbers from the bench run:
+### Cloud onboarding docs fix — 🟢 unblocked
 
-- Verify `qwen3:14b` is right for instant + workhorse on M5 Max 128GB unified, or whether `qwen3:8b` is sharper for instant
-- Confirm `qwen3:32b` for deep tier, or evaluate `qwen3:72b` if memory headroom allows
-- Tune `M5_MAX_TIMEOUTS` (currently 5/20/90/10s) — instant cold-load on M5 Max may be < 5s
-- Decide `prewarm: []` (empty, assumes cold-load is instant) — confirm with bench numbers
-
-**Acceptance:** profile values in `src/profiles.ts` cite the bench run that produced them.
-
-### bench/README.md model list refresh — 🟢 unblocked
-
-Day-1 model list in [`bench/README.md`](./bench/README.md) was written before the qwen3 decision (lists `llama3.3:70b`, `qwen2.5-coder:32b`, `qwen2.5:14b`). The `m5-max` profile now uses `qwen3:14b` + `qwen3:32b`. Bench plan should match.
+The cloud-curious persona following the current docs pins a broken model: the README, CLI help, and `handbook/ollama-cloud.md` still document `minimax-m3:cloud` as the default cloud model, but the code default is `qwen3-coder-next:cloud` (changed because `minimax-m3:cloud` is a thinking model that returned empty replies on capped-`num_predict` tools). Reconcile the docs and add an `init --claude` scaffold + a documented smoke path.
 
 ### Doc cross-platform refresh — 🟡 exploring
 
-User-facing docs (READMEs, handbook pages) reference `F:/AI/` paths from the original Windows dev box. Mac-friendly examples needed for M5 era:
+User-facing docs (READMEs, handbook pages) reference `F:/AI/` paths from the original Windows dev box. Mac-/Linux-friendly examples needed:
 
 - 8 README files (en + 7 translations) reference `F:/AI/`
 - 2 handbook pages: `site/src/content/docs/handbook/{artifacts,corpora}.md`
 - HANDOFF.md is dev-facing, can be updated independently
 
-**Coordination caveat:** updating English README forces a polyglot-mcp regen for the 7 translation siblings. Bundle this with a translation cycle — don't touch English in isolation.
+**Coordination caveat:** updating the English README forces a polyglot regen for the 7 translation siblings. Bundle this with a translation cycle — don't touch English in isolation.
 
-### Phase 8 audit MEDIUMs — 🟢 unblocked
-
-Carried forward from canonical memory ([`memory/ollama-intern-state-2026-04-22.md`](https://github.com/mcp-tool-shop-org/ollama-intern-mcp), §"Next session can pick up at" item 3):
+### Carried-forward audit MEDIUMs — 🟢 unblocked
 
 - `ollama_artifact_prune` — surface a `preview_limit` parameter
-- `ollama_batch_proof_check` — note about tool whitelist expansion
+- `ollama_batch_proof_check` — evaluate a controlled tool-whitelist expansion (the exec surface is now bounded by the operator `INTERN_BATCH_PROOF_ALLOWED_ROOTS` cap, so this can be reconsidered)
 
-Both are MEDIUM severity, both flagged but not built in v2.1.0 feature pass.
+Both flagged in prior audits, neither built yet.
 
 ---
 
@@ -99,6 +89,10 @@ Pull deferred candidates from `memory/ollama-intern-adoption-pass-2026-04-16.md`
 ---
 
 ## Deferred
+
+### M5 Max profile bench + tuning — ⚪ deferred (needs M5 Max hardware access)
+
+The `m5-max` profile values in [`src/profiles.ts`](./src/profiles.ts) are best-guess, not measured. The Day-1 bench plan in [`bench/README.md`](./bench/README.md) (36-cell matrix + embed throughput + concurrency) is ready to run once M5 Max hardware is available for a measured pass; the bench model list also predates the qwen3 decision and needs a refresh. Until then the `m5-max` profile ships with documented best-guess timeouts/models — the default `dev-rtx5080` profile is the measured one.
 
 ### Landing page Phase 2 — ⚪ deferred
 

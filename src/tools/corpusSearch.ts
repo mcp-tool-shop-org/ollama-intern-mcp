@@ -308,27 +308,47 @@ export async function handleCorpusSearch(
     const explainNumCtx = resolveNumCtx("instant", ctx.tiers);
     const toExplain = rawHits.slice(0, EXPLAIN_CAP);
     let explainFailures = 0;
-    const explanations = await Promise.all(
-      toExplain.map(async (hit) => {
-        try {
-          const resp = await ctx.client.generate({
-            model: deepModel,
-            prompt: buildExplainPrompt(input.query, hit),
-            options: {
-              temperature: TEMPERATURE_BY_SHAPE.summarize,
-              // ~40 tokens is plenty for a single-sentence explanation.
-              num_predict: 80,
-              ...(explainNumCtx !== undefined ? { num_ctx: explainNumCtx } : {}),
-            },
-          });
-          const text = (resp.response ?? "").trim();
-          return text.length > 0 ? text : null;
-        } catch {
-          explainFailures += 1;
-          return null;
-        }
-      }),
-    );
+    // H4 sibling: bound the explain sub-calls with a tier signal + tier so
+    // (a) no in-flight explain holds a semaphore permit un-timed, and (b)
+    // cloud-primary routing can serve them (they carried no tier before, so
+    // they always ran local). One controller bounds the whole best-effort
+    // batch at the instant budget (cloud+local sum in cloud-primary, mirroring
+    // runToolInner's effectiveTimeouts).
+    const explainBudgetMs = ctx.cloud
+      ? ctx.cloud.timeouts.instant + ctx.timeouts.instant
+      : ctx.timeouts.instant;
+    const explainController = new AbortController();
+    const explainTimer = setTimeout(() => explainController.abort(), explainBudgetMs);
+    let explanations: (string | null)[] = [];
+    try {
+      explanations = await Promise.all(
+        toExplain.map(async (hit) => {
+          try {
+            const resp = await ctx.client.generate(
+              {
+                model: deepModel,
+                prompt: buildExplainPrompt(input.query, hit),
+                options: {
+                  temperature: TEMPERATURE_BY_SHAPE.summarize,
+                  // ~40 tokens is plenty for a single-sentence explanation.
+                  num_predict: 80,
+                  ...(explainNumCtx !== undefined ? { num_ctx: explainNumCtx } : {}),
+                },
+              },
+              explainController.signal,
+              "instant",
+            );
+            const text = (resp.response ?? "").trim();
+            return text.length > 0 ? text : null;
+          } catch {
+            explainFailures += 1;
+            return null;
+          }
+        }),
+      );
+    } finally {
+      clearTimeout(explainTimer);
+    }
     explainedHits = rawHits.map((hit, i) => {
       if (i >= EXPLAIN_CAP) return hit;
       const reason = explanations[i];

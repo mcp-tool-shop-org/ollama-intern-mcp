@@ -478,7 +478,28 @@ export class HttpOllamaClient implements OllamaClient {
         ...(sideProfileName ? { profile_name: sideProfileName } : {}),
       });
     }
-    const release = await ollamaSemaphore.acquire();
+    let release: () => void;
+    try {
+      // H1: pass the tier-timeout signal so a call still QUEUED for a permit
+      // can be cancelled. Without it, a fired tier timeout couldn't dequeue
+      // the waiter — the call hung until an unrelated holder released (far
+      // past its budget), then failed instantly on the already-aborted signal.
+      release = await ollamaSemaphore.acquire(signal);
+    } catch (err) {
+      // Abort-while-queued → the same OLLAMA_TIMEOUT the fetch-abort path
+      // emits, so runWithTimeoutAndFallback and the routing breaker classify
+      // it uniformly (transient → fall back) instead of hanging or surfacing
+      // a raw AbortError.
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new InternError(
+          "OLLAMA_TIMEOUT",
+          "Ollama request aborted while queued for a concurrency permit",
+          "The tier timeout fired before a permit was free — the call was dequeued, not run. Reduce concurrent load (INTERN_MAX_CONCURRENT), raise the tier timeout, or check for a wedged in-flight call ('ollama ps').",
+          true,
+        );
+      }
+      throw err;
+    }
     try {
       return await this.postWithRetry<TReq, TRes>(path, body, signal);
     } finally {
@@ -594,6 +615,20 @@ export class HttpOllamaClient implements OllamaClient {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       if (res.status === 404) {
+        // H3: a cloud client's 404 means the pinned CLOUD model id was not
+        // found — Ollama Cloud rotates/retires cloud ids server-side with no
+        // local change, so 'ollama pull' is the WRONG remedy there; the fix is
+        // INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL. Two inline throws (not a
+        // hint variable) keep the grep-based errorHintQuality test able to see
+        // both hint literals.
+        if (this.kind === "cloud") {
+          throw new InternError(
+            "OLLAMA_MODEL_MISSING",
+            `Model not found (404): ${text}`,
+            "The pinned CLOUD model was not found (404) — Ollama Cloud may have retired the id (cloud model ids rotate server-side). Set INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL to a current id from https://ollama.com/search?c=cloud (cloud models are served remotely, not downloaded to your machine). The server falls back to local meanwhile (degrade_reason: cloud_model_missing).",
+            false,
+          );
+        }
         throw new InternError(
           "OLLAMA_MODEL_MISSING",
           `Model not found (404): ${text}`,

@@ -85,10 +85,14 @@ describe("startup probe", () => {
   // would silently start hanging on the real probe against unreachable
   // localhost Ollama in environments that set the var to "0" / "false".
   //
-  // Replace with grep against the source to lock the exact comparison
-  // shape — fast, deterministic, and catches the regression without
-  // spawning a subprocess.
-  it("INTERN_SKIP_STARTUP_PROBE=1 is the documented disable string in src/index.ts", async () => {
+  // L3 (2026-07 health pass): this is a SOURCE-LINT, not a runtime assertion —
+  // it greps src/index.ts for the exact comparison shape. Labeled as such so it
+  // isn't mistaken for a behavioral guarantee. A true runtime test (env=1 skips,
+  // env=0 runs) would need to spawn the server / invoke main(); the deterministic
+  // source-lint catches the specific "truthy-broadening" regression cheaply. The
+  // heavier durability invariant (fsync-before-rename) IS a runtime test — see
+  // tests/corpus/atomicWrite.test.ts "fsync precedes rename (runtime durability)".
+  it("[source-lint] src/index.ts gates the startup probe on the literal '1' (not a truthy check)", async () => {
     const fs = await import("node:fs/promises");
     const url = new URL("../src/index.ts", import.meta.url);
     const src = await fs.readFile(url, "utf8");

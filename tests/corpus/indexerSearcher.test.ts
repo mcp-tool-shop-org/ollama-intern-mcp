@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexCorpus } from "../../src/corpus/indexer.js";
 import { searchCorpus } from "../../src/corpus/searcher.js";
+import { clearCompletedMarker, manifestPath } from "../../src/corpus/manifest.js";
 import { loadCorpus, listCorpora, assertValidCorpusName, CORPUS_SCHEMA_VERSION, corpusPath } from "../../src/corpus/storage.js";
 import { corpusIndexSchema } from "../../src/tools/corpusIndex.js";
 import { InternError } from "../../src/errors.js";
@@ -323,6 +324,125 @@ describe("indexCorpus + searchCorpus", () => {
     expect(report.failed_paths).toHaveLength(1);
     expect(report.failed_paths[0].path).toBe(link);
     expect(report.failed_paths[0].reason).toContain("symlink");
+  });
+
+  it("torn write on the Nth mutation reports write_complete:false, and a clean re-index heals it (M5)", async () => {
+    const p = join(tempDir, "torn.md");
+    await writeFile(p, "content that has been indexed once already", "utf8");
+    const client = new HashEmbedMock();
+
+    // 1st mutation completes cleanly → manifest carries completed_at.
+    await indexCorpus({ name: "torn", paths: [p], model: "nomic-embed-text", client });
+    expect((await listCorpora()).find((s) => s.name === "torn")!.write_complete).toBe(true);
+
+    // The two-phase marker (phase 1) clears completed_at BEFORE the corpus
+    // write. Simulate a crash right after that clear + saveCorpus but before
+    // the final manifest write: the on-disk manifest has no completed_at, so
+    // the torn state is DETECTED. Before the fix, the prior run's completed_at
+    // stayed on disk and falsely reported the torn state as complete.
+    await clearCompletedMarker("torn");
+    expect((await listCorpora()).find((s) => s.name === "torn")!.write_complete).toBe(false);
+
+    // A clean re-index runs the full two-phase (clear → saveCorpus → final
+    // saveManifest with completed_at) and ends complete again.
+    await indexCorpus({ name: "torn", paths: [p], model: "nomic-embed-text", client });
+    expect((await listCorpora()).find((s) => s.name === "torn")!.write_complete).toBe(true);
+  });
+
+  it("a v1-migrated manifest does NOT trip the interrupted-write warning (M5)", async () => {
+    const p = join(tempDir, "leg.md");
+    await writeFile(p, "legacy corpus content", "utf8");
+    const client = new HashEmbedMock();
+    await indexCorpus({ name: "legacy", paths: [p], model: "nomic-embed-text", client });
+
+    // Rewrite the manifest as a legacy v1 (schema_version 1, no completed_at) —
+    // a manifest from before the torn-write marker existed.
+    const mPath = manifestPath("legacy");
+    const current = JSON.parse(await readFile(mPath, "utf8")) as Record<string, unknown>;
+    delete current.completed_at;
+    delete current.schema_version_written_by;
+    current.schema_version = 1;
+    await writeFile(mPath, JSON.stringify(current), "utf8");
+
+    // Loading migrates v1→v2 and stamps completed_at (from updated_at), so it
+    // reads as legacy-assumed-complete — NOT a false-positive torn write.
+    expect((await listCorpora()).find((s) => s.name === "legacy")!.write_complete).toBe(true);
+  });
+
+  it("re-index with changed chunk params re-chunks unchanged files, no stale geometry (L2)", async () => {
+    const p = join(tempDir, "geo.md");
+    await writeFile(p, "sentence one here. ".repeat(80), "utf8"); // ~1520 chars
+
+    const client = new HashEmbedMock();
+    const r1 = await indexCorpus({
+      name: "geo",
+      paths: [p],
+      model: "nomic-embed-text",
+      chunk_chars: 500,
+      chunk_overlap: 50,
+      client,
+    });
+
+    // Re-index the SAME unchanged file with DIFFERENT (smaller) chunk params.
+    const r2 = await indexCorpus({
+      name: "geo",
+      paths: [p],
+      model: "nomic-embed-text",
+      chunk_chars: 150,
+      chunk_overlap: 20,
+      client,
+    });
+
+    // The unchanged file was RE-CHUNKED under the new params, NOT reused with
+    // the old geometry (which would leave the manifest's stamped params lying
+    // about the on-disk chunk sizes).
+    expect(r2.reused_chunks).toBe(0);
+    expect(r2.newly_embedded_chunks).toBeGreaterThan(0);
+
+    const corpus = (await loadCorpus("geo"))!;
+    expect(corpus.chunk_chars).toBe(150);
+    expect(corpus.chunk_overlap).toBe(20);
+    // Smaller chunk_chars → strictly more chunks than the first (500-char) index.
+    expect(corpus.chunks.length).toBeGreaterThan(r1.chunks);
+  });
+
+  it("distinct paths with identical content get globally-unique chunk IDs (M8)", async () => {
+    const p1 = join(tempDir, "dup-a.md");
+    const p2 = join(tempDir, "dup-b.md");
+    const identical = "the same content appears in two different files here";
+    await writeFile(p1, identical, "utf8");
+    await writeFile(p2, identical, "utf8");
+
+    const client = new HashEmbedMock();
+    await indexCorpus({
+      name: "dup",
+      paths: [p1, p2],
+      model: "nomic-embed-text",
+      chunk_chars: 200,
+      chunk_overlap: 20,
+      client,
+    });
+    const corpus = (await loadCorpus("dup"))!;
+
+    // Two files with identical content → two chunks with DISTINCT ids (an
+    // ID scheme without a path component would collide them into one).
+    expect(corpus.chunks.length).toBe(2);
+    const ids = corpus.chunks.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length); // globally unique
+    expect(new Set(corpus.chunks.map((c) => c.path))).toEqual(new Set([p1, p2]));
+
+    // Search returns BOTH chunks, each resolving to its own correct path —
+    // no shadowing in the chunkById map, no duplicate/inflated hit.
+    const hits = await searchCorpus({
+      corpus,
+      query: "content",
+      model: "nomic-embed-text",
+      mode: "semantic",
+      top_k: 10,
+      client,
+    });
+    expect(hits.map((h) => h.path).sort()).toEqual([p1, p2].sort());
+    expect(new Set(hits.map((h) => h.id)).size).toBe(hits.length); // each chunk once
   });
 
   it("corpusIndexSchema rejects chunk_overlap >= chunk_chars (degenerate chunking)", () => {

@@ -17,6 +17,7 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { runBatch, type BatchResult } from "./batch.js";
+import { sanitizePromptField } from "./_helpers.js";
 import {
   applyConfidenceThreshold,
   buildConfidenceStripEvent,
@@ -110,8 +111,11 @@ interface ClassifyRawFromModel {
  * - non_object  : raw parsed to a non-object literal (null, array, number,
  *                 string) — model returned valid JSON of the wrong shape
  * - missing_label : object had no string `label` field
+ * - off_list_label : label was a string but NOT one of the caller's labels
+ *                    (model didn't follow the menu — model error, or a
+ *                    prompt-injected label steering it off-menu). M9-res.
  */
-type ClassifyAbstainReason = "parse_error" | "non_object" | "missing_label";
+type ClassifyAbstainReason = "parse_error" | "non_object" | "missing_label" | "off_list_label";
 
 interface ParseClassifyOutcome {
   parsed: ClassifyRawFromModel;
@@ -119,7 +123,7 @@ interface ParseClassifyOutcome {
   abstain_reason?: ClassifyAbstainReason;
 }
 
-function parseClassify(raw: string): ParseClassifyOutcome {
+function parseClassify(raw: string, allowedLabels: string[]): ParseClassifyOutcome {
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(raw.trim());
@@ -154,6 +158,18 @@ function parseClassify(raw: string): ParseClassifyOutcome {
   if (label === null) {
     return { parsed: out, abstain_reason: "missing_label" };
   }
+  // M9-res: reject an OFF-LIST label. The model is instructed to pick one of
+  // the caller's labels, so a label outside that set means it didn't follow the
+  // menu — a model error, or a prompt-injected label steering it off-menu.
+  // Output-shape validation is the mitigation the input sanitizer can't provide
+  // (it stops structural injection, not plaintext steering); the residual —
+  // steering to a VALID on-list label — is the ceiling disclosed in SECURITY.md.
+  // Match case-insensitively and canonicalize to the caller's spelling.
+  const canonical = allowedLabels.find((l) => l.toLowerCase() === label.toLowerCase());
+  if (canonical === undefined) {
+    return { parsed: { ...out, label: null }, abstain_reason: "off_list_label" };
+  }
+  out.label = canonical;
   return { parsed: out };
 }
 
@@ -195,8 +211,22 @@ export async function handleClassify(
 ): Promise<Envelope<ClassifyGuardedWithFrame> | Envelope<BatchResult<ClassifyGuardedWithFrame>>> {
   assertExactlyOneInput(input);
   const frameSupplied = input.frame !== undefined;
+  // M9: labels + frame flow verbatim into the classifier prompt. Strip
+  // prompt-injection vectors (code fences / newlines) and cap length BEFORE
+  // any model call, so a caller can't break out of their field into
+  // instructions. Reuse the cleaned copy for every prompt build below.
+  const promptInput: ClassifyInput = {
+    ...input,
+    labels: input.labels.map((l) => sanitizePromptField(l, { fieldName: "labels[]", maxChars: 100 })),
+    ...(input.frame !== undefined
+      ? { frame: sanitizePromptField(input.frame, { fieldName: "frame", maxChars: 500 }) }
+      : {}),
+  };
+
   const parseOne = (raw: string): ClassifyGuardedWithFrame => {
-    const outcome = parseClassify(raw);
+    // Validate the returned label against the (sanitized) labels the model was
+    // actually shown — the output-shape gate that rejects an off-menu label.
+    const outcome = parseClassify(raw, promptInput.labels);
     // Emit a guardrail event when the parser abstained — operator-facing
     // observability for "why did classify return null?" debugging. The
     // guardrail kind already exists in observability.LogEvent; rule
@@ -252,7 +282,7 @@ export async function handleClassify(
       modelOverride: input.model,
       build: (item, _tier, model) => ({
         model,
-        prompt: buildPromptFor(item.text, input),
+        prompt: buildPromptFor(item.text, promptInput),
         format: "json",
         options: { temperature: TEMPERATURE_BY_SHAPE.classify, num_predict: 64 },
       }),
@@ -276,7 +306,7 @@ export async function handleClassify(
     modelOverride: input.model,
     build: (_tier, model) => ({
       model,
-      prompt: buildPromptFor(text, input),
+      prompt: buildPromptFor(text, promptInput),
       format: "json",
       options: { temperature: TEMPERATURE_BY_SHAPE.classify, num_predict: 64 },
     }),

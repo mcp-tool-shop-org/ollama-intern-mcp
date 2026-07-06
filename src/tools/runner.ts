@@ -149,24 +149,36 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   // surfaces that as num_ctx_used absent, never a fake default.
   let lastNumCtx: number | undefined;
 
-  // R-019 — when a per-call tier-budget override is supplied, replace EVERY
-  // tier's budget with the operator's value so the cascade honors the
-  // operator's intent on initial AND fallback tiers. When omitted, fall
-  // through to the profile's per-tier timeouts (pre-R-019 behavior).
+  // R-019 — a per-call tier-budget override. Local-only: it replaces EVERY
+  // tier's budget with the operator's value so the cascade honors the operator's
+  // intent on initial AND fallback tiers. When omitted, fall through to the
+  // profile's per-tier timeouts (pre-R-019 behavior).
   //
-  // Cloud-primary: the RoutingOllamaClient does cloud-then-local INSIDE a
-  // single generate() (the cloud attempt has its own cloudTimeouts budget).
-  // So the OUTER per-tier budget must cover BOTH — cloud attempt + local
-  // fallback — or tier-degradation would fire before the local fallback gets
-  // its window. We sum the cloud and local per-tier budgets for that headroom.
+  // Cloud-primary: the RoutingOllamaClient does cloud-then-local INSIDE a single
+  // generate() (the cloud attempt has its own cloudTimeouts budget). So the OUTER
+  // per-tier budget must cover BOTH — cloud attempt + local fallback — or the
+  // cloud abort would leave no window for local. We sum cloud + local: the
+  // profile-local budget when no override, or cloud + the override (M4) when one
+  // is set — the override sizes the LOCAL fallback window while the cloud attempt
+  // keeps its own timeout, so the outer budget always exceeds the cloud timer
+  // (cloud aborts on ITS timer, leaving the outer signal live for local). A raw
+  // sub-cloud-timeout override would otherwise abort the outer signal mid-cloud
+  // and hand local an already-dead signal (also spuriously tripping the breaker).
   const effectiveTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? {
-          instant: input.tierBudgetMsOverride,
-          workhorse: input.tierBudgetMsOverride,
-          deep: input.tierBudgetMsOverride,
-          embed: input.tierBudgetMsOverride,
-        }
+      ? ctx.cloud
+        ? {
+            instant: ctx.cloud.timeouts.instant + input.tierBudgetMsOverride,
+            workhorse: ctx.cloud.timeouts.workhorse + input.tierBudgetMsOverride,
+            deep: ctx.cloud.timeouts.deep + input.tierBudgetMsOverride,
+            embed: ctx.cloud.timeouts.embed + input.tierBudgetMsOverride,
+          }
+        : {
+            instant: input.tierBudgetMsOverride,
+            workhorse: input.tierBudgetMsOverride,
+            deep: input.tierBudgetMsOverride,
+            embed: input.tierBudgetMsOverride,
+          }
       : ctx.cloud
         ? {
             instant: ctx.cloud.timeouts.instant + ctx.timeouts.instant,
