@@ -15,7 +15,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
-import { parseJsonObject, readArray, normalizeConfidence } from "./briefs/common.js";
+import { parseModelJsonObject, readArray, normalizeConfidence } from "./briefs/common.js";
 import {
   resolveArtifactByIdentity,
   readArtifactAtPath,
@@ -188,7 +188,7 @@ export async function handleHypothesisDrill(
       },
     }),
     parse: (raw): HypothesisDrillResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
       const reasoning =
         typeof o.supporting_reasoning === "string" ? o.supporting_reasoning.trim() : "";
       const ruledOut =

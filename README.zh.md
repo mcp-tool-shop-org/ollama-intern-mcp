@@ -27,6 +27,17 @@
 
 ---
 
+## v2.9.0 版本的新功能
+
+**云功能通道——跨模型验证流程、按需云端升级，以及相关的经济效益。** 本地优先模式保持不变：如果没有设置密钥，其行为与 v2.8.0 版本的行为完全相同（零数据传输，不进行启动时对云端的探测）。
+
+- **`ollama_verify_claims`——跨模型验证。** `ollama_code_review` *生成*结果；此功能则*审核*这些结果。它在一个独立的 Ollama 云旗舰模型组（默认情况下为 deepseek / kimi / glm）上运行您的声明 + 证据，并返回每个声明的确认/否定/需要审查的结果。聚合规则是：只要有一个不同意的意见，就不能做出决定（至少需要 2 个赞成才能确认，至少需要 2 个反对才能否定）；每个评审员都经过服务模型验证（排除本地回退或替代模型，并且不将其计入）；声明输入在结构上会去除推理部分。诚实上限已记录：确认表示支持证据，而不是绝对的证明——它擅长标记出明显的错误，但在识别前沿模型的细微问题方面效果较弱。
+- **每个请求的云端升级 + 待机模式。** 只设置 `OLLAMA_API_KEY`（不设置 `OLLAMA_CLOUD_PRIMARY`），即可进入**待机状态**：本地优先，零数据传输，不进行启动时对云端的探测——直到单个请求通过 `backend:'cloud'` 选择升级。无需将每个请求都切换到云端，即可将一个重要的审查任务升级到一个 600B 模型。第一次升级会在发生时明确地显示数据传输情况；现在，每个请求的 `model` 覆盖设置会直接应用于云端尝试。
+- **`ollama_log_stats`——衡量承诺中提到的经济效益。** 对您的 NDJSON 收据进行无 LLM 处理：云/本地拆分、云→本地回退率、每个工具的令牌数、p50/p95 延迟，并以 `since` 时间窗口为边界。
+- **用于 CI + 可机器读取的工具。** `doctor --json --fail-unhealthy` 为流水线提供了一个真正的网关（具有一个云感知型的 `healthy` 标志），并且每个工具现在都带有 MCP `readOnlyHint`/`destructiveHint`/`title` 注释，以便客户端获得正确的权限用户体验。此外，`init --claude` 可以生成一个可以直接粘贴到 `.mcp.json` 文件中的模板。
+
+完整的详细信息请参见 [CHANGELOG.md](./CHANGELOG.md)。
+
 ## v2.8.0 版本的新功能
 
 **可靠性、持久性和安全性增强 ——25 个修复，每个修复都首先进行测试并通过跨系列验证。** 首先关注本地的行为没有改变，也没有删除任何工具协议；现有的调用者仍然可以正常工作。最重要的改进是：
@@ -43,10 +54,10 @@
 
 **可选的 Ollama Cloud 路由 ——云优先，本地回退。** 通过一个密钥和一个标志选择启用，然后生成层级将路由到 600B 级别的云模型；嵌入式内容保留在本地；断路器会在任何云端故障时回退到你的本地配置文件。**默认情况下禁用——除非你同时设置 `OLLAMA_API_KEY` 和 `OLLAMA_CLOUD_PRIMARY=1`，否则不会有任何数据传输。** 这是一个增量式的改进——v2.7.0 之前的调用者（以及任何未选择启用的人）将看到完全相同的行为。请参阅 [Ollama Cloud (可选)](#ollama-cloud-optional)。
 
-- **云优先，并具有安全保障。** `RoutingOllamaClient` 首先尝试连接到云端，并在超时/5xx/429/网络错误时回退到本地配置文件。无效的密钥（401/403）会通过一个持久的断路器进行明确提示，而不是静默地降级；已停用或拼写错误的云模型 ID（404）也会被提示。
-- **绝不会发生静默降级。** 每个数据包都将包含 `backend` (`cloud`|`local`)、`degraded` 和 `degrade_reason`，因此你始终知道是否获得了本地模型而不是大型模型。一个 `backend_fallback` NDJSON 事件使云端到本地的回退率在 `ollama_log_tail` 中可见。
-- **`ollama_doctor` 会报告云授权和可访问性**作为一个单独的模块；`ollama-intern-mcp doctor` 显示一个“Cloud (primary)”部分。
-- 默认云模型是 `minimax-m3:cloud`；可以通过 `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`（例如，`deepseek-v3.1:671b`）按层级进行覆盖。
+- **云端优先模式，并具有安全保障。** `RoutingOllamaClient` 首先尝试连接云端，如果超时/发生 5xx / 429 错误或网络问题，则回退到本地配置文件。无效的密钥（401/403）会通过一个持久性的断路器明确地显示出来，而不是默默地永久降级；已停用/拼写错误的云端模型 ID（404）也会被检测出来。
+- **绝不会发生静默降级。** 每个请求都会包含 `backend` (`cloud`|`local`)、`degraded` 和 `degrade_reason`，因此您始终可以知道何时使用了本地模型而不是大型模型。一个 `backend_fallback` NDJSON 事件使云→本地回退率在 `ollama_log_tail` 中可见。
+- **`ollama_doctor` 报告云端身份验证 + 可访问性**作为一个单独的模块；`ollama-intern-mcp doctor` 显示一个“Cloud (primary)”部分。
+- 在 v2.7.0 版本发布时，默认的云端模型是 `minimax-m3:cloud`（后来重新配置为 `qwen3-coder-next:cloud`——这是一个经过深思熟虑的默认设置，但对于令牌数上限较小的工具，它会返回空回复；请参见[环境变量表](#cloud-env-vars））；可以通过 `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` 按层级进行覆盖。
 
 ## v2.6.0 版本的新功能
 
@@ -298,7 +309,7 @@ flowchart LR
 
 | 层级 | 数量 | 这里包含的内容 |
 |---|---|---|
-| **Atoms** | 29 | 任务导向的基础模块。**最初的 15 个：** `classify`、`extract`、`triage_logs`、`summarize_fast`/`deep`、`draft`、`research`、`corpus_search`/`answer`/`index`/`refresh`/`list`、`embed_search`、`embed`、`chat`。**v2.1.0 版本中新增的 13 个：** `doctor`、`log_tail`、`batch_proof_check`（运维）；`code_map`、`code_citation`、`multi_file_refactor_propose`、`refactor_plan`（重构）；`artifact_prune`、`hypothesis_drill`（工件/摘要）；`corpus_health`、`corpus_amend`、`corpus_amend_history`、`corpus_rerank`（语料库）。**+1 个审查原子：** `code_review`（结构化的 PR 审查结果，核心功能；仅用于审查）。支持批量处理的原子（`classify`、`extract`、`triage_logs`）接受 `items: [{id, text}]`。 |
+| **Atoms** | 31 | 基于任务的原始组件。**最初的 15 个：** `classify`、`extract`、`triage_logs`、`summarize_fast`/`deep`、`draft`、`research`、`corpus_search`/`answer`/`index`/`refresh`/`list`、`embed_search`、`embed`、`chat`。**v2.1.0 版本新增 13 个：** `doctor`、`log_tail`、`batch_proof_check`（操作）；`code_map`、`code_citation`、`multi_file_refactor_propose`、`refactor_plan`（重构）；`artifact_prune`、`hypothesis_drill`（工件/摘要）；`corpus_health`、`corpus_amend`、`corpus_amend_history`、`corpus_rerank`（语料库）。**+1 个审查原子：** `code_review`（结构化的 PR 审查结果，核心功能；仅用于审查）。**v2.9 版本新增 2 个：** `verify_claims`（跨模型云旗舰模型组审核声明；需要云端支持）和 `log_stats`（将 NDJSON 收据聚合为可衡量的经济效益——云/本地拆分、回退率、每个工具的 p50/p95 延迟；不调用任何模型）。可以批量处理的原子（`classify`、`extract`、`triage_logs`）接受 `items: [{id, text}]`。 |
 | **Briefs** | 3 | 基于证据的结构化操作员简报。`incident_brief`、`repo_brief`、`change_brief`。每个声明都引用了一个证据 ID；未知的条目在服务器端被删除。如果证据不足，则显示 `weak: true` 而不是虚假叙述。 |
 | **Packs** | 3 | 固定的流水线复合任务，将持久的 Markdown + JSON 写入到 `~/.ollama-intern/artifacts/` 中。`incident_pack`、`repo_pack`、`change_pack`。确定性渲染器——不调用模型来确定工件的形状。 |
 | **Artifacts** | 7 | 对打包输出进行连续处理。`artifact_list`/`read`/`diff`/`export_to_path`，以及三个确定性的片段：`incident_note`、`onboarding_section`、`release_note`。 |
@@ -462,7 +473,10 @@ export INTERN_PROFILE=m5-max
 
 本地的 8B 模型是大多数用户遇到的硬件瓶颈。[Ollama Cloud](https://ollama.com/cloud) 提供 600B 级别的模型，并通过**相同**的 `/api/*` 接口进行访问，因此您可以将繁重的任务路由到更强大的模型，并释放本地 VRAM——同时保持本地作为始终可用的备用方案。
 
-**这是一个可选功能，默认情况下是关闭的。**除非您设置了这两个参数，否则该软件包仍会优先使用本地资源，并且**不会产生任何数据传输**。未选择启用此功能的任何人不受影响。
+**这是一个可选功能，默认情况下是关闭的。** 如果没有设置密钥，该软件包将保持本地优先模式，并且**不会产生任何数据传输**——所有未选择启用此功能的用户都不会受到影响。有两种方法可以启用此功能：
+
+- **云端优先模式（如下）：** 同时设置 `OLLAMA_CLOUD_PRIMARY=1` 和 `OLLAMA_API_KEY`——生成层级将路由到云端，并进行本地回退。
+- **云端待机模式（v2.9）：** 仅设置 `OLLAMA_API_KEY`——所有内容都保持在本地（仍然没有数据传输，甚至不进行启动时对云端的探测），直到单个请求明确要求升级到云端，方法是在请求中包含 `backend: "cloud"`。请参见下面的[云端待机模式和每个请求的云端升级](#cloud-standby--per-call-escalation)。
 
 ```json
 {
@@ -492,21 +506,34 @@ export INTERN_PROFILE=m5-max
 
 每当发生云端到本地的回退时，`backend_fallback` 行都会记录在 `~/.ollama-intern/log.ndjson` 中（使用 `ollama_log_tail --filter_kind backend_fallback` 筛选），并且 `ollama-intern-mcp doctor` 会显示一个**Cloud (primary)** 块，其中包含可访问性和身份验证状态。
 
+### 云端待机模式和每个请求的云端升级
+
+设置 `OLLAMA_API_KEY` **而不** 设置 `OLLAMA_CLOUD_PRIMARY` 会启用**待机模式**：路由仍然是本地优先，并且没有任何数据会离开机器——直到一个请求包含 `backend: "cloud"`（在 `ollama_chat` 中公开，并在 `ollama_verify_claims` 中内部使用）。该请求将升级到云端模型，并具有相同的断路器 + 本地回退机制和相同的数据来源；所有其他请求都保持在本地。**第一个**升级的请求会在标准错误输出中打印一条明确的消息，其中包含主机名称，并在 NDJSON 日志中写入一行 `cloud_egress`——数据传输会在发生时被公开，而不仅仅是在文档中说明。
+
+机械强制执行的规则：
+
+- 没有密钥 → `backend: "cloud"` 将失败并显示 `CLOUD_NOT_CONFIGURED`。它**绝不会**在声称已升级到云端时，默默地使用本地模型。
+- 待机模式 + 无指令 → 本地，零数据传输（启动时也不会探测云端主机）。
+- 在云端优先模式下，`backend: "local"` 将使单个请求保持在本地——这是反向的退出机制。
+- 每个请求的 `model` 覆盖设置现在会直接应用于云端路径（之前会被层级到云端模型的映射所覆盖），因此基于收据的编排器可以为每个请求指定确切的云端模型。
+
+旗舰消费者是 **`ollama_verify_claims`**：通过一个由三个模型组成的跨系列云端专家组来评估声明/结论（默认使用 `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`）——采用“少数服从多数”的原则，对每位专家进行已服务模型的检查，并在专家组人数减少时设置一个诚实的“弱”标志。如果专家组确认了前沿模型提出的声明，这只是*支持性证据，而非确凿证据*——该专家组能够可靠地发现明显的错误，但在处理细微的错误方面表现较弱。请参阅[手册页面](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/)。
+
 **延迟与质量。**大型云模型每个令牌的运行速度远低于本地 8B 模型（秒级，而不是毫秒级）——这是一种质量升级，而不是速度升级。云层使用宽松的超时时间（默认情况下，即时为 30 秒 / 主力为 120 秒 / 深度为 300 秒）。
 
 ### 云端环境变量
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(未设置)_ | **启用/禁用云服务的开关。** `1`/`true`/`yes`/`on` 启用云服务优先模式。未设置 = 仅使用本地资源，无数据传输。 |
-| `OLLAMA_API_KEY` | _(未设置)_ | 用于 Ollama Cloud 的 Bearer 密钥。当启用云服务时，此项是**必需的**（如果缺少，则启动时会立即失败）。 |
+| `OLLAMA_CLOUD_PRIMARY` | _(未设置)_ | **云端优先模式开关。** `1`/`true`/`yes`/`on` 会将生成层级路由到云端。如果不设置，则使用 **standby（备用）** 模式（仅本地优先，每次调用时进行升级）。如果未设置任何键，则完全采用本地模式，不进行任何外部访问。 |
+| `OLLAMA_API_KEY` | _(未设置)_ | Ollama Cloud 的授权密钥。单独设置此项会启用 **standby（备用）** 模式；当 `OLLAMA_CLOUD_PRIMARY` 已启用时，必须设置此项（如果缺少该项，则在启动时立即报错）。 |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | 云端基础主机。 |
-| `INTERN_CLOUD_MODEL` | `minimax-m3:cloud` | 即时 + 主力 + 深度使用的云模型。 |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | 用于即时响应、工作负载处理和深度分析的云端模型。请保持默认的 **非推理** 模式——在此处使用推理模型会消耗 CoT 中短输出预算（将大型推理器放在下面的深度覆盖中）。 |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | 可选的仅用于深度层的覆盖，例如 `deepseek-v3.1:671b`。 |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | 每个层级的云端尝试超时时间。 |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | 云端调用的上下文窗口限制（云服务按 GPU 时间计费；限制用于控制成本）。 |
 
-> **模型可用性可能会发生变化。** Ollama 会定期淘汰云模型。`minimax-m3:cloud`、`deepseek-v3.1:671b`、`gpt-oss:120b` 和 `qwen3-coder:480b` 是当前推荐的模型；在固定使用某个 ID 之前，请查看 [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud)。
+> **模型可用性变更。** Ollama 在服务器端轮换/停用云 ID。截至 2026 年 7 月，`qwen3-coder-next:cloud`（非推理的默认模型）以及推理旗舰模型 `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` 均为当前可用模型；在固定某个 ID 之前，请查看 [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud)。停用的 ID 会明显降低性能（显示为 `cloud_model_missing`），绝不会悄无声息地失效。
 
 **隐私说明。**路由到 Ollama Cloud 会将提示发送给第三方。Ollama 的[隐私政策](https://ollama.com/privacy) 声明，云端提示会进行临时处理，不会超出请求范围进行保留，也不会用于训练——但这仍然是一种数据传输，这就是为什么它是可选功能并且需要明确告知的原因。仅本地模式（默认）不会将任何内容发送到外部。
 

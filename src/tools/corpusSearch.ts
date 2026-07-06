@@ -28,6 +28,7 @@ import { callEvent } from "../observability.js";
 import { resolveTier, resolveNumCtx, TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { loadCorpus, type CorpusFile, type CorpusChunk } from "../corpus/storage.js";
 import { searchCorpus, DEFAULT_SEARCH_MODE, SEARCH_MODES, isEmptyQuery, type CorpusHit, type SearchMode } from "../corpus/searcher.js";
+import { cloudMayServe } from "../profiles.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -314,8 +315,10 @@ export async function handleCorpusSearch(
     // they always ran local). One controller bounds the whole best-effort
     // batch at the instant budget (cloud+local sum in cloud-primary, mirroring
     // runToolInner's effectiveTimeouts).
-    const explainBudgetMs = ctx.cloud
-      ? ctx.cloud.timeouts.instant + ctx.timeouts.instant
+    // F2: explain sub-calls carry no per-call backend directive, so under
+    // cloud STANDBY they run local — keep the budget local-sized too.
+    const explainBudgetMs = cloudMayServe(ctx.cloud)
+      ? ctx.cloud!.timeouts.instant + ctx.timeouts.instant
       : ctx.timeouts.instant;
     const explainController = new AbortController();
     const explainTimer = setTimeout(() => explainController.abort(), explainBudgetMs);

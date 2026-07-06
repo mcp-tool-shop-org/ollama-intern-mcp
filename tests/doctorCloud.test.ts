@@ -28,6 +28,7 @@ const CLOUD: CloudConfig = {
   },
   timeouts: { instant: 30_000, workhorse: 120_000, deep: 300_000, embed: 10_000 },
   numCtx: 32_768,
+  standby: false,
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -90,13 +91,62 @@ describe("ollama_doctor — cloud block", () => {
     expect(env.warnings?.some((w) => /Cloud auth failed/.test(w)) ?? false).toBe(false);
   });
 
-  it("flags auth='failed' and warns on a 401 (but stays reachable + healthy via local)", async () => {
+  it("flags auth='failed' on a 401 AND surfaces healthy:false — a bad key is broken operator config (F5, v2.9)", async () => {
     mockFetch(401);
     const env = await handleDoctor({}, makeCtx());
     expect(env.result.cloud?.reachable).toBe(true); // HTTP 401 = server answered
     expect(env.result.cloud?.auth).toBe("failed");
     expect(env.warnings?.some((w) => /Ollama Cloud auth failed/.test(w))).toBe(true);
-    // Local is reachable + models present → overall still healthy.
+    // v2.9 (F5): a DEFINITIVE cloud misconfiguration flips healthy — the
+    // operator opted into cloud and their key is bad; "is this box set up?"
+    // is honestly NO. (Local serving still works via fallback — the warning
+    // says so — but doctor's job is to surface the broken config.)
+    expect(env.result.healthy).toBe(false);
+  });
+
+  it("a MISCONFIGURED routing breaker (sticky bad-key state) also flips healthy:false", async () => {
+    mockFetch(200); // probe itself looks fine — the breaker carries the live failure
+    const { RoutingOllamaClient, CircuitBreaker } = await import("../src/routing.js");
+    const breaker = new CircuitBreaker();
+    breaker.recordAuthFailure(); // sticky misconfigured — a real call 401'd
+    const inner = createFakeOllama({ probeImpl: async () => ({ ok: true }) });
+    const routing = new RoutingOllamaClient({
+      cloud: inner,
+      local: inner,
+      cloudTiers: CLOUD.tiers,
+      localTiers: PROFILES["dev-rtx5080"].tiers,
+      cloudTimeouts: CLOUD.timeouts,
+      cloudNumCtx: CLOUD.numCtx,
+      breaker,
+    });
+    const ctx = makeCtx();
+    ctx.client = routing;
+    const env = await handleDoctor({}, ctx);
+    expect(env.result.cloud?.circuit_state).toBe("misconfigured");
+    expect(env.result.healthy).toBe(false);
+  });
+
+  it("an UNREACHABLE cloud does NOT flip healthy — an outage is not operator misconfig", async () => {
+    // Cloud host errors at the network layer; local is fine. Local fallback
+    // serves everything, nothing is misconfigured → still healthy.
+    globalThis.fetch = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      let host = "";
+      try {
+        host = new URL(u).hostname;
+      } catch {
+        /* fall through */
+      }
+      if (host === "ollama.com") throw new TypeError("fetch failed");
+      if (u.endsWith("/api/tags")) {
+        return jsonResponse({ models: [{ name: "hermes3:8b" }, { name: "nomic-embed-text" }] });
+      }
+      if (u.endsWith("/api/ps")) return jsonResponse({ models: [] });
+      return jsonResponse({});
+    }) as unknown as typeof fetch;
+    const env = await handleDoctor({}, makeCtx());
+    expect(env.result.cloud?.reachable).toBe(false);
+    expect(env.result.cloud?.auth).toBe("unverified");
     expect(env.result.healthy).toBe(true);
   });
 

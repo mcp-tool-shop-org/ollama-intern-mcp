@@ -13,7 +13,7 @@
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
 </p>
 
-> **The local intern for Claude Code.** <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> job-shaped tools, evidence-first briefs, durable artifacts.
+> **The local intern for Claude Code.** <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> job-shaped tools, evidence-first briefs, durable artifacts.
 
 An MCP server that gives Claude Code a **local intern** with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
@@ -26,6 +26,17 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 **Local-first** — zero network egress until you opt in. No telemetry. No "autonomous" anything. Every call shows its work. Optional [Ollama Cloud](#ollama-cloud-optional) routing puts 600B-class models behind the same tools when local hardware is the bottleneck — with automatic fallback to local.
 
 ---
+
+## New in v2.9.0
+
+**The cloud feature pass — a cross-family verification lane, on-demand cloud escalation, and the economics to see it.** Local-first is unchanged: with no key set, behavior is byte-identical to v2.8.0 (zero egress, no startup cloud probe).
+
+- **`ollama_verify_claims` — cross-family verification.** `ollama_code_review` *generates* findings; this *adjudicates* them. It runs a disjoint-family Ollama Cloud flagship panel (deepseek / kimi / glm by default) over your claims + evidence and returns per-claim CONFIRMED / REFUTED / NEEDS_REVIEW. Aggregation is lone-dissent-never-decides (≥2 to refute, ≥2 to confirm), every juror is served-model-verified (a local fallback or substituted model is excluded, never counted), and claim inputs are structurally reasoning-stripped. The honest ceiling is documented: a CONFIRMED is supporting evidence, not proof — reliable at flagging gross errors, weaker on a frontier model's subtle ones.
+- **Per-call cloud escalation + standby mode.** Set `OLLAMA_API_KEY` *alone* (without `OLLAMA_CLOUD_PRIMARY`) and you're in **standby**: local-primary, zero egress, no startup probe — until a single call opts in with `backend:'cloud'`. Escalate one high-stakes review to a 600B model without flipping every call to cloud. The first escalation discloses egress loudly at the point it happens; a per-call `model` override now rides the cloud attempt verbatim.
+- **`ollama_log_stats` — the measured economics the tagline promises.** A no-LLM rollup of your NDJSON receipts: cloud/local split, cloud→local fallback rate, tokens per tool, p50/p95 latency, bounded by a `since` window.
+- **Doctor for CI + machine-readable tools.** `doctor --json --fail-unhealthy` gives pipelines a real gate (with a cloud-aware `healthy` flag), and every tool now carries MCP `readOnlyHint`/`destructiveHint`/`title` annotations so clients get correct permission UX. Plus `init --claude` scaffolds a paste-ready `.mcp.json`.
+
+Full detail in [CHANGELOG.md](./CHANGELOG.md).
 
 ## New in v2.8.0
 
@@ -46,7 +57,7 @@ Full detail in [CHANGELOG.md](./CHANGELOG.md).
 - **Cloud-primary with a safety net.** A `RoutingOllamaClient` tries cloud first and falls back to the local profile on timeout / 5xx / 429 / network. Bad keys (401/403) surface loudly via a sticky breaker instead of degrading silently forever; a retired/typo'd cloud model id (404) surfaces too.
 - **Never a silent downgrade.** Every envelope gains `backend` (`cloud`|`local`), `degraded`, and `degrade_reason` so you always know when you got the local model instead of the big one. A `backend_fallback` NDJSON event makes the cloud→local fallback rate visible in `ollama_log_tail`.
 - **`ollama_doctor` reports cloud auth + reachability** as a distinct block; `ollama-intern-mcp doctor` shows a `Cloud (primary)` section.
-- Default cloud model is `minimax-m3:cloud`; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` (e.g. `deepseek-v3.1:671b`).
+- Default cloud model was `minimax-m3:cloud` at v2.7.0 release *(since repinned to `qwen3-coder-next:cloud` — a thinking default returned empty replies on capped-`num_predict` tools; see the [env table](#cloud-env-vars))*; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
 
 ## New in v2.6.0
 
@@ -292,21 +303,21 @@ If `frame` is omitted, behavior is unchanged from v2.1.0. When supplied, `frame_
 
 ---
 
-## What's in here — four tiers, <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end --> tools
+## What's in here — four tiers, <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> tools
 
 **Job-shaped** means each tool names a job you'd hand to an intern — classify this, extract that, triage these logs, draft this release note, pack this incident. The tool's input is the job spec; the output is the deliverable. No generic `run_model` / `chat_with_llm` primitive at the top.
 
 | Tier | Count | What lives here |
 |---|---|---|
-| **Atoms** | 29 | Job-shaped primitives. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 added in v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (ops); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactor); `artifact_prune`, `hypothesis_drill` (artifact/brief); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 review atom:** `code_review` (structured PR-review findings, workhorse; review-only). Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{id, text}]`. |
+| **Atoms** | 31 | Job-shaped primitives. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 added in v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (ops); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactor); `artifact_prune`, `hypothesis_drill` (artifact/brief); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 review atom:** `code_review` (structured PR-review findings, workhorse; review-only). **+2 in v2.9:** `verify_claims` (cross-family cloud flagship panel adjudicates claims; cloud-required) and `log_stats` (aggregate the NDJSON receipts into measured economics — cloud/local split, fallback rate, p50/p95 per tool; no model call). Batch-capable atoms (`classify`, `extract`, `triage_logs`) accept `items: [{id, text}]`. |
 | **Briefs** | 3 | Evidence-backed structured operator briefs. `incident_brief`, `repo_brief`, `change_brief`. Every claim cites an evidence id; unknowns stripped server-side. Weak evidence surfaces `weak: true` rather than fake narrative. |
 | **Packs** | 3 | Fixed-pipeline compound jobs that write durable markdown + JSON to `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Deterministic renderers — no model calls on the artifact shape. |
 | **Artifacts** | 7 | Continuity surface over pack outputs. `artifact_list` / `read` / `diff` / `export_to_path`, plus three deterministic snippets: `incident_note`, `onboarding_section`, `release_note`. |
 
-Total: **29 atoms + 3 briefs + 3 packs + 7 artifact tools = <!-- TOOL_COUNT:start -->42<!-- TOOL_COUNT:end -->**.
+Total: **31 atoms + 3 briefs + 3 packs + 7 artifact tools = <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->**.
 
 Freeze lines:
-- Atoms: freeze **lifted at v2.1.0** (29 today; +13 added in the v2.1.0 feature pass, +1 `code_review` later). New atoms still require an audit-justified gap, tests, handbook page, and CHANGELOG entry — no casual additions.
+- Atoms: freeze **lifted at v2.1.0** (31 today; +13 added in the v2.1.0 feature pass, +1 `code_review` later, +2 in v2.9: `verify_claims`, `log_stats`). New atoms still require an audit-justified gap, tests, handbook page, and CHANGELOG entry — no casual additions.
 - Packs frozen at 3. No new pack types.
 - Artifact tier frozen at 7.
 
@@ -462,7 +473,10 @@ Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter
 
 Local 8B models are the hardware bottleneck most people hit. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so you can route the heavy tools to a far stronger model and free up local VRAM — while keeping local as an always-on fallback.
 
-**This is opt-in and off by default.** The package stays local-first with **zero egress** unless you set *both* of these. Anyone who doesn't opt in is unaffected.
+**This is opt-in and off by default.** With no key set, the package stays local-first with **zero egress** — anyone who doesn't opt in is unaffected. There are two ways to opt in:
+
+- **Cloud-primary** (below): set *both* `OLLAMA_CLOUD_PRIMARY=1` and `OLLAMA_API_KEY` — the generative tiers route to cloud with local fallback.
+- **Cloud standby** (v2.9): set **only** `OLLAMA_API_KEY` — everything stays local (still zero egress, not even a startup probe) until a single call explicitly asks to escalate with `backend: "cloud"`. See [Cloud standby & per-call escalation](#cloud-standby--per-call-escalation) below.
 
 ```json
 {
@@ -490,7 +504,20 @@ Local 8B models are the hardware bottleneck most people hit. [Ollama Cloud](http
 { ...envelope, backend: "cloud" | "local", degraded?: true, degrade_reason?: "cloud_timeout" | "cloud_5xx" | "cloud_rate_limited" | "cloud_unreachable" | "cloud_auth_failed" | "circuit_open" }
 ```
 
-A `backend_fallback` line lands in `~/.ollama-intern/log.ndjson` on every cloud→local fallback (`ollama_log_tail --filter_kind backend_fallback`), and `ollama-intern-mcp doctor` shows a **Cloud (primary)** block with reachability + auth status.
+A `backend_fallback` line lands in `~/.ollama-intern/log.ndjson` on every cloud→local fallback (`ollama_log_tail --filter_kind backend_fallback`), and `ollama-intern-mcp doctor` shows a **Cloud (primary | standby)** block with the mode, reachability, and auth status.
+
+### Cloud standby & per-call escalation
+
+Setting `OLLAMA_API_KEY` **without** `OLLAMA_CLOUD_PRIMARY` arms **standby**: routing stays local-primary and nothing leaves the machine — until a call carries `backend: "cloud"` (exposed on `ollama_chat`, used internally by `ollama_verify_claims`). That one call escalates to the cloud model, with the same breaker + local-fallback machinery and the same envelope provenance; every other call stays local. The **first** escalated call prints a loud stderr disclosure naming the host and writes a `cloud_egress` line to the NDJSON log — egress is disclosed at the point it happens, not just here in the docs.
+
+The rules, mechanically enforced:
+
+- No key → `backend: "cloud"` fails with `CLOUD_NOT_CONFIGURED`. It is **never** silently served by the local model while claiming it escalated.
+- Standby + no directive → local, zero egress (startup does not probe the cloud host either).
+- Under cloud-primary, `backend: "local"` pins one call local — the inverse escape hatch.
+- A per-call `model` override now rides the cloud path verbatim (it used to be clobbered by the tier→cloud-model map), so receipt-backed orchestrators can name the exact cloud model per call.
+
+The flagship consumer is **`ollama_verify_claims`**: adjudicate claims/findings with a 3-model cross-family cloud panel (default `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`) — lone-dissent-never-decides aggregation, served-model checks on every juror, and an honest `weak` flag when the panel thins. A CONFIRMED from the panel on frontier-model-authored claims is *supporting evidence, not proof* — the panel reliably catches gross errors and is weaker on subtle ones. See the [handbook page](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/).
 
 **Latency vs quality.** Big cloud models run far slower per token than a local 8B (seconds, not milliseconds) — a quality upgrade, not a speed one. Cloud tiers use a generous timeout ladder (instant 30s / workhorse 120s / deep 300s by default).
 
@@ -498,15 +525,15 @@ A `backend_fallback` line lands in `~/.ollama-intern/log.ndjson` on every cloud�
 
 | Var | Default | Purpose |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The opt-in switch.** `1`/`true`/`yes`/`on` enables cloud-primary. Unset = local-only, zero egress. |
-| `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. **Required** when cloud is enabled (fail-fast at startup if missing). |
+| `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The cloud-primary switch.** `1`/`true`/`yes`/`on` routes the generative tiers to cloud. Unset with a key = **standby** (local-primary, per-call escalation only). Unset without a key = local-only, zero egress. |
+| `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. Setting it alone arms **standby**; **required** when `OLLAMA_CLOUD_PRIMARY` is enabled (fail-fast at startup if missing). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Cloud base host. |
-| `INTERN_CLOUD_MODEL` | `minimax-m3:cloud` | Cloud model for instant + workhorse + deep. |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Cloud model for instant + workhorse + deep. Keep the default **non-thinking** — a thinking model here burns short-output budgets on CoT (put big reasoners on the deep override below). |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Optional deep-tier-only override, e.g. `deepseek-v3.1:671b`. |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Per-tier cloud-attempt timeouts. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Context-window cap for cloud calls (cloud bills by GPU-time; cap controls cost). |
 
-> **Model availability changes.** Ollama periodically retires cloud models. `minimax-m3:cloud`, `deepseek-v3.1:671b`, `gpt-oss:120b`, and `qwen3-coder:480b` are current picks; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id.
+> **Model availability changes.** Ollama rotates/retires cloud ids server-side. As of 2026-07, `qwen3-coder-next:cloud` (non-thinking default) and the thinking flagships `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` are current; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id. A retired id degrades visibly (`cloud_model_missing`), never silently.
 
 **Privacy note.** Routing to Ollama Cloud sends prompts to a third party. Ollama's [privacy policy](https://ollama.com/privacy) states cloud prompts are processed transiently, not retained beyond the request, and not used for training — but it is still egress, which is why it's opt-in and disclosed. Local-only mode (the default) sends nothing off the box.
 

@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
+import { parseModelJson } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
 
 export const summarizeFastSchema = z.object({
@@ -67,10 +68,11 @@ interface ParsedFrameSummary {
 function parseFrameSummary(raw: string): ParsedFrameSummary {
   const trimmed = raw.trim();
   try {
-    const obj = JSON.parse(trimmed);
+    const obj = parseModelJson(trimmed);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      const summary = typeof obj.summary === "string" ? obj.summary : trimmed;
-      const onTopic = typeof obj.on_topic === "boolean" ? obj.on_topic : null;
+      const o = obj as Record<string, unknown>;
+      const summary = typeof o.summary === "string" ? o.summary : trimmed;
+      const onTopic = typeof o.on_topic === "boolean" ? o.on_topic : null;
       return { on_topic: onTopic, summary };
     }
   } catch {

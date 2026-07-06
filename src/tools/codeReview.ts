@@ -38,7 +38,7 @@ import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock } from "../sources.js";
-import { parseJsonObject, readObjectArray, readString } from "./briefs/common.js";
+import { parseModelJsonObject, readObjectArray, readString } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
 
 // ── Closed enums — match the dispatch spec exactly ─────────
@@ -348,7 +348,7 @@ export async function handleCodeReview(
       },
     }),
     parse: (raw): CodeReviewResult => {
-      const o = parseJsonObject(raw);
+      const o = parseModelJsonObject(raw);
       return coerceReview(o, { severityFloor, maxFindings, diffSize });
     },
   });

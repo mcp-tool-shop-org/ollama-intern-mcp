@@ -12,15 +12,18 @@ import { InternError } from "../src/errors.js";
 const KEY = { OLLAMA_API_KEY: "sk-test-123" };
 
 describe("loadCloudConfig — gating", () => {
-  it("returns null when OLLAMA_CLOUD_PRIMARY is unset (default = local-only, zero egress)", () => {
+  it("returns null when neither OLLAMA_CLOUD_PRIMARY nor OLLAMA_API_KEY is set (default = local-only, zero egress)", () => {
     expect(loadCloudConfig({})).toBeNull();
-    expect(loadCloudConfig({ ...KEY })).toBeNull(); // a key alone does NOT enable cloud
+    expect(loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "0" })).toBeNull();
+    expect(loadCloudConfig({ OLLAMA_API_KEY: "   " })).toBeNull(); // whitespace-only key = no key
   });
 
-  it("returns null when OLLAMA_CLOUD_PRIMARY is falsy", () => {
-    expect(loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "0", ...KEY })).toBeNull();
-    expect(loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "false", ...KEY })).toBeNull();
-    expect(loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "", ...KEY })).toBeNull();
+  it("falsy OLLAMA_CLOUD_PRIMARY with a key → STANDBY config, never cloud-primary (F2a — contract change from v2.7.0's null)", () => {
+    for (const v of ["0", "false", ""]) {
+      const cfg = loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: v, ...KEY });
+      expect(cfg, `PRIMARY='${v}'`).not.toBeNull();
+      expect(cfg!.standby, `PRIMARY='${v}'`).toBe(true);
+    }
   });
 
   it("enables on truthy variants", () => {
@@ -86,6 +89,42 @@ describe("loadCloudConfig — overrides", () => {
     expect(() =>
       loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "1", ...KEY, INTERN_CLOUD_MODEL: "Bad Model Name!" }),
     ).toThrow(InternError);
+  });
+});
+
+describe("loadCloudConfig — standby mode (F2a)", () => {
+  it("a key alone (PRIMARY unset) loads a STANDBY config — local-primary, cloud available per-call", () => {
+    const cfg = loadCloudConfig({ ...KEY });
+    expect(cfg).not.toBeNull();
+    expect(cfg!.standby).toBe(true);
+    // Full config is resolved exactly like primary mode — same host, models,
+    // timeouts, num_ctx — so a per-call escalation needs no extra env.
+    expect(cfg!.host).toBe("https://ollama.com");
+    expect(cfg!.apiKey).toBe("sk-test-123");
+    expect(cfg!.tiers.instant).toBe("qwen3-coder-next:cloud");
+    expect(cfg!.numCtx).toBe(32_768);
+  });
+
+  it("PRIMARY truthy → standby:false (cloud-primary, v2.7.0 behavior)", () => {
+    const cfg = loadCloudConfig({ OLLAMA_CLOUD_PRIMARY: "1", ...KEY })!;
+    expect(cfg.standby).toBe(false);
+  });
+
+  it("standby validates cloud model names fail-fast, same as primary", () => {
+    expect(() => loadCloudConfig({ ...KEY, INTERN_CLOUD_MODEL: "Bad Model Name!" })).toThrow(
+      InternError,
+    );
+  });
+
+  it("standby honors the same env overrides as primary (deep model, host)", () => {
+    const cfg = loadCloudConfig({
+      ...KEY,
+      INTERN_CLOUD_DEEP_MODEL: "deepseek-v3.1:671b",
+      OLLAMA_CLOUD_HOST: "https://ollama.example.com/",
+    })!;
+    expect(cfg.standby).toBe(true);
+    expect(cfg.tiers.deep).toBe("deepseek-v3.1:671b");
+    expect(cfg.host).toBe("https://ollama.example.com");
   });
 });
 

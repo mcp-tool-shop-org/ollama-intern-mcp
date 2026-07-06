@@ -186,6 +186,83 @@ describeOrSkip("CLI surface — src/index.ts:runCli", () => {
     expect(r.stdout).toMatch(/Healthy:\s+(yes|no)/);
   }, 20_000);
 
+  it("doctor --json emits parseable DoctorResult JSON (no prose), exit 0 without the gate flag (F5)", async () => {
+    const r = await runCli(["doctor", "--json"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" }, // dead port → unreachable, fast + deterministic
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).not.toContain("Profile:"); // prose renderer must not fire
+    const parsed = JSON.parse(r.stdout) as { healthy?: boolean; ollama?: { reachable?: boolean } };
+    expect(parsed.ollama?.reachable).toBe(false);
+    expect(parsed.healthy).toBe(false);
+  }, 20_000);
+
+  it("doctor --fail-unhealthy exits 1 when unhealthy — the CI gate the old comment told users to grep for (F5)", async () => {
+    const r = await runCli(["doctor", "--fail-unhealthy"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toMatch(/Healthy:\s+no/);
+  }, 20_000);
+
+  it("doctor --json --fail-unhealthy combines: JSON on stdout, exit 1 (F5)", async () => {
+    const r = await runCli(["doctor", "--json", "--fail-unhealthy"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" },
+    });
+    expect(r.exitCode).toBe(1);
+    const parsed = JSON.parse(r.stdout) as { healthy?: boolean };
+    expect(parsed.healthy).toBe(false);
+  }, 20_000);
+
+  it("doctor rejects an unknown flag with exit 1 (typo never silently reports)", async () => {
+    const r = await runCli(["doctor", "--bogus"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--bogus");
+  }, 20_000);
+
+  it("init --claude prints a valid paste-ready .mcp.json fragment + the standby note, writes NO file (F3)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "intern-cli-initclaude-"));
+    try {
+      const r = await runCli(["init", "--claude"], { cwd: dir });
+      expect(r.exitCode).toBe(0);
+      // Print-only: pasting beats clobbering an existing .mcp.json.
+      expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
+      expect(existsSync(join(dir, "hermes.config.yaml"))).toBe(false);
+      // The JSON block parses and carries the server entry.
+      const start = r.stdout.indexOf("{");
+      const end = r.stdout.lastIndexOf("}");
+      expect(start).toBeGreaterThanOrEqual(0);
+      const parsed = JSON.parse(r.stdout.slice(start, end + 1)) as {
+        mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string> }>;
+      };
+      const server = parsed.mcpServers?.["ollama-intern"];
+      expect(server?.command).toBe("npx");
+      expect(server?.args).toContain("ollama-intern-mcp");
+      expect(server?.env?.INTERN_PROFILE).toBeDefined();
+      // Cloud lines ride as COMMENTED guidance (JSON has no comments) with
+      // the correct current default + the standby semantics named.
+      expect(r.stdout).toContain("OLLAMA_API_KEY");
+      expect(r.stdout).toMatch(/standby/i);
+      expect(r.stdout).toContain("qwen3-coder-next:cloud");
+      expect(r.stdout).not.toContain("minimax-m3");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("init rejects an unknown flag with exit 1", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "intern-cli-initbogus-"));
+    try {
+      const r = await runCli(["init", "--bogus"], { cwd: dir });
+      expect(r.exitCode).toBe(1);
+      expect(r.stderr).toContain("--bogus");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   it("init subcommand scaffolds hermes.config.yaml in a fresh temp dir", async () => {
     const dir = await mkdtemp(join(tmpdir(), "intern-cli-init-"));
     try {

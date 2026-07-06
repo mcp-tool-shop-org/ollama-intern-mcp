@@ -27,6 +27,17 @@ Un serveur MCP qui donne à Claude Code un **stagiaire local** avec des règles,
 
 ---
 
+## Nouveautés dans la version 2.9.0
+
+**La fonctionnalité du « cloud » est désormais disponible : une vérification inter-familles, une mise à l’échelle du cloud à la demande et les avantages économiques que cela représente.** Le mode local reste inchangé : sans clé définie, le comportement est identique à celui de la version 2.8.0 (zéro transfert de données vers l’extérieur, pas de sondage initial du cloud).
+
+- **`ollama_verify_claims` : vérification inter-familles.** `ollama_code_review` *génère* les résultats ; cet outil *évalue* ces résultats. Il exécute un ensemble de modèles Ollama Cloud (deepseek / kimi / glm par défaut) sur vos affirmations et preuves, puis renvoie pour chaque affirmation CONFIRMÉ / RÉFUTÉ / NÉCESSITE_UNE_RÉVISION. L’agrégation est basée sur le principe selon lequel une seule opinion dissidente ne décide pas (≥ 2 pour réfuter, ≥ 2 pour confirmer), chaque évaluateur utilise un modèle vérifié (un modèle de secours local ou substitué est exclu et n’est jamais pris en compte), et les entrées des affirmations sont structurées de manière à supprimer tout raisonnement. Le seuil d’honnêteté est documenté : une affirmation CONFIRMÉE est une preuve à l’appui, pas une preuve irréfutable (fiable pour signaler les erreurs flagrantes, mais moins efficace pour détecter les subtilités d’un modèle de pointe).
+- **Mise à l’échelle du cloud par appel + mode veille.** Définissez `OLLAMA_API_KEY` *seul* (sans `OLLAMA_CLOUD_PRIMARY`), et vous êtes en **mode veille** : priorité locale, zéro transfert de données vers l’extérieur, pas de sondage initial, jusqu’à ce qu’un seul appel opte pour le mode cloud avec `backend:'cloud'`. Mettez à l’échelle une seule évaluation importante vers un modèle de 600 milliards de paramètres sans forcer tous les appels à utiliser le cloud. La première mise à l’échelle révèle clairement le transfert de données au moment où il se produit ; un remplacement du `model` par appel est désormais appliqué directement à la tentative d’utilisation du cloud.
+- **`ollama_log_stats` : les avantages économiques mesurés promis dans le slogan.** Un résumé sans LLM de vos enregistrements NDJSON : répartition entre le cloud et le local, taux de repli vers le local depuis le cloud, nombre de jetons par outil, p50/p95 de latence, limité par une fenêtre `since`.
+- **Outil de diagnostic pour CI + outils lisibles par machine.** `doctor --json --fail-unhealthy` fournit aux pipelines une véritable porte d’entrée (avec un indicateur `healthy` prenant en compte le cloud), et chaque outil inclut désormais les annotations MCP `readOnlyHint`/`destructiveHint`/`title`, afin que les clients obtiennent des autorisations correctes dans l’interface utilisateur. De plus, `init --claude` crée une structure de base pour un fichier `.mcp.json` prêt à être utilisé.
+
+Détails complets dans [CHANGELOG.md](./CHANGELOG.md).
+
 ## Nouveau dans la version 2.8.0
 
 **Amélioration de la fiabilité, de la durabilité et de la sécurité — 25 corrections, chacune étant testée en premier et vérifiée sur l’ensemble des familles.** Le comportement axé sur le local reste inchangé et aucun contrat d’outil n’a été supprimé ; les appelants existants continuent de fonctionner. Les avantages sont clairs :
@@ -43,10 +54,10 @@ Détails complets dans [CHANGELOG.md](./CHANGELOG.md).
 
 **Routage optionnel vers Ollama Cloud — mode principal en cloud, retour au local en cas d’échec.** Activez-le avec une clé + un indicateur et les niveaux génératifs acheminent les requêtes vers un modèle cloud de classe 600B ; les intégrations restent locales ; un disjoncteur revient à votre profil local en cas de panne du cloud. **Désactivé par défaut — aucune donnée ne quitte le réseau tant que vous n’avez pas défini `OLLAMA_API_KEY` et `OLLAMA_CLOUD_PRIMARY=1`.** Amélioration mineure : les appelants antérieurs à la version 2.7.0 (et ceux qui n’activent pas cette fonctionnalité) conservent le même comportement. Voir [Ollama Cloud (optionnel)](#ollama-cloud-optional).
 
-- **Mode principal en cloud avec une sécurité intégrée.** Un `RoutingOllamaClient` tente d’abord de se connecter au cloud, puis revient au profil local en cas de dépassement du délai d’attente / erreur 5xx / 429 / problème réseau. Les clés incorrectes (401/403) sont signalées clairement via un disjoncteur persistant au lieu de provoquer une dégradation silencieuse et permanente ; un ID de modèle cloud retiré ou mal orthographié (404) est également signalé.
-- **Plus jamais de rétrogradation silencieuse.** Chaque enveloppe reçoit les champs `backend` (`cloud`|`local`), `degraded` et `degrade_reason`, vous savez donc toujours quand le modèle local a été utilisé au lieu du modèle principal. Un événement NDJSON `backend_fallback` rend visible le taux de retour au mode local dans `ollama_log_tail`.
+- **Priorité au cloud avec filet de sécurité.** Un `RoutingOllamaClient` tente d’abord d’utiliser le cloud et revient au profil local en cas de dépassement du délai / erreur 5xx / 429 / problème réseau. Les clés incorrectes (401/403) sont clairement signalées via un disjoncteur, plutôt que de provoquer une dégradation silencieuse et permanente ; l’ID d’un modèle cloud obsolète ou mal orthographié (404) est également signalé.
+- **Pas de rétrogradation silencieuse.** Chaque enveloppe contient `backend` (`cloud`|`local`), `degraded` et `degrade_reason`, afin que vous sachiez toujours quand le modèle local a été utilisé au lieu du modèle principal. Un événement NDJSON `backend_fallback` rend visible le taux de repli vers le local depuis le cloud dans `ollama_log_tail`.
 - **`ollama_doctor` signale l’authentification et la connectivité au cloud** dans une section distincte ; `ollama-intern-mcp doctor` affiche une section « Cloud (principal) ».
-- Le modèle cloud par défaut est `minimax-m3:cloud`; remplacez-le par niveau avec `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` (par exemple, `deepseek-v3.1:671b`).
+- Le modèle cloud par défaut était `minimax-m3:cloud` lors de la sortie de la version 2.7.0 *(depuis, il a été modifié pour utiliser `qwen3-coder-next:cloud` — un modèle qui renvoyait des réponses vides sur les outils avec un nombre maximal de prédictions limité ; voir le [tableau des variables d’environnement](#cloud-env-vars)) *; remplacez-le par niveau avec `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
 
 ## Nouveau dans la version 2.6.0
 
@@ -298,7 +309,7 @@ Si le paramètre `frame` est omis, le comportement reste inchangé par rapport �
 
 | Niveau | Nombre | Ce qui s’y trouve |
 |---|---|---|
-| **Atoms** | 29 | Opérations de base orientées tâche. **Original 15 :** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 ajoutés dans la version 2.1.0 :** `doctor`, `log_tail`, `batch_proof_check` (opérations) ; `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactoring) ; `artifact_prune`, `hypothesis_drill` (artefact/brouillon) ; `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 opération d’analyse :** `code_review` (résultats structurés de l’examen du code, outil principal ; examen uniquement). Les opérations capables de traiter des lots (`classify`, `extract`, `triage_logs`) acceptent `items: [{id, text}]`. |
+| **Atoms** | 31 | Primitives de type « job ». **Original 15 :** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 ajoutés dans la version 2.1.0 :** `doctor`, `log_tail`, `batch_proof_check` (opérations) ; `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactoring) ; `artifact_prune`, `hypothesis_drill` (artefact/brouillon) ; `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 atome de révision :** `code_review` (résultats structurés de la révision des demandes d’extraction, outil principal ; uniquement pour la révision). **+2 dans la version 2.9 :** `verify_claims` (un ensemble de modèles cloud inter-familles évalue les affirmations ; nécessite l’utilisation du cloud) et `log_stats` (agrège les enregistrements NDJSON en avantages économiques mesurés — répartition entre le cloud et le local, taux de repli, p50/p95 par outil ; aucun appel au modèle). Les atomes capables de traiter des lots (`classify`, `extract`, `triage_logs`) acceptent `items: [{id, text}]`. |
 | **Briefs** | 3 | Brefs structurés et étayés par des preuves. `incident_brief`, `repo_brief`, `change_brief`. Chaque affirmation cite un identifiant de preuve ; les éléments inconnus sont supprimés côté serveur. Les preuves faibles affichent `weak: true` plutôt qu’un récit inventé. |
 | **Packs** | 3 | Tâches composées à pipeline fixe qui écrivent des données Markdown + JSON durables dans `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renders déterministes ; aucune requête de modèle n’est effectuée sur la forme de l’artefact. |
 | **Artifacts** | 7 | Surface de continuité sur les sorties des packs. `artifact_list` / `read` / `diff` / `export_to_path`, ainsi que trois extraits déterministes : `incident_note`, `onboarding_section`, `release_note`. |
@@ -462,7 +473,10 @@ Chaque appel est enregistré sous forme d’une ligne NDJSON dans `~/.ollama-int
 
 Les modèles locaux de 8 Go représentent le principal goulot d’étranglement matériel rencontré par la plupart des utilisateurs. [Ollama Cloud](https://ollama.com/cloud) propose des modèles de classe 600B derrière la **même** interface `/api/*`, ce qui vous permet de diriger les outils les plus gourmands vers un modèle beaucoup plus puissant et de libérer la VRAM locale, tout en conservant une option locale comme solution de secours toujours disponible.
 
-**Cette fonctionnalité est désactivée par défaut et doit être activée.** Le package reste axé sur le local avec **zéro transfert de données** tant que vous n’avez pas défini les deux paramètres suivants. Les utilisateurs qui ne l’activent pas ne sont pas affectés.
+**Cette fonctionnalité est activable et désactivée par défaut.** Sans clé définie, le package reste en mode local avec **zéro transfert de données vers l’extérieur** — toute personne qui n’active pas cette fonctionnalité n’est pas affectée. Il existe deux façons d’activer cette fonctionnalité :
+
+- **Priorité au cloud** (ci-dessous) : définissez *les deux* `OLLAMA_CLOUD_PRIMARY=1` et `OLLAMA_API_KEY` — les niveaux génératifs sont acheminés vers le cloud avec un repli local.
+- **Cloud en veille** (version 2.9) : définissez **uniquement** `OLLAMA_API_KEY` — tout reste local (zéro transfert de données vers l’extérieur, même pas de sondage initial) jusqu’à ce qu’un seul appel demande explicitement une mise à l’échelle avec `backend: "cloud"`. Voir [Cloud en veille et mise à l’échelle par appel](#cloud-standby--per-call-escalation) ci-dessous.
 
 ```json
 {
@@ -492,21 +506,34 @@ Les modèles locaux de 8 Go représentent le principal goulot d’étranglement 
 
 Une ligne `backend_fallback` est ajoutée à `~/.ollama-intern/log.ndjson` pour chaque basculement du cloud vers le local (`ollama_log_tail --filter_kind backend_fallback`), et la commande `ollama-intern-mcp doctor` affiche un bloc **Cloud (principal)** avec l’état d’accessibilité et d’authentification.
 
+### Cloud en veille et mise à l’échelle par appel
+
+Définir `OLLAMA_API_KEY` **sans** `OLLAMA_CLOUD_PRIMARY` active le **mode veille :** le routage reste en mode local, et rien ne quitte la machine — jusqu’à ce qu’un appel contienne `backend: "cloud"` (exposé dans `ollama_chat`, utilisé en interne par `ollama_verify_claims`). Ce seul appel est mis à l’échelle vers le modèle cloud, avec le même mécanisme de disjoncteur + repli local et la même provenance des données ; tous les autres appels restent locaux. Le **premier** appel mis à l’échelle affiche un message clair dans stderr indiquant le nom de l’hôte et écrit une ligne `cloud_egress` dans le journal NDJSON — le transfert de données est signalé au moment où il se produit, et non pas seulement ici dans la documentation.
+
+Les règles, appliquées mécaniquement :
+
+- Pas de clé → `backend: "cloud"` échoue avec `CLOUD_NOT_CONFIGURED`. Le modèle local ne répond **jamais** silencieusement en prétendant avoir effectué une mise à l’échelle.
+- Mode veille + pas d’instruction → mode local, zéro transfert de données vers l’extérieur (le démarrage ne sonde pas non plus l’hôte cloud).
+- En mode priorité au cloud, `backend: "local"` force un appel à utiliser le modèle local — la solution de repli.
+- Un remplacement du `model` par appel est désormais appliqué directement au chemin d’accès au cloud (il était auparavant écrasé par le mappage niveau → modèle cloud), afin que les orchestrateurs basés sur des enregistrements puissent spécifier le modèle cloud exact pour chaque appel.
+
+Le modèle phare pour les utilisateurs est **`ollama_verify_claims`** : il permet d’évaluer les revendications et les conclusions à l’aide d’un groupe de modèles hébergés dans le cloud, issus de différentes familles (par défaut : `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`). Il utilise une méthode d’agrégation où un seul vote dissident ne suffit pas à prendre une décision, effectue des vérifications sur chaque modèle utilisé et affiche un indicateur « faible » lorsque le groupe de modèles est réduit. Une confirmation du groupe concernant les revendications formulées par les modèles les plus récents constitue une *preuve à l’appui, mais pas une preuve définitive*. Le groupe détecte efficacement les erreurs flagrantes, mais il est moins performant pour détecter les erreurs subtiles. Consultez la [page du manuel](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/).
+
 **Latence par rapport à la qualité.** Les grands modèles du cloud s’exécutent beaucoup plus lentement que les modèles locaux de 8 Go (en secondes, pas en millisecondes) ; il s’agit d’une amélioration de la qualité, et non de la vitesse. Les niveaux du cloud utilisent un délai d’attente généreux (instantané : 30 s / polyvalent : 120 s / approfondi : 300 s par défaut).
 
 ### Variables d’environnement du cloud
 
 | Variable | Valeur par défaut | Objectif |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(non défini)_ | **L’option d’activation.** `1`/`true`/`yes`/`on` active la priorité du cloud. Non défini = uniquement local, aucun transfert de données. |
-| `OLLAMA_API_KEY` | _(non défini)_ | Clé Bearer pour Ollama Cloud. **Obligatoire** lorsque le cloud est activé (arrêt immédiat au démarrage si elle est manquante). |
+| `OLLAMA_CLOUD_PRIMARY` | _(non défini)_ | **Activation de l’option « cloud-primary ».** `1`/`true`/`yes`/`on` redirige les niveaux génératifs vers le cloud. Si cette option n’est pas définie avec une clé, elle est réglée sur **standby** (mode principal local, escalade uniquement pour chaque appel). Si l’option n’est pas définie sans clé, seul le mode local est utilisé, sans transfert de données vers l’extérieur. |
+| `OLLAMA_API_KEY` | _(non défini)_ | Clé d’authentification pour Ollama Cloud. Sa simple définition active le mode **standby** ; elle est **obligatoire** lorsque `OLLAMA_CLOUD_PRIMARY` est activé (en cas d’absence, une erreur se produit au démarrage). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Hôte de base du cloud. |
-| `INTERN_CLOUD_MODEL` | `minimax-m3:cloud` | Modèle du cloud pour les niveaux instantané, polyvalent et approfondi. |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Modèle cloud pour un usage immédiat et intensif. Conservez la valeur par défaut **non-analytique** ; l’utilisation d’un modèle analytique ici épuiserait rapidement les ressources allouées pour le raisonnement (placez les modèles de raisonnement complexes dans la section « deep override » ci-dessous). |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Remplacement facultatif uniquement pour le niveau approfondi, par exemple `deepseek-v3.1:671b`. |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Délai d’attente pour chaque tentative de connexion au cloud. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Limite de la taille de la fenêtre de contexte pour les appels au cloud (le cloud facture en fonction du temps GPU ; la limite contrôle le coût). |
 
-> **La disponibilité des modèles peut changer.** Ollama retire périodiquement les modèles du cloud. `minimax-m3:cloud`, `deepseek-v3.1:671b`, `gpt-oss:120b` et `qwen3-coder:480b` sont les options actuelles ; vérifiez [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) avant de fixer un identifiant.
+> **Modifications de la disponibilité des modèles.** Ollama met à jour ou retire les identifiants cloud côté serveur. Au 2026-07, `qwen3-coder-next:cloud` (valeur par défaut non-analytique) et les modèles analytiques phares `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` sont disponibles ; vérifiez [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) avant de fixer un identifiant. Un identifiant retiré entraîne une dégradation visible (`cloud_model_missing`), mais jamais silencieuse.
 
 **Note sur la confidentialité.** Le routage vers Ollama Cloud envoie les requêtes à un tiers. La politique de confidentialité d’Ollama indique que les requêtes du cloud sont traitées de manière transitoire, qu’elles ne sont pas conservées au-delà de la requête et qu’elles ne sont pas utilisées pour l’entraînement, mais il s’agit tout de même d’un transfert de données, c’est pourquoi cette fonctionnalité est facultative et doit être explicitement activée. En mode uniquement local (par défaut), rien n’est envoyé en dehors du système.
 

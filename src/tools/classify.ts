@@ -25,6 +25,7 @@ import {
 } from "../guardrails/confidence.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { loadSources } from "../sources.js";
+import { parseModelJson } from "./briefs/common.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 import { buildGuardrailEventWithCorrelation } from "./_runContext.js";
@@ -126,7 +127,7 @@ interface ParseClassifyOutcome {
 function parseClassify(raw: string, allowedLabels: string[]): ParseClassifyOutcome {
   let parsedJson: unknown;
   try {
-    parsedJson = JSON.parse(raw.trim());
+    parsedJson = parseModelJson(raw);
   } catch {
     // Model returned non-JSON output. Same-family bug as Stage A's brief
     // null-crash — JSON.parse('null') is valid JSON, but JSON.parse('not

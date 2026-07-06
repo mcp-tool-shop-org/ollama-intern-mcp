@@ -53,6 +53,12 @@ export interface DoctorResult {
    */
   cloud?: {
     enabled: boolean;
+    /**
+     * 'primary' = cloud serves the generative tiers by default (v2.7.0);
+     * 'standby' = local-primary, cloud serves only per-call backend:'cloud'
+     * escalations (F2a, v2.9).
+     */
+    mode: "primary" | "standby";
     host: string;
     reachable: boolean;
     /**
@@ -259,6 +265,7 @@ export async function handleDoctor(
     const auth: "failed" | "unverified" = /HTTP 40[13]/.test(reason) ? "failed" : "unverified";
     cloudStatus = {
       enabled: true,
+      mode: ctx.cloud.standby ? "standby" : "primary",
       host: ctx.cloud.host,
       reachable,
       auth,
@@ -306,7 +313,17 @@ export async function handleDoctor(
     },
     ...(cloudStatus ? { cloud: cloudStatus } : {}),
     recent_errors,
-    healthy: reachable && missing.length === 0,
+    // healthy = "is this box actually set up?" — local reachable, required
+    // models pulled, and (F5, v2.9) no DEFINITIVE cloud misconfiguration.
+    // A bad key (auth 'failed' on the probe, or the sticky 'misconfigured'
+    // breaker tripped by a live 401) is broken operator config and must
+    // surface here; a cloud OUTAGE (unreachable host) is not the operator's
+    // fault and does NOT flip healthy — local fallback keeps serving, and
+    // the warning below says so.
+    healthy:
+      reachable &&
+      missing.length === 0 &&
+      !(cloudStatus && (cloudStatus.auth === "failed" || cloudStatus.circuit_state === "misconfigured")),
   };
 
   const warnings: string[] = [];

@@ -18,6 +18,7 @@ import type { SummarizeResult } from "./summarizeFast.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { detectCoverage, type CoverageReport } from "../coverage.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
+import { parseModelJson } from "./briefs/common.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -121,11 +122,12 @@ interface ParsedFrameDigest {
 function parseFrameDigest(raw: string): ParsedFrameDigest {
   const trimmed = raw.trim();
   try {
-    const obj = JSON.parse(trimmed);
+    const obj = parseModelJson(trimmed);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      const summary = typeof obj.summary === "string" ? obj.summary : "";
-      const frameAddressed = typeof obj.frame_addressed === "boolean" ? obj.frame_addressed : null;
-      const unaddressedRaw = obj.unaddressed_sources;
+      const o = obj as Record<string, unknown>;
+      const summary = typeof o.summary === "string" ? o.summary : "";
+      const frameAddressed = typeof o.frame_addressed === "boolean" ? o.frame_addressed : null;
+      const unaddressedRaw = o.unaddressed_sources;
       const unaddressed = Array.isArray(unaddressedRaw)
         ? (unaddressedRaw.filter((x) => typeof x === "string") as string[])
         : [];

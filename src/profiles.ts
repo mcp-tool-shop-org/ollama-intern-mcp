@@ -351,11 +351,13 @@ export function detectEnvOverrides(env: NodeJS.ProcessEnv = process.env): EnvOve
 
 // ── Ollama Cloud (optional, opt-in) ──────────────────────────────────────────
 //
-// Cloud is OFF by default. The package stays local-first with zero egress
-// unless BOTH OLLAMA_CLOUD_PRIMARY and OLLAMA_API_KEY are set. When enabled,
-// cloud serves the generative tiers (instant/workhorse/deep) and the local
-// profile becomes the fallback; embeddings stay local always (Ollama Cloud
-// serves no embedding models).
+// Cloud is OFF by default. With no OLLAMA_API_KEY the package is local-only
+// with zero egress. A key alone (OLLAMA_CLOUD_PRIMARY unset) arms STANDBY
+// (F2a, v2.9): routing stays local-primary with zero egress, but a single
+// call may explicitly escalate with backend:'cloud'. Setting
+// OLLAMA_CLOUD_PRIMARY as well makes cloud serve the generative tiers
+// (instant/workhorse/deep) with the local profile as fallback. Embeddings
+// stay local always (Ollama Cloud serves no embedding models).
 
 /** Resolved cloud configuration. Null when cloud is not opted into. */
 export interface CloudConfig {
@@ -373,6 +375,14 @@ export interface CloudConfig {
   timeouts: Record<Tier, number>;
   /** Context-window cap (tokens) applied to every cloud request (GPU-time control). */
   numCtx: number;
+  /**
+   * Standby mode (F2a, v2.9). True when a key is present but
+   * OLLAMA_CLOUD_PRIMARY is not enabled: routing stays LOCAL-PRIMARY with
+   * zero egress by default, and cloud serves only calls that explicitly
+   * request `backend:'cloud'` (per-call escalation, RouteLLM-style
+   * per-invocation routing). False = cloud-primary (v2.7.0 behavior).
+   */
+  standby: boolean;
 }
 
 const CLOUD_DEFAULT_HOST = "https://ollama.com";
@@ -421,8 +431,13 @@ function positiveIntEnv(raw: string | undefined, fallback: number): number {
 }
 
 /**
- * Resolve the cloud configuration from env, or null when cloud is not opted
- * into. Throws CONFIG_INVALID (fail-fast at startup) when OLLAMA_CLOUD_PRIMARY
+ * Resolve the cloud configuration from env. Three outcomes (F2a, v2.9):
+ *   - OLLAMA_CLOUD_PRIMARY truthy (+ key) → cloud-PRIMARY config (standby:false)
+ *   - key present, PRIMARY unset/falsy    → STANDBY config (standby:true) —
+ *     local-primary, zero egress until a call requests backend:'cloud'
+ *   - neither                             → null (local-only, zero egress)
+ *
+ * Throws CONFIG_INVALID (fail-fast at startup) when OLLAMA_CLOUD_PRIMARY
  * is enabled but OLLAMA_API_KEY is missing, or a cloud model name is malformed.
  *
  * Env surface:
@@ -437,8 +452,10 @@ function positiveIntEnv(raw: string | undefined, fallback: number): number {
  *   INTERN_CLOUD_NUM_CTX        cloud context-window cap (default 32768)
  */
 export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConfig | null {
-  if (!isCloudEnabled(env)) return null;
+  const primary = isCloudEnabled(env);
   const apiKey = (env.OLLAMA_API_KEY ?? "").trim();
+  // No opt-in signal at all → local-only, zero egress (the unchanged default).
+  if (!primary && !apiKey) return null;
   if (!apiKey) {
     throw new InternError(
       "CONFIG_INVALID",
@@ -476,5 +493,28 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
     tiers,
     timeouts,
     numCtx,
+    standby: !primary,
   };
+}
+
+/**
+ * True when the cloud backend may serve a given call. The single decision
+ * point the runner/chat/batch budget-summing sites share, so "standby stays
+ * local" can never drift per call-site:
+ *   - no cloud config          → false (local-only)
+ *   - per-call backend:'local' → false (caller pinned this call local)
+ *   - cloud-primary            → true
+ *   - standby                  → only when the call explicitly requested
+ *                                backend:'cloud'
+ * Callers that cannot carry a per-call directive (batch, corpus-search
+ * explain) call this without `backend` — under standby they stay local,
+ * and their tier budgets must NOT be inflated by cloud timeouts.
+ */
+export function cloudMayServe(
+  cloud: CloudConfig | null | undefined,
+  backend?: "cloud" | "local",
+): boolean {
+  if (!cloud) return false;
+  if (backend === "local") return false;
+  return !cloud.standby || backend === "cloud";
 }

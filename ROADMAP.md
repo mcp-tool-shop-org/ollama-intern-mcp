@@ -14,13 +14,13 @@ For protocol / framing, see [`memory/ollama-intern-state-2026-04-22.md`](https:/
 
 ---
 
-## Now (2026-07 — post-v2.8.0 hardening; cloud feature pass next)
+## Now (2026-07 — cloud feature pass shipped as v2.9.0)
 
-The **dogfood-swarm health passes shipped as [v2.8.0](./CHANGELOG.md)** — a 25-finding reliability, durability, and security hardening pass (routing/cloud robustness, corpus durability, security hardening, test-honesty), every fix test-first and independently cross-family-verified. The **next cycle is the cloud feature pass** below. The M5-Max bench-and-tune cycle that used to head this section is superseded and demoted to **Deferred** below (it needs measured M5 Max hardware access, not projections).
+Two dogfood-swarm cycles shipped in July 2026: the **health hardening** ([v2.8.0](./CHANGELOG.md), 25 findings) and the **cloud feature pass** ([v2.9.0](./CHANGELOG.md)) — the cross-family `ollama_verify_claims` lane, per-call cloud escalation + standby, `ollama_log_stats`, the CI-persona doctor, and machine-readable tool annotations. Every slice was built test-first and independently cross-family-verified. The M5-Max bench-and-tune cycle that used to head this section is superseded and demoted to **Deferred** below (it needs measured M5 Max hardware access, not projections).
 
-### Cloud feature pass — 🟢 unblocked (next)
+### Cloud feature pass — ✅ SHIPPED v2.9.0
 
-Builds on the v2.7.0 opt-in cloud routing. Candidate atoms + enhancements:
+Delivered against the v2.7.0 opt-in cloud routing:
 
 - **`ollama_verify_claims`** — a job-shaped cross-family verification atom: take claims/findings + sources, return per-claim CONFIRMED/REFUTED verdicts from a big cloud model. This is the verify muscle a role-os `EXTERNAL_VERIFIER` / verify-citations step can call; today that loop has to be lashed up through `ollama_chat` (no verdict enum, no citations).
 - **Per-call cloud escalation** — a `backend` override + a cloud-on-demand mode (key set, `PRIMARY` unset) so a local-first operator escalates ONE high-stakes call to a flagship without flipping every call to cloud-primary.
@@ -30,9 +30,9 @@ Builds on the v2.7.0 opt-in cloud routing. Candidate atoms + enhancements:
 
 **Acceptance:** each atom ships with tests, a handbook page, and a CHANGELOG entry — the freeze-lift discipline the v2.1.0 pass established.
 
-### Cloud onboarding docs fix — 🟢 unblocked
+### Cloud onboarding docs fix — ✅ landed on `feat/cloud-verify` (v2.9 line)
 
-The cloud-curious persona following the current docs pins a broken model: the README, CLI help, and `handbook/ollama-cloud.md` still document `minimax-m3:cloud` as the default cloud model, but the code default is `qwen3-coder-next:cloud` (changed because `minimax-m3:cloud` is a thinking model that returned empty replies on capped-`num_predict` tools). Reconcile the docs and add an `init --claude` scaffold + a documented smoke path.
+The stale `minimax-m3:cloud` default claims are reconciled to the real `qwen3-coder-next:cloud` across the README env table, CLI help, `handbook/ollama-cloud.md`, and the landing copy (the model changed because a thinking default returned empty replies on capped-`num_predict` tools). `init --claude` prints a paste-ready `.mcp.json` fragment with the optional cloud lines + standby note. Remaining at release: the 7 translated READMEs regenerate (standing rule: before the tag).
 
 ### Doc cross-platform refresh — 🟡 exploring
 
