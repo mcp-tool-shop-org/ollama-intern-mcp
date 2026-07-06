@@ -70,7 +70,20 @@ async function writeArtifact(
   await mkdir(dir, { recursive: true });
   const json = join(dir, `${slug}.json`);
   const md = join(dir, `${slug}.md`);
-  await writeFile(json, JSON.stringify({ slug, pack: `${pack}_pack` }), "utf8");
+  // A REAL pack artifact shape (what the pack tools write) so metadataFromArtifact
+  // recognizes it — the M6 shape gate skips anything that doesn't.
+  await writeFile(
+    json,
+    JSON.stringify({
+      pack: `${pack}_pack`,
+      slug,
+      title: `${slug} title`,
+      generated_at: new Date().toISOString(),
+      artifact: { markdown_path: md, json_path: json },
+      brief: {},
+    }),
+    "utf8",
+  );
   await writeFile(md, `# ${slug}`, "utf8");
   // Backdate mtime so age filters exercise properly.
   const ageMs = ageDays * 24 * 60 * 60 * 1000;
@@ -128,4 +141,37 @@ describe("ollama_artifact_prune", () => {
     expect(env.result.total_matched).toBe(0);
     expect(env.result.dry_run).toBe(true);
   });
+
+  it("only deletes real pack artifacts — a foreign json+md pair survives and is reported skipped (M6)", async () => {
+    const real = await writeArtifact("incident", "real", 5);
+    const foreign = await writeForeign("incident", "notes");
+
+    const env = await handleArtifactPrune({ dry_run: false }, makeCtx());
+
+    // The real artifact is deleted (both files).
+    expect(existsSync(real.json)).toBe(false);
+    expect(existsSync(real.md)).toBe(false);
+    // The hand-parked foreign pair survives untouched.
+    expect(existsSync(foreign.json)).toBe(true);
+    expect(existsSync(foreign.md)).toBe(true);
+    // Only the real artifact matched; the foreign json is reported skipped.
+    expect(env.result.total_matched).toBe(1);
+    expect(env.result.matched[0].slug).toBe("real");
+    expect(env.result.skipped.some((s) => s.path === foreign.json)).toBe(true);
+  });
 });
+
+/** A non-artifact json + md pair a user or another tool parked in an artifact dir. */
+async function writeForeign(
+  pack: "incident" | "change" | "repo",
+  name: string,
+): Promise<{ json: string; md: string }> {
+  const dir = join(tempRoot, pack);
+  await mkdir(dir, { recursive: true });
+  const json = join(dir, `${name}.json`);
+  const md = join(dir, `${name}.md`);
+  // No `pack` field — not a pack artifact shape at all.
+  await writeFile(json, JSON.stringify({ note: "hand-written triage notes", items: [1, 2, 3] }), "utf8");
+  await writeFile(md, `# ${name} notes`, "utf8");
+  return { json, md };
+}

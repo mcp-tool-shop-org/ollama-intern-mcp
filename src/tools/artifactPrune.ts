@@ -11,7 +11,7 @@
  */
 
 import { z } from "zod";
-import { readdir, stat, unlink } from "node:fs/promises";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
@@ -19,6 +19,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { InternError } from "../errors.js";
+import { metadataFromArtifact } from "./artifacts/scan.js";
 import type { RunContext } from "../runContext.js";
 
 export const artifactPruneSchema = z.object({
@@ -55,6 +56,12 @@ export interface ArtifactPruneResult {
   dry_run: boolean;
   deleted: boolean;
   artifact_root: string;
+  /**
+   * Files under a scanned pack dir that were NOT deleted because they don't
+   * parse as a known pack artifact (a hand-parked notes.json, another tool's
+   * output, malformed JSON). Reported so a caller can see prune left them alone.
+   */
+  skipped: Array<{ path: string; reason: string }>;
 }
 
 function artifactRoot(): string {
@@ -90,7 +97,8 @@ export async function handleArtifactPrune(
 
   const now = Date.now();
   const matches: PruneMatch[] = [];
-  const fileTargets: Array<{ json: string; md: string }> = [];
+  const fileTargets: Array<{ json: string; md: string | null }> = [];
+  const skipped: Array<{ path: string; reason: string }> = [];
 
   for (const pack of packs) {
     const dir = join(root, pack);
@@ -113,10 +121,30 @@ export async function handleArtifactPrune(
       }
       const ageDays = (now - st.mtimeMs) / (1000 * 60 * 60 * 24);
       if (input.older_than_days !== undefined && ageDays < input.older_than_days) continue;
+      // M6: verify this .json is actually a pack artifact before targeting it
+      // for deletion. Artifact dirs — especially a user-pointed
+      // INTERN_ARTIFACT_DIR — may legitimately hold unrelated JSON; a
+      // hand-parked notes.json/.md must survive prune, not get destroyed.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readFile(jsonPath, "utf8"));
+      } catch {
+        skipped.push({ path: jsonPath, reason: "unreadable_or_malformed_json" });
+        continue;
+      }
+      const meta = metadataFromArtifact(parsed, jsonPath);
+      if (!meta) {
+        skipped.push({ path: jsonPath, reason: "not_a_pack_artifact" });
+        continue;
+      }
       const slug = basename(jsonPath, ".json");
       const mdPath = jsonPath.replace(/\.json$/, ".md");
+      // Only pair the .md sibling for deletion when the artifact ITSELF declares
+      // it as its markdown_path — never delete an unrelated .md that merely
+      // shares the slug stem.
+      const mdIsArtifact = meta.md_path === mdPath && existsSync(mdPath);
       let mdBytes = 0;
-      if (existsSync(mdPath)) {
+      if (mdIsArtifact) {
         try {
           mdBytes = (await stat(mdPath)).size;
         } catch {
@@ -129,7 +157,7 @@ export async function handleArtifactPrune(
         age_days: Math.floor(ageDays),
         bytes: st.size + mdBytes,
       });
-      fileTargets.push({ json: jsonPath, md: mdPath });
+      fileTargets.push({ json: jsonPath, md: mdIsArtifact ? mdPath : null });
     }
   }
 
@@ -157,7 +185,7 @@ export async function handleArtifactPrune(
           );
         }
       }
-      if (existsSync(t.md)) {
+      if (t.md && existsSync(t.md)) {
         try {
           await unlink(t.md);
         } catch (err) {
@@ -181,6 +209,11 @@ export async function handleArtifactPrune(
       `Dry run — ${matches.length} artifact(s) would be deleted (${totalBytes} bytes). Re-run with dry_run: false to actually prune.`,
     );
   }
+  if (skipped.length > 0) {
+    warnings.push(
+      `${skipped.length} file(s) under the scanned artifact dir(s) are not pack artifacts and were left untouched (see result.skipped).`,
+    );
+  }
 
   const result: ArtifactPruneResult = {
     matched: matches,
@@ -189,6 +222,7 @@ export async function handleArtifactPrune(
     dry_run: dryRun,
     deleted,
     artifact_root: root,
+    skipped,
   };
 
   const envelope = buildEnvelope<ArtifactPruneResult>({
