@@ -33,6 +33,26 @@ const EMBED_BATCH = 64;
 /** Hard cap on input file size. Prevents OOM from a user pointing at a 100GB file. */
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
+/**
+ * Mint a globally-unique chunk id. Folds a PATH digest into the id so two
+ * DIFFERENT files with IDENTICAL content (duplicate LICENSE / template / stub
+ * docs — common in doc trees) don't collide into one id and shadow each other
+ * in the searcher's chunkById map / RRF fusion (M8, 2026-07 health pass).
+ * Deterministic in (name, path, fileHash, index): re-indexing is stable AND
+ * heals any corpus minted under the old path-less `name-contentHash-index`
+ * scheme, since reused/carried chunks are re-minted through this same helper.
+ */
+export function mintChunkId(
+  corpusName: string,
+  path: string,
+  fileHash: string,
+  chunkIndex: number,
+): string {
+  const pathHash = createHash("sha256").update(path).digest("hex").slice(0, 8);
+  const contentHash = fileHash.replace(/^sha256:/, "").slice(0, 8);
+  return `${corpusName}-${pathHash}-${contentHash}-${chunkIndex.toString(16).padStart(6, "0")}`;
+}
+
 export interface IndexParams {
   name: string;
   paths: string[];
@@ -278,7 +298,12 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
         const prior = priorChunksByPath.get(absPath);
         if (prior && prior.length > 0) {
-          allChunks.push(...prior);
+          allChunks.push(
+            ...prior.map((c) => ({
+              ...c,
+              id: mintChunkId(params.name, c.path, c.file_hash, c.chunk_index),
+            })),
+          );
           reusedCount += prior.length;
         }
       }
@@ -288,7 +313,15 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     const reuseKey = `${absPath}::${fileInfo.hash}`;
     const reused = reusable.get(reuseKey);
     if (reused && reused.length > 0) {
-      allChunks.push(...reused);
+      // Re-mint ids through mintChunkId so a corpus indexed under the old
+      // path-less scheme heals its collisions on re-index (deterministic — a
+      // no-op for chunks already minted with the current path-folded scheme).
+      allChunks.push(
+        ...reused.map((c) => ({
+          ...c,
+          id: mintChunkId(params.name, c.path, c.file_hash, c.chunk_index),
+        })),
+      );
       reusedCount += reused.length;
       continue;
     }
@@ -344,9 +377,8 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
         // flips the hash so IDs can't collide across runs. Width of 6
         // hex on the index is still >16M per file, but it's now scoped
         // to file+content not to global run order.
-        const hashShort = meta.file_hash.replace(/^sha256:/, "").slice(0, 8);
         allChunks.push({
-          id: `${params.name}-${hashShort}-${meta.chunk_index.toString(16).padStart(6, "0")}`,
+          id: mintChunkId(params.name, meta.path, meta.file_hash, meta.chunk_index),
           path: meta.path,
           file_hash: meta.file_hash,
           file_mtime: meta.file_mtime,

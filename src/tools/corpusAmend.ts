@@ -29,6 +29,7 @@ import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import { loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "../corpus/storage.js";
 import { loadManifest, saveManifest, assertSafePath } from "../corpus/manifest.js";
 import { withCorpusLock } from "../corpus/lock.js";
+import { mintChunkId } from "../corpus/indexer.js";
 import { chunkDocument, type ChunkOptions } from "../corpus/chunker.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
@@ -212,11 +213,10 @@ export async function handleCorpusAmend(
       if (typeof resp.model === "string" && resp.model.length > 0) {
         embedModelResolved = resp.model;
       }
-      const hashShort = fileHash.replace(/^sha256:/, "").slice(0, 8);
       for (let i = 0; i < fresh.length; i++) {
         const ck = fresh[i];
         newChunks.push({
-          id: `${corpus.name}-${hashShort}-${ck.index.toString(16).padStart(6, "0")}`,
+          id: mintChunkId(corpus.name, absPath, fileHash, ck.index),
           path: absPath,
           file_hash: fileHash,
           file_mtime: fileMtime,

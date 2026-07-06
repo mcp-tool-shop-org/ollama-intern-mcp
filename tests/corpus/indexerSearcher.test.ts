@@ -325,6 +325,45 @@ describe("indexCorpus + searchCorpus", () => {
     expect(report.failed_paths[0].reason).toContain("symlink");
   });
 
+  it("distinct paths with identical content get globally-unique chunk IDs (M8)", async () => {
+    const p1 = join(tempDir, "dup-a.md");
+    const p2 = join(tempDir, "dup-b.md");
+    const identical = "the same content appears in two different files here";
+    await writeFile(p1, identical, "utf8");
+    await writeFile(p2, identical, "utf8");
+
+    const client = new HashEmbedMock();
+    await indexCorpus({
+      name: "dup",
+      paths: [p1, p2],
+      model: "nomic-embed-text",
+      chunk_chars: 200,
+      chunk_overlap: 20,
+      client,
+    });
+    const corpus = (await loadCorpus("dup"))!;
+
+    // Two files with identical content → two chunks with DISTINCT ids (an
+    // ID scheme without a path component would collide them into one).
+    expect(corpus.chunks.length).toBe(2);
+    const ids = corpus.chunks.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length); // globally unique
+    expect(new Set(corpus.chunks.map((c) => c.path))).toEqual(new Set([p1, p2]));
+
+    // Search returns BOTH chunks, each resolving to its own correct path —
+    // no shadowing in the chunkById map, no duplicate/inflated hit.
+    const hits = await searchCorpus({
+      corpus,
+      query: "content",
+      model: "nomic-embed-text",
+      mode: "semantic",
+      top_k: 10,
+      client,
+    });
+    expect(hits.map((h) => h.path).sort()).toEqual([p1, p2].sort());
+    expect(new Set(hits.map((h) => h.id)).size).toBe(hits.length); // each chunk once
+  });
+
   it("corpusIndexSchema rejects chunk_overlap >= chunk_chars (degenerate chunking)", () => {
     // Overlap >= chunk_chars would collapse every chunk's window to at
     // most chunk_chars of novel content — pointless, wastes embed budget.
