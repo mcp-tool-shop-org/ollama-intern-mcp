@@ -161,6 +161,12 @@ current trio via `panel`.
 jurors were cloud-served — look at `panel[].exclude_reason` (usually
 timeouts or retired ids), fix the seats, re-run.
 
+**A juror excluded `no_valid_verdicts`.** The seat carries a bounded
+`raw_sample` (first ~200 chars of the raw reply) — read it to tell prose
+from wrong-schema from an empty `verdicts` array. Large multi-file
+payloads are the usual trigger (the model summarizes instead of voting);
+shrink `source_paths` or split the claim set.
+
 **Claims phrased as questions.** "Does the semaphore leak?" is not
 falsifiable — phrase the assertion: "The semaphore releases its permit
 when a queued waiter aborts."

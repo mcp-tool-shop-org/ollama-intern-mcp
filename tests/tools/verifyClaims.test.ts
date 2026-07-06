@@ -398,6 +398,57 @@ describe("verify_claims — malformed juror output (invariant e)", () => {
   });
 });
 
+describe("verify_claims — juror raw_sample on no_valid_verdicts (A1 observability)", () => {
+  it("a no_valid_verdicts seat carries a bounded, non-empty raw_sample; included seats never do", async () => {
+    // Long prose reply (the live kimi/glm large-payload thinning shape) —
+    // no JSON anywhere, well over the sample cap.
+    const prose =
+      "Looking at these claims, the cloud gate appears correct and the standby path seems fine to me. ".repeat(6);
+    const { ctx } = makeVerifyCtx({
+      claimIds: ["c1", "c2"],
+      script: { [DEEPSEEK]: prose },
+    });
+    const env = await handleVerifyClaims({ claims: CLAIMS_2 }, ctx);
+    const seat = env.result.panel.find((p) => p.model === DEEPSEEK)!;
+    expect(seat.included).toBe(false);
+    expect(seat.exclude_reason).toBe("no_valid_verdicts");
+    // The exclusion now carries evidence: a head sample of the raw reply…
+    expect(seat.raw_sample).toBeDefined();
+    expect(seat.raw_sample!.length).toBeGreaterThan(0);
+    // …bounded at the cap — never the full response (it echoes the
+    // caller's claims/evidence and must not bloat envelope or NDJSON log).
+    expect(seat.raw_sample!.length).toBeLessThanOrEqual(200);
+    expect(seat.raw_sample!.length).toBeLessThan(prose.length);
+    expect(prose.startsWith(seat.raw_sample!)).toBe(true);
+    // Included seats never carry a raw_sample.
+    for (const s of env.result.panel.filter((p) => p.included)) {
+      expect(s.raw_sample).toBeUndefined();
+    }
+  });
+
+  it("valid JSON with an empty verdicts array is sampled too — 'empty array' is diagnosable", async () => {
+    const emptyVerdicts = JSON.stringify({ verdicts: [] });
+    const { ctx } = makeVerifyCtx({ claimIds: ["c1", "c2"], script: { [KIMI]: emptyVerdicts } });
+    const env = await handleVerifyClaims({ claims: CLAIMS_2 }, ctx);
+    const seat = env.result.panel.find((p) => p.model === KIMI)!;
+    expect(seat.exclude_reason).toBe("no_valid_verdicts");
+    expect(seat.raw_sample).toBe(emptyVerdicts); // short reply → sampled whole
+  });
+
+  it("raw_sample never rides a non-no_valid_verdicts exclusion (local fallback returning prose)", async () => {
+    const { ctx } = makeVerifyCtx({
+      claimIds: ["c1", "c2"],
+      script: { [GLM]: transient(503) },
+      localResponse: "％％ prose from the local fallback ％％",
+    });
+    const env = await handleVerifyClaims({ claims: CLAIMS_2 }, ctx);
+    const seat = env.result.panel.find((p) => p.model === GLM)!;
+    expect(seat.included).toBe(false);
+    expect(seat.exclude_reason).toMatch(/local_fallback/);
+    expect(seat.raw_sample).toBeUndefined();
+  });
+});
+
 describe("verify_claims — reasoning-stripped juror prompts (invariant f)", () => {
   it("the claim schema is strict: a `reasoning` field is structurally rejected", () => {
     expect(() =>
