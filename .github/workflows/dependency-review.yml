@@ -44,5 +44,12 @@ jobs:
           # for downstream consumers. The five listed cover the dominant
           # permissive-license surface in the npm ecosystem.
           allow-licenses: MIT, BSD-2-Clause, BSD-3-Clause, ISC, Apache-2.0
+          # The astro-5-line / esbuild advisory family on site/package-lock.json,
+          # triaged tolerable_risk in SECURITY.md item 14 (statically prerendered
+          # docs site — no SSR runtime, no exposed dev server; fix requires the
+          # astro-7 major, tracked as follow-up). The matching dependabot alerts
+          # are dismissed with the same reason; this keeps the two gates telling
+          # one story. Remove these when the astro-7 migration lands.
+          allow-ghsas: GHSA-8hv8-536x-4wqp, GHSA-2pvr-wf23-7pc7, GHSA-j687-52p2-xcff, GHSA-jrpj-wcv7-9fh9, GHSA-xr5h-phrj-8vxv, GHSA-g7r4-m6w7-qqqr
           # Post the PR comment so the operator sees the diff inline.
           comment-summary-in-pr: on-failure
