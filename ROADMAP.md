@@ -14,9 +14,9 @@ For protocol / framing, see [`memory/ollama-intern-state-2026-04-22.md`](https:/
 
 ---
 
-## Now (2026-07 — dogfood swarm on v2.7.2)
+## Now (2026-07 — post-v2.8.0 hardening; cloud feature pass next)
 
-The active cycle is a multi-phase **dogfood swarm on v2.7.2**: proactive/defensive health hardening → a cloud feature pass → the full-treatment release. The health passes (routing/cloud robustness, corpus durability, security hardening, and test-honesty) are landing on the `dogfood-health-a` branch — see [CHANGELOG.md](./CHANGELOG.md) for shipped detail. The M5-Max bench-and-tune cycle that used to head this section is superseded and demoted to **Deferred** below (it needs measured M5 Max hardware access, not projections).
+The **dogfood-swarm health passes shipped as [v2.8.0](./CHANGELOG.md)** — a 25-finding reliability, durability, and security hardening pass (routing/cloud robustness, corpus durability, security hardening, test-honesty), every fix test-first and independently cross-family-verified. The **next cycle is the cloud feature pass** below. The M5-Max bench-and-tune cycle that used to head this section is superseded and demoted to **Deferred** below (it needs measured M5 Max hardware access, not projections).
 
 ### Cloud feature pass — 🟢 unblocked (next)
 
