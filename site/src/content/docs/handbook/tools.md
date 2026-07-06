@@ -7,18 +7,56 @@ sidebar:
 
 Tools are grouped into four tiers. **At-a-glance:** 31 atoms (15 original + 13 added in v2.1.0 + `code_review` + the v2.9 pair `verify_claims` / `log_stats`) + 3 briefs + 3 packs + 7 artifact tools = **44 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
 
-## Per-tool deep-dives
+## Per-tool reference pages
 
-The most-used tools have dedicated reference pages with schema, examples, common pitfalls, and related-tool guidance:
+Every tool has a dedicated page. Six are hand-curated deep-dives (examples, pitfalls, related-tool guidance); the rest are generated from each tool's zod schema and registration — the same source of truth the server validates against at the wire, kept byte-in-sync by CI (`npm run gen:tool-docs`).
 
-- [`ollama_doctor`](./tools/doctor/) — first-run prereqs + status snapshot (no LLM calls)
-- [`ollama_classify`](./tools/classify/) — single-label classification with confidence
-- [`ollama_extract`](./tools/extract/) — schema-constrained JSON extraction
-- [`ollama_corpus_answer`](./tools/corpus-answer/) — chunk-grounded synthesis (flagship)
-- [`ollama_verify_claims`](./tools/verify-claims/) — cross-family cloud panel adjudicates claims (cloud-required)
-- [`ollama_chat`](./tools/chat/) — last-resort catch-all
-
-The remaining 37 tools are documented inline below — open an issue if you'd like a specific tool to get its own page next.
+<!-- TOOL_PAGES:start -->
+- [`ollama_research`](./tools/research/) — Research over files
+- [`ollama_corpus_search`](./tools/corpus-search/) — Corpus search
+- [`ollama_corpus_answer`](./tools/corpus-answer/) — Corpus answer (grounded) _(curated deep-dive)_
+- [`ollama_incident_brief`](./tools/incident-brief/) — Incident brief
+- [`ollama_repo_brief`](./tools/repo-brief/) — Repo brief
+- [`ollama_change_brief`](./tools/change-brief/) — Change brief
+- [`ollama_incident_pack`](./tools/incident-pack/) — Incident pack (writes artifact)
+- [`ollama_repo_pack`](./tools/repo-pack/) — Repo pack (writes artifact)
+- [`ollama_change_pack`](./tools/change-pack/) — Change pack (writes artifact)
+- [`ollama_artifact_list`](./tools/artifact-list/) — List artifacts
+- [`ollama_artifact_read`](./tools/artifact-read/) — Read artifact
+- [`ollama_artifact_diff`](./tools/artifact-diff/) — Diff artifacts
+- [`ollama_artifact_export_to_path`](./tools/artifact-export-to-path/) — Export artifact to path
+- [`ollama_artifact_incident_note_snippet`](./tools/artifact-incident-note-snippet/) — Incident-note snippet
+- [`ollama_artifact_onboarding_section_snippet`](./tools/artifact-onboarding-section-snippet/) — Onboarding-section snippet
+- [`ollama_artifact_release_note_snippet`](./tools/artifact-release-note-snippet/) — Release-note snippet
+- [`ollama_embed_search`](./tools/embed-search/) — Embed search (ad-hoc)
+- [`ollama_corpus_index`](./tools/corpus-index/) — Index corpus
+- [`ollama_corpus_refresh`](./tools/corpus-refresh/) — Refresh corpus
+- [`ollama_corpus_list`](./tools/corpus-list/) — List corpora
+- [`ollama_corpus_health`](./tools/corpus-health/) — Corpus health
+- [`ollama_corpus_amend`](./tools/corpus-amend/) — Amend corpus
+- [`ollama_corpus_amend_history`](./tools/corpus-amend-history/) — Corpus amend history
+- [`ollama_corpus_rerank`](./tools/corpus-rerank/) — Rerank hits
+- [`ollama_embed`](./tools/embed/) — Embed texts
+- [`ollama_classify`](./tools/classify/) — Classify _(curated deep-dive)_
+- [`ollama_triage_logs`](./tools/triage-logs/) — Triage logs
+- [`ollama_summarize_fast`](./tools/summarize-fast/) — Summarize (fast)
+- [`ollama_summarize_deep`](./tools/summarize-deep/) — Summarize (deep)
+- [`ollama_draft`](./tools/draft/) — Draft text
+- [`ollama_extract`](./tools/extract/) — Extract structured data _(curated deep-dive)_
+- [`ollama_doctor`](./tools/doctor/) — Doctor (health snapshot) _(curated deep-dive)_
+- [`ollama_artifact_prune`](./tools/artifact-prune/) — Prune artifacts (deletes)
+- [`ollama_log_tail`](./tools/log-tail/) — Tail NDJSON log
+- [`ollama_log_stats`](./tools/log-stats/) — Log stats (measured economics)
+- [`ollama_code_map`](./tools/code-map/) — Code map (deterministic)
+- [`ollama_multi_file_refactor_propose`](./tools/multi-file-refactor-propose/) — Propose multi-file refactor
+- [`ollama_batch_proof_check`](./tools/batch-proof-check/) — Batch proof check (runs linters/tests)
+- [`ollama_refactor_plan`](./tools/refactor-plan/) — Refactor plan
+- [`ollama_code_citation`](./tools/code-citation/) — Code citations
+- [`ollama_code_review`](./tools/code-review/) — Code review
+- [`ollama_hypothesis_drill`](./tools/hypothesis-drill/) — Hypothesis drill
+- [`ollama_verify_claims`](./tools/verify-claims/) — Verify claims (cross-family cloud jury) _(curated deep-dive)_
+- [`ollama_chat`](./tools/chat/) — Chat (last resort) _(curated deep-dive)_
+<!-- TOOL_PAGES:end -->
 
 ---
 

@@ -10,6 +10,9 @@ on:
       - "vitest.config.ts"
       - "src/**"
       - "tests/**"
+      - "scripts/gen-tool-docs.mjs"
+      - "site/src/content/docs/handbook/tools.md"
+      - "site/src/content/docs/handbook/tools/**"
       - ".github/workflows/**"
       - ".npmignore"
       - "Dockerfile"
@@ -22,6 +25,9 @@ on:
       - "vitest.config.ts"
       - "src/**"
       - "tests/**"
+      - "scripts/gen-tool-docs.mjs"
+      - "site/src/content/docs/handbook/tools.md"
+      - "site/src/content/docs/handbook/tools/**"
       - ".github/workflows/**"
       - ".npmignore"
       - "Dockerfile"
@@ -133,6 +139,15 @@ jobs:
           cache: "npm"
       - name: npm ci against the committed lockfile (fails on desync)
         run: npm ci --ignore-scripts
+      # F7: the tool-docs byte-diff runs HERE (not in the verify matrix) on
+      # purpose — this is the only job installing against the committed
+      # lockfile, so the zod that renders the JSON schemas is the pinned one.
+      # A floating install could legally reorder JSON-schema output and turn
+      # an untouched repo red.
+      - name: Build (docgen reads schemas from dist)
+        run: npm run build
+      - name: Tool docs match a fresh docgen (schema change without regen fails)
+        run: npm run gen:tool-docs:check
 
   docker-build:
     # H8: the release docker job now `needs: npm`, so a broken Dockerfile would

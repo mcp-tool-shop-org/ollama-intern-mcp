@@ -218,6 +218,15 @@ export interface PanelSeat {
    * | `served_model_mismatch:<served>` | `no_valid_verdicts`.
    */
   exclude_reason?: string;
+  /**
+   * Bounded head-sample (≤ RAW_SAMPLE_MAX_CHARS) of the raw juror reply,
+   * present ONLY on `no_valid_verdicts` exclusions — enough to tell
+   * "returned prose" from "wrong schema" from "empty verdicts array"
+   * without a re-run. Never on included seats, and never the full reply
+   * (a juror reply echoes the caller's claims/evidence, which must not
+   * bloat the envelope or the NDJSON log).
+   */
+  raw_sample?: string;
   /** Valid verdict entries that survived coercion (0 for excluded seats). */
   verdicts_returned: number;
 }
@@ -259,6 +268,17 @@ interface JurorVote {
 // Fence-tolerant parsing lives in briefs/common.ts as parseModelJsonObject
 // (Phase 3b Slice A promoted it from the local parseJurorJson this file
 // carried — the live glm/kimi fence defect is surface-wide, not F1's alone).
+
+/**
+ * Cap for PanelSeat.raw_sample, in characters. Large enough to distinguish
+ * prose / wrong-schema / empty-array replies, small enough that even a
+ * 5-seat panel of failures adds under 1 KB to the envelope and log line.
+ */
+const RAW_SAMPLE_MAX_CHARS = 200;
+
+function boundRawSample(raw: string): string {
+  return raw.trim().slice(0, RAW_SAMPLE_MAX_CHARS);
+}
 
 function isJurorVerdict(v: unknown): v is JurorVerdict {
   return typeof v === "string" && (JUROR_VERDICTS as readonly string[]).includes(v);
@@ -461,9 +481,17 @@ export async function handleVerifyClaims(
     model: string;
     env?: Envelope<JurorVote[]>;
     error?: unknown;
+    /** Bounded sample of the raw reply when its parse yielded 0 valid verdicts. */
+    rawSample?: string;
   }
   const runs: JurorRun[] = await Promise.all(
     panel.map(async (jurorModel): Promise<JurorRun> => {
+      // A1 observability: when a juror's reply coerces to ZERO valid
+      // verdicts, keep a bounded sample of what it actually said — the
+      // v2.9.0 dogfood diagnosed exactly this exclusion only via a 4-call
+      // side probe because the envelope carried no evidence. Captured at
+      // the parse boundary (the only place the raw text exists).
+      let rawSample: string | undefined;
       try {
         const env = await runTool<JurorVote[]>({
           tool: "ollama_verify_claims.juror",
@@ -487,9 +515,13 @@ export async function handleVerifyClaims(
               num_predict: 3000,
             },
           }),
-          parse: (raw) => coerceJurorVerdicts(parseModelJsonObject(raw), validIds),
+          parse: (raw) => {
+            const verdicts = coerceJurorVerdicts(parseModelJsonObject(raw), validIds);
+            if (verdicts.length === 0) rawSample = boundRawSample(raw);
+            return verdicts;
+          },
         });
-        return { model: jurorModel, env };
+        return { model: jurorModel, env, ...(rawSample !== undefined ? { rawSample } : {}) };
       } catch (error) {
         return { model: jurorModel, error };
       }
@@ -545,6 +577,9 @@ export async function handleVerifyClaims(
         served_model: env.model,
         included: false,
         exclude_reason: "no_valid_verdicts",
+        // Truthy check: an all-whitespace reply trims to "" — omit rather
+        // than attach an empty sample.
+        ...(run.rawSample ? { raw_sample: run.rawSample } : {}),
         verdicts_returned: 0,
       });
       continue;

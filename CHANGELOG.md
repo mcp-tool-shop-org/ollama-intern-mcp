@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.1] — 2026-07-06
+
+Patch — the v2.9.0 fast-follows: verify-lane observability, handbook coverage, and repo hygiene. No public tool contract changed; local-first behavior is byte-identical.
+
+### Added
+
+- **Juror `raw_sample` on `no_valid_verdicts` exclusions.** When a served juror's reply coerces to zero valid verdicts, the excluded `result.panel` seat now carries a bounded head-sample (≤200 chars, trimmed) of the raw reply — "returned prose / wrong schema / empty verdicts array" is diagnosable from the envelope alone (the v2.9.0 dogfood diagnosed exactly this panel-thinning only via a 4-call side probe). Never on included seats, never on other exclusion reasons, never the full reply (a juror reply echoes the caller's claims/evidence and must not bloat the envelope or the NDJSON log).
+- **Handbook: all 44 tools now have reference pages (F7).** `scripts/gen-tool-docs.mjs` renders a Starlight page per registered tool from the two sources the server actually enforces — the `src/index.ts` registration (name/description/annotation title, parsed with an andon count-guard) and the exported zod schema via `z.toJSONSchema` (`.describe()` strings, defaults, enums, bounds — the same JSON schema `tools/list` advertises). The 6 hand-curated deep-dives are never touched; the Tool Reference's `TOOL_PAGES` marker block links all 44; an orphaned generated page (renamed/removed tool) fails the check. CI gates byte-identical regeneration in the lockfile-sync job — deliberately the one job installing against the committed lockfile, so the zod that renders the schemas is pinned — meaning a schema change without a docs regen fails before merge.
+
+### Fixed
+
+- **Dependabot alert count reconciled to reality.** All 12 open alerts sat on `site/package-lock.json`; the root package was already clean (0 alerts, `npm audit` 0 in both modes). `npm audit fix` in `site/` resolved the within-range set (vite `server.fs.deny` bypasses, launch-editor NTLMv2, devalue, js-yaml — auto-resolving on merge); the astro-7-major residuals target SSR/dev-server surfaces a statically prerendered GitHub Pages docs site does not run and are dismissed `tolerable_risk` with SECURITY.md item 14 as the documented reason. The astro-7 migration is tracked as its own follow-up.
+- **The failing "CodeQL" umbrella check is off the PR checklist.** GitHub's default-setup CodeQL ran alongside the repo's advanced `codeql.yml` and failed on the config conflict on every PR — the noise that made both v2.8.0 and v2.9.0 read UNSTABLE while the required `Analyze (javascript)` passed. Default setup now reads `not-configured` (verified via the code-scanning API); the advanced workflow remains the real scanner.
+
 ## [2.9.0] — 2026-07-06
 
 Minor — the **cloud feature pass** (dogfood swarm Phase 3, built + independently cross-family-verified across two courier-loop cycles). The strategic payload is a **cross-family verification lane** — `ollama_verify_claims` runs a disjoint-family Ollama Cloud flagship panel to adjudicate claims — powered by **per-call cloud escalation** (a new local-first *standby* mode: local-primary with zero egress until a single call opts in with `backend:'cloud'`). Rounded out with the "measured economics" rollup (`ollama_log_stats`), a CI-persona doctor, machine-readable tool annotations across the surface, and finished cloud onboarding. **Local-first defaults are unchanged — with no key set, behavior is byte-identical to v2.8.0** (zero egress, no startup cloud probe). No public tool contract was removed.
