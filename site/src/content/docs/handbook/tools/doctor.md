@@ -89,8 +89,25 @@ Full source: `src/tools/doctor.ts`.
 - `models.missing` is empty (every required model is pulled)
 - `paths.allowed_roots` is non-empty when any path-bearing tool exists
 - `recent_errors` count is below a sanity threshold
+- *(v2.9)* no **definitive cloud misconfiguration** when cloud is configured:
+  a `401/403` probe (`cloud.auth: "failed"`) or the sticky `misconfigured`
+  breaker flips `healthy: false` — a bad key is broken operator config. A
+  cloud **outage** (`reachable: false`) does NOT flip it: local fallback
+  keeps serving and an outage isn't your config's fault.
 
 If any check fails, `healthy: false` and the failing field tells you what.
+
+## CLI: the CI persona (v2.9)
+
+```bash
+ollama-intern-mcp doctor                        # human prose report, always exit 0
+ollama-intern-mcp doctor --json                 # the structured DoctorResult, pipeable to jq
+ollama-intern-mcp doctor --json --fail-unhealthy # CI gate: exit 1 when unhealthy
+```
+
+`--fail-unhealthy` also exits 1 when the cloud config itself fails to load
+(e.g. `OLLAMA_CLOUD_PRIMARY` set without a key) — the stderr hint names the
+fix. The default no-flag report is unchanged and never gates.
 
 ## Common pitfalls
 

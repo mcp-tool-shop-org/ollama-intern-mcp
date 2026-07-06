@@ -779,8 +779,9 @@ async function runCli(argv: string[]): Promise<boolean> {
   }
 
   if (first === "doctor") {
-    await runCliDoctor();
-    process.exit(0);
+    // F5: doctor owns its exit code now — 0 by default (report, don't gate),
+    // 1 under --fail-unhealthy when the box isn't set up.
+    process.exit(await runCliDoctor(args.slice(1)));
   }
 
   if (first === "init") {
@@ -813,6 +814,9 @@ function printHelp(): void {
     `COMMANDS`,
     `  (no args)        Start the MCP stdio server (default — used by MCP clients).`,
     `  doctor           Run ollama_doctor logic and print the report to stdout.`,
+    `                   --json emits the structured DoctorResult (pipeable to jq);`,
+    `                   --fail-unhealthy exits 1 when unhealthy (CI gate — a bad`,
+    `                   cloud key counts as unhealthy; a cloud outage does not).`,
     `  init             Scaffold hermes.config.yaml in the current directory.`,
     `  --version, -V    Print package version and exit.`,
     `  --help, -h       Print this help and exit.`,
@@ -845,12 +849,31 @@ function printHelp(): void {
  * to stdout. Reuses `handleDoctor` so the CLI output stays in lockstep
  * with the MCP tool — no parallel implementation to keep aligned.
  *
- * Exit code is 0 unless the doctor itself errors; an "unhealthy" report
- * (Ollama unreachable, models not pulled) is still exit 0 because the
- * doctor's job is to REPORT, not to gate. Operators who want a gate
- * can grep the report for `healthy: true` themselves.
+ * Flags (F5, v2.9 — the CI persona):
+ *   --json            emit the structured DoctorResult as JSON (stdout is
+ *                     ONLY the JSON — pipeable to jq; the old comment
+ *                     suggested `doctor | jq .` against the prose report,
+ *                     which never worked).
+ *   --fail-unhealthy  exit 1 when `healthy` is false OR the cloud config
+ *                     itself failed to load (e.g. PRIMARY without a key) —
+ *                     the machine gate the old "grep the report" advice
+ *                     pretended existed.
+ *
+ * Default (no flags): the human prose report, exit 0 regardless of health —
+ * doctor's job is to REPORT; gating is the explicit flag's job. Returns the
+ * exit code; the runCli dispatcher owns process.exit.
  */
-async function runCliDoctor(): Promise<void> {
+async function runCliDoctor(flags: string[] = []): Promise<number> {
+  const unknown = flags.filter((f) => f !== "--json" && f !== "--fail-unhealthy");
+  if (unknown.length > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern-mcp: unknown doctor flag(s): ${unknown.join(", ")}. Supported: --json, --fail-unhealthy.`,
+    );
+    return 1;
+  }
+  const asJson = flags.includes("--json");
+  const failUnhealthy = flags.includes("--fail-unhealthy");
   // Resolve profile fail-fast so doctor surfaces a CONFIG_INVALID before
   // it has a chance to hit the Ollama probe.
   let profile: ReturnType<typeof loadProfile>;
@@ -860,20 +883,24 @@ async function runCliDoctor(): Promise<void> {
     if (err instanceof InternError) {
       // eslint-disable-next-line no-console
       console.error(`ollama-intern: ${err.message}\n  hint: ${err.hint}`);
-      process.exit(1);
+      return 1;
     }
     throw err;
   }
   // Cloud config for the doctor report. A CONFIG_INVALID (e.g. PRIMARY set
   // without a key) is REPORTED, not fatal — doctor's job is to surface broken
-  // config, so we print the hint and continue with cloud disabled.
+  // config, so we print the hint and continue with cloud disabled. The
+  // brokenness is REMEMBERED so --fail-unhealthy gates on it (the JSON has
+  // no cloud block in this case; the stderr hint carries the specifics).
   let cloud: CloudConfig | null = null;
+  let cloudConfigBroken = false;
   try {
     cloud = loadCloudConfig();
   } catch (err) {
     if (err instanceof InternError) {
       // eslint-disable-next-line no-console
       console.error(`ollama-intern: cloud config error — ${err.message}\n  hint: ${err.hint}`);
+      cloudConfigBroken = true;
     } else {
       throw err;
     }
@@ -892,9 +919,14 @@ async function runCliDoctor(): Promise<void> {
   };
   const env = await handleDoctor({}, ctx);
   const r = env.result;
-  // Compact, human-readable rendering for stdout. JSON dump is available
-  // via `ollama-intern-mcp doctor | jq .` because the underlying tool
-  // result is structured — we just pretty-print the high-signal fields.
+  if (asJson) {
+    // Machine mode: stdout is ONLY the JSON (config hints go to stderr).
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(r, null, 2));
+    return failUnhealthy && (!r.healthy || cloudConfigBroken) ? 1 : 0;
+  }
+  // Compact, human-readable rendering for stdout (unchanged default path).
+  // Machine consumers use --json above — the prose was never jq-able.
   const out: string[] = [];
   out.push(`ollama-intern-mcp v${VERSION} — doctor`);
   out.push(``);
@@ -950,6 +982,7 @@ async function runCliDoctor(): Promise<void> {
   out.push(`Healthy: ${r.healthy ? "yes" : "no"}`);
   // eslint-disable-next-line no-console
   console.log(out.join("\n"));
+  return failUnhealthy && (!r.healthy || cloudConfigBroken) ? 1 : 0;
 }
 
 /**

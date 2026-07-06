@@ -186,6 +186,42 @@ describeOrSkip("CLI surface — src/index.ts:runCli", () => {
     expect(r.stdout).toMatch(/Healthy:\s+(yes|no)/);
   }, 20_000);
 
+  it("doctor --json emits parseable DoctorResult JSON (no prose), exit 0 without the gate flag (F5)", async () => {
+    const r = await runCli(["doctor", "--json"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" }, // dead port → unreachable, fast + deterministic
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).not.toContain("Profile:"); // prose renderer must not fire
+    const parsed = JSON.parse(r.stdout) as { healthy?: boolean; ollama?: { reachable?: boolean } };
+    expect(parsed.ollama?.reachable).toBe(false);
+    expect(parsed.healthy).toBe(false);
+  }, 20_000);
+
+  it("doctor --fail-unhealthy exits 1 when unhealthy — the CI gate the old comment told users to grep for (F5)", async () => {
+    const r = await runCli(["doctor", "--fail-unhealthy"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toMatch(/Healthy:\s+no/);
+  }, 20_000);
+
+  it("doctor --json --fail-unhealthy combines: JSON on stdout, exit 1 (F5)", async () => {
+    const r = await runCli(["doctor", "--json", "--fail-unhealthy"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" },
+    });
+    expect(r.exitCode).toBe(1);
+    const parsed = JSON.parse(r.stdout) as { healthy?: boolean };
+    expect(parsed.healthy).toBe(false);
+  }, 20_000);
+
+  it("doctor rejects an unknown flag with exit 1 (typo never silently reports)", async () => {
+    const r = await runCli(["doctor", "--bogus"], {
+      env: { OLLAMA_HOST: "http://127.0.0.1:9" },
+    });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--bogus");
+  }, 20_000);
+
   it("init subcommand scaffolds hermes.config.yaml in a fresh temp dir", async () => {
     const dir = await mkdtemp(join(tmpdir(), "intern-cli-init-"));
     try {
