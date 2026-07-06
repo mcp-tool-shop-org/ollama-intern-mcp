@@ -175,6 +175,14 @@ export async function handleLogStats(
   try {
     body = await readFile(logPath, "utf8");
   } catch (err) {
+    // A log deleted in the existsSync→readFile window (ENOENT) is the same
+    // "no log yet" soft-empty case as the check above — the two calls aren't
+    // atomic, so a concurrent rotate/delete must not crash a read-only stats
+    // call (the H5 ENOENT-discrimination; matches doctor's readRecentErrors).
+    // Only a genuine read failure (permissions / I/O) is an error worth raising.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return finish(emptyResult(logPath, false, sinceEcho));
+    }
     throw new InternError(
       "LOG_READ_FAILED",
       `Cannot read log at ${logPath}: ${(err as Error).message}`,

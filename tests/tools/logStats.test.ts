@@ -9,12 +9,28 @@
  * filters, malformed middle lines skipped.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleLogStats, logStatsSchema } from "../../src/tools/logStats.js";
 import { makeFakeCtx } from "../_helpers/index.js";
+
+// Advisor-jury finding: the log can vanish in the existsSync→readFile window
+// (a concurrent rotate/delete). Force readFile to ENOENT while a real file
+// satisfies existsSync, to assert the read-path ENOENT is soft-empty, not a crash.
+const { forceReadEnoent } = vi.hoisted(() => ({ forceReadEnoent: { on: false } }));
+vi.mock("node:fs/promises", async (importActual) => {
+  const actual = await importActual<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    default: actual,
+    readFile: (...args: unknown[]) =>
+      forceReadEnoent.on
+        ? Promise.reject(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" }))
+        : (actual.readFile as (...a: unknown[]) => unknown)(...args),
+  };
+});
 
 let dir: string;
 let logPath: string;
@@ -176,6 +192,19 @@ describe("handleLogStats — aggregates are arithmetically correct", () => {
     expect(env.result.log_present).toBe(true);
     expect(env.result.totals.calls).toBe(0);
     expect(env.result.elapsed_ms.p95).toBeNull();
+  });
+
+  it("log deleted between existsSync and readFile (ENOENT race) → soft-empty, not LOG_READ_FAILED — advisor-jury", async () => {
+    await writeFixture(); // a real file so existsSync passes...
+    forceReadEnoent.on = true; // ...but the read finds it gone (concurrent rotate/delete).
+    try {
+      const env = await handleLogStats({}, makeFakeCtx());
+      expect(env.result.log_present).toBe(false);
+      expect(env.result.totals.calls).toBe(0);
+      expect(env.result.elapsed_ms.p50).toBeNull();
+    } finally {
+      forceReadEnoent.on = false;
+    }
   });
 
   it("malformed envelopes inside call events are skipped, not summed as NaN", async () => {
