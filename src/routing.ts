@@ -18,8 +18,12 @@
  *   - transient (timeout / 5xx / 429 / network)  → count toward the breaker, fall to local.
  *   - auth (401/403, OLLAMA_AUTH_FAILED)          → sticky 'misconfigured' breaker that does NOT
  *                                                   auto-recover on a timer; serve local but surface loudly.
- *   - deterministic (404 model-missing)           → do NOT count; rethrow (a retired/typo'd cloud
- *                                                   model id must surface, not silently degrade).
+ *   - deterministic (404 model-missing)           → do NOT count toward the breaker; release the
+ *                                                   half-open probe and fall back to local with a
+ *                                                   loud `cloud_model_missing` degrade reason + a
+ *                                                   cloud-specific hint (a retired/typo'd cloud model
+ *                                                   id degrades visibly, never a silent swap nor a
+ *                                                   total outage). See H2/H3 (2026-07 health pass).
  *
  * Observability: every response is tagged (non-enumerable Symbol) with which
  * backend served it + whether it was degraded, and a `backend_fallback` NDJSON
