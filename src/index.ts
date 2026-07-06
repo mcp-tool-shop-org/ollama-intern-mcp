@@ -829,8 +829,7 @@ async function runCli(argv: string[]): Promise<boolean> {
   }
 
   if (first === "init") {
-    await runCliInit();
-    process.exit(0);
+    process.exit(await runCliInit(args.slice(1)));
   }
 
   // Unknown verb — exit 1 with the help pointer so a typo never silently
@@ -842,8 +841,8 @@ async function runCli(argv: string[]): Promise<boolean> {
 }
 
 function printHelp(): void {
-  // Kept under 30 lines so it fits in a terminal scroll-back. The
-  // exhaustive 33-tool list belongs in the README; here we describe
+  // Kept short so it fits in a terminal scroll-back. The exhaustive
+  // 44-tool list belongs in the README/handbook; here we describe
   // what the CLI does, not what every MCP tool does.
   const lines = [
     `ollama-intern-mcp v${VERSION}`,
@@ -862,6 +861,8 @@ function printHelp(): void {
     `                   --fail-unhealthy exits 1 when unhealthy (CI gate — a bad`,
     `                   cloud key counts as unhealthy; a cloud outage does not).`,
     `  init             Scaffold hermes.config.yaml in the current directory.`,
+    `                   --claude prints a paste-ready Claude Code .mcp.json fragment`,
+    `                   (nothing written) with the optional cloud lines + standby note.`,
     `  --version, -V    Print package version and exit.`,
     `  --help, -h       Print this help and exit.`,
     ``,
@@ -874,9 +875,11 @@ function printHelp(): void {
     `  OLLAMA_HOST            Ollama base URL (default: http://127.0.0.1:11434).`,
     `  INTERN_LOG_PATH        Override NDJSON log path (default: ~/.ollama-intern/log.ndjson).`,
     ``,
-    `  Ollama Cloud (optional — off by default, zero egress until both are set):`,
+    `  Ollama Cloud (optional — no key = zero egress; key alone = STANDBY, per-call`,
+    `  backend:'cloud' escalation only; key + PRIMARY = cloud-primary routing):`,
     `  OLLAMA_CLOUD_PRIMARY   Enable cloud-primary routing (1/true/yes/on).`,
-    `  OLLAMA_API_KEY         Bearer key for Ollama Cloud (required when cloud is on).`,
+    `  OLLAMA_API_KEY         Bearer key for Ollama Cloud (alone it arms standby;`,
+    `                         required when OLLAMA_CLOUD_PRIMARY is set).`,
     `  OLLAMA_CLOUD_HOST      Cloud base URL (default: https://ollama.com).`,
     `  INTERN_CLOUD_MODEL     Cloud model for instant+workhorse+deep (default: qwen3-coder-next:cloud).`,
     `  INTERN_CLOUD_DEEP_MODEL  Deep-tier-only cloud override (e.g. deepseek-v3.1:671b).`,
@@ -1038,15 +1041,64 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
  * Locating the example: the bin file ships under `dist/index.js` and the
  * example lives at the package root, so `<bin-dir>/../hermes.config.example.yaml`
  * resolves correctly for both local `npm link` and global install layouts.
+ *
+ * `--claude` (F3, v2.9): print a paste-ready Claude Code `.mcp.json`
+ * fragment instead — PRINTED, never written (pasting into an existing
+ * .mcp.json beats clobbering one), with the optional cloud env lines as
+ * commented guidance (JSON carries no comments) + the standby semantics.
+ * Returns the exit code; the runCli dispatcher owns process.exit.
  */
-async function runCliInit(): Promise<void> {
+async function runCliInit(flags: string[] = []): Promise<number> {
+  const unknown = flags.filter((f) => f !== "--claude");
+  if (unknown.length > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern-mcp: unknown init flag(s): ${unknown.join(", ")}. Supported: --claude.`,
+    );
+    return 1;
+  }
+  if (flags.includes("--claude")) {
+    const fragment = {
+      mcpServers: {
+        "ollama-intern": {
+          command: "npx",
+          args: ["-y", "ollama-intern-mcp"],
+          env: { INTERN_PROFILE: "dev-rtx5080" },
+        },
+      },
+    };
+    // eslint-disable-next-line no-console
+    console.log("Paste into your project's .mcp.json — or merge the server entry into an existing mcpServers block:");
+    // eslint-disable-next-line no-console
+    console.log("");
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(fragment, null, 2));
+    // eslint-disable-next-line no-console
+    console.log(
+      [
+        ``,
+        `Optional Ollama Cloud — add either/both lines to the env block above:`,
+        `  "OLLAMA_API_KEY": "sk-...your-key..."   <- key alone arms STANDBY: everything stays local`,
+        `                                             with zero egress until a call requests backend:'cloud'`,
+        `                                             (first escalation is disclosed loudly on stderr).`,
+        `  "OLLAMA_CLOUD_PRIMARY": "1"             <- add this too and the generative tiers route to cloud`,
+        `                                             (default qwen3-coder-next:cloud) with local fallback.`,
+        ``,
+        `Next steps:`,
+        `  1. Restart your MCP client so it picks up the new server.`,
+        `  2. Run \`ollama-intern-mcp doctor\` to verify the Ollama setup.`,
+        `  3. Profiles: dev-rtx5080 (default) | dev-rtx5080-qwen3 | m5-max.`,
+      ].join("\n"),
+    );
+    return 0;
+  }
   const target = resolvePath(process.cwd(), "hermes.config.yaml");
   if (existsSync(target)) {
     // eslint-disable-next-line no-console
     console.error(
       `ollama-intern-mcp: ${target} already exists — refusing to overwrite. Move or delete it first if you want a fresh scaffold.`,
     );
-    process.exit(1);
+    return 1;
   }
   // dist/index.js lives at <pkg>/dist/index.js → join("..", "..") from the
   // bin's directory yields the package root. The example file lives at
@@ -1058,7 +1110,7 @@ async function runCliInit(): Promise<void> {
     console.error(
       `ollama-intern-mcp: example config not found at ${example}. This is a packaging bug — please report at https://github.com/mcp-tool-shop-org/ollama-intern-mcp/issues.`,
     );
-    process.exit(1);
+    return 1;
   }
   try {
     await copyFile(example, target);
@@ -1066,7 +1118,7 @@ async function runCliInit(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     // eslint-disable-next-line no-console
     console.error(`ollama-intern-mcp: failed to write ${target}: ${msg}`);
-    process.exit(1);
+    return 1;
   }
   // eslint-disable-next-line no-console
   console.log(
@@ -1079,6 +1131,7 @@ async function runCliInit(): Promise<void> {
       `  3. Run \`ollama-intern-mcp doctor\` to verify the Ollama setup.`,
     ].join("\n"),
   );
+  return 0;
 }
 
 /**

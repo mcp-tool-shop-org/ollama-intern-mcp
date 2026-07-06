@@ -116,7 +116,7 @@ export const config: SiteConfig = {
       features: [
         {
           title: 'Cloud-primary, local-fallback',
-          desc: 'Set OLLAMA_CLOUD_PRIMARY=1 + OLLAMA_API_KEY and the generative tiers route to a 600B-class model (default minimax-m3:cloud). A circuit breaker falls back to your local profile on any cloud failure; embeddings always stay local.',
+          desc: 'Set OLLAMA_CLOUD_PRIMARY=1 + OLLAMA_API_KEY and the generative tiers route to a 600B-class model (default qwen3-coder-next:cloud). A circuit breaker falls back to your local profile on any cloud failure; embeddings always stay local. A key alone arms STANDBY: still zero egress until a single call requests backend:cloud.',
         },
         {
           title: 'Never a silent downgrade',

@@ -30,9 +30,9 @@ Builds on the v2.7.0 opt-in cloud routing. Candidate atoms + enhancements:
 
 **Acceptance:** each atom ships with tests, a handbook page, and a CHANGELOG entry — the freeze-lift discipline the v2.1.0 pass established.
 
-### Cloud onboarding docs fix — 🟢 unblocked
+### Cloud onboarding docs fix — ✅ landed on `feat/cloud-verify` (v2.9 line)
 
-The cloud-curious persona following the current docs pins a broken model: the README, CLI help, and `handbook/ollama-cloud.md` still document `minimax-m3:cloud` as the default cloud model, but the code default is `qwen3-coder-next:cloud` (changed because `minimax-m3:cloud` is a thinking model that returned empty replies on capped-`num_predict` tools). Reconcile the docs and add an `init --claude` scaffold + a documented smoke path.
+The stale `minimax-m3:cloud` default claims are reconciled to the real `qwen3-coder-next:cloud` across the README env table, CLI help, `handbook/ollama-cloud.md`, and the landing copy (the model changed because a thinking default returned empty replies on capped-`num_predict` tools). `init --claude` prints a paste-ready `.mcp.json` fragment with the optional cloud lines + standby note. Remaining at release: the 7 translated READMEs regenerate (standing rule: before the tag).
 
 ### Doc cross-platform refresh — 🟡 exploring
 

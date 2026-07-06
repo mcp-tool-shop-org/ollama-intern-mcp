@@ -46,7 +46,7 @@ Full detail in [CHANGELOG.md](./CHANGELOG.md).
 - **Cloud-primary with a safety net.** A `RoutingOllamaClient` tries cloud first and falls back to the local profile on timeout / 5xx / 429 / network. Bad keys (401/403) surface loudly via a sticky breaker instead of degrading silently forever; a retired/typo'd cloud model id (404) surfaces too.
 - **Never a silent downgrade.** Every envelope gains `backend` (`cloud`|`local`), `degraded`, and `degrade_reason` so you always know when you got the local model instead of the big one. A `backend_fallback` NDJSON event makes the cloud→local fallback rate visible in `ollama_log_tail`.
 - **`ollama_doctor` reports cloud auth + reachability** as a distinct block; `ollama-intern-mcp doctor` shows a `Cloud (primary)` section.
-- Default cloud model is `minimax-m3:cloud`; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` (e.g. `deepseek-v3.1:671b`).
+- Default cloud model was `minimax-m3:cloud` at v2.7.0 release *(since repinned to `qwen3-coder-next:cloud` — a thinking default returned empty replies on capped-`num_predict` tools; see the [env table](#cloud-env-vars))*; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
 
 ## New in v2.6.0
 
