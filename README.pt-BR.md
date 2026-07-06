@@ -27,6 +27,17 @@ Um servidor MCP que fornece ao Claude Code um **estagiário local** com regras, 
 
 ---
 
+## Novo na v2.9.0
+
+**A funcionalidade de nuvem — um canal de verificação entre diferentes modelos, escalonamento sob demanda para a nuvem e os benefícios econômicos que isso traz.** O modo local-primeiro permanece inalterado: sem chave definida, o comportamento é idêntico ao da v2.8.0 (nenhum dado enviado, nenhuma sondagem inicial à nuvem).
+
+- **`ollama_verify_claims` — verificação entre diferentes modelos.** `ollama_code_review` *gera* os resultados; este *avalía* esses resultados. Ele executa um painel de teste do Ollama Cloud (deepseek / kimi / glm por padrão) em seus dados e evidências, retornando CONFIRMADO / REFUTADO / PRECISA_DE_REVISÃO para cada item. A agregação segue a regra de que uma única discordância não define o resultado (≥2 para refutar, ≥2 para confirmar), cada avaliador usa um modelo verificado (um modelo local alternativo ou de fallback é excluído e nunca contado) e os dados de entrada são estruturados para remover informações que possam influenciar o raciocínio. O limite máximo de honestidade está documentado: CONFIRMADO significa evidências de suporte, não prova — confiável para identificar erros grosseiros, mas menos eficaz em detectar nuances em modelos mais avançados.
+- **Escalonamento para a nuvem por chamada + modo de espera.** Defina `OLLAMA_API_KEY` *sozinho* (sem `OLLAMA_CLOUD_PRIMARY`) e você estará no modo **de espera**: prioridade local, nenhum dado enviado, nenhuma sondagem inicial — até que uma única chamada opte por usar a nuvem com `backend:'cloud'`. Escalone uma revisão de alta importância para um modelo de 600 bilhões de parâmetros sem alterar todas as chamadas para a nuvem. A primeira escalonada divulga o envio de dados logo no momento em que ocorre; uma substituição de `model` por chamada agora acompanha a tentativa de usar a nuvem exatamente como especificado.
+- **`ollama_log_stats` — os benefícios econômicos medidos prometidos pelo slogan.** Um resumo sem LLM dos seus registros NDJSON: divisão entre nuvem e local, taxa de fallback da nuvem para o local, tokens por ferramenta, p50/p95 de latência, limitado por uma janela `since`.
+- **Ferramenta de diagnóstico para CI + ferramentas legíveis por máquina.** `doctor --json --fail-unhealthy` fornece um filtro real para os pipelines (com uma flag `healthy` que considera a nuvem) e cada ferramenta agora inclui as anotações MCP `readOnlyHint`/`destructiveHint`/`title`, para que os clientes recebam informações de permissão corretas. Além disso, `init --claude` cria um arquivo `.mcp.json` pronto para ser usado.
+
+Detalhes completos em [CHANGELOG.md](./CHANGELOG.md).
+
 ## Novo na versão 2.8.0
 
 **Maior confiabilidade, durabilidade e segurança — 25 correções, todas testadas primeiro e verificadas em toda a família.** O comportamento com prioridade local permanece inalterado e nenhum contrato de ferramenta foi removido; as chamadas existentes continuam funcionando. As melhorias são significativas:
@@ -43,10 +54,10 @@ Detalhes completos em [CHANGELOG.md](./CHANGELOG.md).
 
 **Roteamento opcional para a Ollama Cloud — prioridade na nuvem, retorno ao modo local.** Ative com uma chave + um sinalizador e os níveis generativos serão roteados para um modelo de nuvem da classe 600B; as incorporações permanecem locais; um disjuntor retorna ao seu perfil local em caso de falha na nuvem. **Desativado por padrão — sem envio de dados, a menos que você defina `OLLAMA_API_KEY` e `OLLAMA_CLOUD_PRIMARY=1`.** Melhoria menor — os chamadores anteriores à versão 2.7.0 (e qualquer pessoa que não ative) verão um comportamento idêntico. Consulte [Ollama Cloud (opcional)](#ollama-cloud-optional).
 
-- **Prioridade na nuvem com uma rede de segurança.** Um `RoutingOllamaClient` tenta a nuvem primeiro e retorna ao perfil local em caso de tempo limite / 5xx / 429 / problema de rede. Chaves inválidas (401/403) são exibidas de forma clara por meio de um disjuntor persistente, em vez de degradar silenciosamente para sempre; um ID de modelo de nuvem desativado ou com erro de digitação (404) também é exibido.
-- **Nunca uma degradação silenciosa.** Cada envelope recebe `backend` (`cloud`|`local`), `degraded` e `degrade_reason`, para que você sempre saiba quando obteve o modelo local em vez do grande. Um evento NDJSON `backend_fallback` torna a taxa de retorno da nuvem para o modo local visível em `ollama_log_tail`.
+- **Prioridade na nuvem com uma rede de segurança.** Um `RoutingOllamaClient` tenta usar a nuvem primeiro e retorna ao perfil local em caso de timeout / 5xx / 429 / problema de rede. Chaves inválidas (401/403) são sinalizadas de forma clara por meio de um mecanismo de interrupção, em vez de causar uma degradação silenciosa; um ID de modelo de nuvem desativado ou com erro de digitação (404) também é sinalizado.
+- **Nunca uma redução de desempenho silenciosa.** Cada pacote recebe `backend` (`cloud`|`local`), `degraded` e `degrade_reason`, para que você sempre saiba quando o modelo local foi usado em vez do modelo principal. Um evento NDJSON `backend_fallback` torna a taxa de fallback da nuvem para o local visível em `ollama_log_tail`.
 - **`ollama_doctor` relata a autenticação e a acessibilidade da nuvem** como um bloco distinto; `ollama-intern-mcp doctor` mostra uma seção `Cloud (primary)`.
-- O modelo de nuvem padrão é `minimax-m3:cloud`; substitua por nível com `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` (por exemplo, `deepseek-v3.1:671b`).
+- O modelo padrão da nuvem era `minimax-m3:cloud` no lançamento da v2.7.0 *(desde então, foi alterado para `qwen3-coder-next:cloud` — um modelo que retornava respostas vazias em ferramentas com limite de `num_predict`; consulte a [tabela de variáveis de ambiente](#cloud-env-vars))*; substitua por nível com `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
 
 ## Novo na versão 2.6.0
 
@@ -298,7 +309,7 @@ Se `frame` for omitido, o comportamento não será alterado em relação à v2.1
 
 | Nível | Contagem | O que está aqui |
 |---|---|---|
-| **Atoms** | 29 | Funções básicas moldadas para tarefas. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 adicionadas na versão 2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operações); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refatoração); `artifact_prune`, `hypothesis_drill` (artefato/resumo); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 "átomo" de revisão:** `code_review` (resultados estruturados da revisão de PR, ferramenta principal; apenas para revisão). Os "átomos" que podem processar lotes (`classify`, `extract`, `triage_logs`) aceitam `items: [{id, text}]`. |
+| **Atoms** | 31 | Primitivas modeladas para tarefas. **Originalmente 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 adicionadas na v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operações); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refatoração); `artifact_prune`, `hypothesis_drill` (artefato/resumo); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 átomo de revisão:** `code_review` (resultados estruturados da revisão de PR, ferramenta principal; apenas para revisão). **+2 na v2.9:** `verify_claims` (um painel de teste entre diferentes modelos avalia as alegações; requer nuvem) e `log_stats` (agrega os registros NDJSON em benefícios econômicos medidos — divisão entre nuvem e local, taxa de fallback, p50/p95 por ferramenta; nenhuma chamada de modelo). Átomos com capacidade de processamento em lote (`classify`, `extract`, `triage_logs`) aceitam `items: [{id, text}]`. |
 | **Briefs** | 3 | Resumos estruturados e baseados em evidências. `incident_brief`, `repo_brief`, `change_brief`. Cada afirmação cita um ID de evidência; informações desconhecidas são removidas no lado do servidor. Evidências fracas exibem `weak: true` em vez de uma narrativa falsa. |
 | **Packs** | 3 | Tarefas compostas com pipeline fixo que gravam Markdown e JSON duradouros em `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renderizadores determinísticos — nenhuma chamada de modelo na forma do artefato. |
 | **Artifacts** | 7 | Camada de continuidade sobre as saídas dos pacotes. `artifact_list` / `read` / `diff` / `export_to_path`, mais três trechos determinísticos: `incident_note`, `onboarding_section`, `release_note`. |
@@ -462,7 +473,10 @@ Cada chamada é registrada como uma linha NDJSON em `~/.ollama-intern/log.ndjson
 
 Os modelos locais de 8B são o gargalo de hardware que a maioria das pessoas encontra. O [Ollama Cloud](https://ollama.com/cloud) oferece modelos da classe 600B por trás da **mesma** interface `/api/*`, para que você possa direcionar as ferramentas mais pesadas para um modelo muito mais potente e liberar VRAM local — mantendo o acesso local como uma opção sempre ativa.
 
-**Esta é uma opção ativada manualmente e desativada por padrão.** O pacote permanece com foco no uso local, com **nenhum envio de dados**, a menos que você defina *ambos* os seguintes parâmetros. Qualquer pessoa que não ativar a opção não será afetada.
+**Isso é opcional e está desativado por padrão.** Sem chave definida, o pacote permanece no modo local-primeiro com **nenhum dado enviado** — qualquer pessoa que não optar por usar a nuvem não será afetada. Existem duas maneiras de ativar:
+
+- **Prioridade na nuvem** (abaixo): defina *ambos* `OLLAMA_CLOUD_PRIMARY=1` e `OLLAMA_API_KEY` — as camadas generativas usam a nuvem com fallback local.
+- **Nuvem em modo de espera** (v2.9): defina **apenas** `OLLAMA_API_KEY` — tudo permanece local (ainda sem dados enviados, nem mesmo uma sondagem inicial) até que uma única chamada solicite explicitamente o escalonamento para a nuvem com `backend: "cloud"`. Consulte [Nuvem em modo de espera e escalonamento por chamada](#cloud-standby--per-call-escalation) abaixo.
 
 ```json
 {
@@ -492,21 +506,34 @@ Os modelos locais de 8B são o gargalo de hardware que a maioria das pessoas enc
 
 Uma linha `backend_fallback` é adicionada em `~/.ollama-intern/log.ndjson` a cada retorno da nuvem para o uso local (`ollama_log_tail --filter_kind backend_fallback`), e o comando `ollama-intern-mcp doctor` exibe um bloco **Cloud (primário)** com informações sobre acessibilidade e status de autenticação.
 
+### Nuvem em modo de espera e escalonamento por chamada
+
+Definir `OLLAMA_API_KEY` **sem** `OLLAMA_CLOUD_PRIMARY` ativa o modo **de espera**: o roteamento permanece com prioridade local e nada sai da máquina — até que uma chamada inclua `backend: "cloud"` (disponível em `ollama_chat`, usado internamente por `ollama_verify_claims`). Essa única chamada é escalonada para o modelo na nuvem, com o mesmo mecanismo de interrupção + fallback local e a mesma origem dos dados; todas as outras chamadas permanecem locais. A **primeira** chamada escalonada imprime uma mensagem clara no stderr, indicando o host e grava uma linha `cloud_egress` no registro NDJSON — o envio de dados é divulgado no momento em que ocorre, não apenas aqui na documentação.
+
+As regras, aplicadas mecanicamente:
+
+- Sem chave → `backend: "cloud"` falha com `CLOUD_NOT_CONFIGURED`. Nunca é atendido silenciosamente pelo modelo local, alegando que foi escalonado.
+- Modo de espera + sem diretiva → local, nenhum dado enviado (a inicialização também não sonda o host da nuvem).
+- Em prioridade na nuvem, `backend: "local"` força uma chamada a usar o modelo local — a saída de emergência inversa.
+- Uma substituição de `model` por chamada agora acompanha o caminho da nuvem exatamente como especificado (anteriormente era substituída pelo mapeamento de camada para modelo na nuvem), para que os orquestradores baseados em registros possam especificar o modelo exato da nuvem por chamada.
+
+O principal recurso para o utilizador é o **`ollama_verify_claims`**: avalia as alegações/conclusões com um painel de modelos em nuvem que abrange três famílias diferentes (o padrão é `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`) — a agregação nunca é decidida por uma única opinião divergente, são feitas verificações do modelo utilizado em cada membro do painel e é utilizada uma marcação `weak` (fraca) quando o painel tem poucos membros. Uma confirmação do painel sobre alegações criadas por modelos de ponta é *evidência de suporte, não prova* — o painel deteta de forma fiável erros grosseiros e é menos eficaz na deteção de erros subtis. Consulte a [página do manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/).
+
 **Latência versus qualidade.** Os modelos grandes da nuvem são executados muito mais lentamente por token do que um modelo local de 8B (segundos, não milissegundos) — uma melhoria na qualidade, não na velocidade. Os níveis da nuvem usam um limite de tempo generoso (instantâneo: 30 segundos / principal: 120 segundos / profundo: 300 segundos por padrão).
 
 ### Variáveis de ambiente da nuvem
 
 | Variável | Padrão | Finalidade |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(não definido)_ | **O interruptor de ativação.** `1`/`true`/`yes`/`on` habilita o uso primário da nuvem. Não definido = apenas local, sem envio de dados. |
-| `OLLAMA_API_KEY` | _(não definido)_ | Chave Bearer para o Ollama Cloud. **Obrigatório** quando a nuvem está habilitada (falha rapidamente na inicialização se estiver ausente). |
+| `OLLAMA_CLOUD_PRIMARY` | _(não definido)_ | **A opção que define a nuvem como principal.** `1`/`true`/`yes`/`on` direciona as camadas generativas para a nuvem. Desativar com uma chave = **standby** (principal local, apenas escalada por chamada). Desativar sem uma chave = apenas local, sem transferência de dados. |
+| `OLLAMA_API_KEY` | _(não definido)_ | Chave de autenticação para o Ollama Cloud. Definir esta opção ativa o modo **standby**; é **obrigatória** quando `OLLAMA_CLOUD_PRIMARY` está ativado (falha imediatamente na inicialização se estiver ausente). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Host base da nuvem. |
-| `INTERN_CLOUD_MODEL` | `minimax-m3:cloud` | Modelo da nuvem para os níveis instantâneo, principal e profundo. |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Modelo em nuvem para utilização imediata + trabalho intensivo + análise aprofundada. Mantenha o padrão como **não-raciocínio** — um modelo com capacidade de raciocínio aqui esgota rapidamente os recursos alocados para CoT (coloque modelos de raciocínio mais complexos na opção de substituição profunda abaixo). |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Substituição opcional apenas para o nível profundo, por exemplo, `deepseek-v3.1:671b`. |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Tempos limite de tentativa da nuvem por nível. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Limite do tamanho da janela de contexto para chamadas na nuvem (a nuvem cobra pelo tempo de GPU; o limite controla os custos). |
 
-> **A disponibilidade dos modelos pode mudar.** O Ollama periodicamente desativa modelos na nuvem. `minimax-m3:cloud`, `deepseek-v3.1:671b`, `gpt-oss:120b` e `qwen3-coder:480b` são as opções atuais; verifique [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) antes de fixar um ID.
+> **Alterações na disponibilidade dos modelos.** O Ollama altera/desativa os IDs em nuvem no lado do servidor. A partir de 2026-07, `qwen3-coder-next:cloud` (o padrão sem capacidade de raciocínio) e os principais modelos com capacidade de raciocínio `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` estão ativos; verifique [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) antes de fixar um ID. Um ID desativado apresenta uma degradação visível (`cloud_model_missing`), nunca silenciosa.
 
 **Observação sobre privacidade.** O roteamento para o Ollama Cloud envia prompts para terceiros. A [política de privacidade](https://ollama.com/privacy) do Ollama afirma que os prompts da nuvem são processados ​​de forma transitória, não retidos além da solicitação e não usados ​​para treinamento — mas ainda assim é um envio de dados, por isso é uma opção ativada manualmente e divulgada. O modo somente local (o padrão) não envia nada para fora do sistema.
 
