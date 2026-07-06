@@ -58,10 +58,22 @@ class TierFallbackMock implements OllamaClient {
   }
 }
 
+// M1-res: dev-rtx5080 maps EVERY tier to the same model (hermes3:8b), so
+// `model === resolveTier("instant")` was vacuously true whether the envelope
+// reported the fallback (instant) or the original (workhorse) tier's model.
+// Distinct per-tier models make the model dimension actually change on a
+// degrade, so the assertion below genuinely gates the M1 fix.
+const DISTINCT_TIERS = {
+  ...PROFILES["dev-rtx5080"].tiers,
+  instant: "instant-only-model",
+  workhorse: "workhorse-only-model",
+  deep: "deep-only-model",
+};
+
 function makeCtx(client: OllamaClient): RunContext & { logger: NullLogger } {
   return {
     client,
-    tiers: PROFILES["dev-rtx5080"].tiers,
+    tiers: DISTINCT_TIERS,
     timeouts: PROFILES["dev-rtx5080"].timeouts,
     hardwareProfile: "dev-rtx5080",
     logger: new NullLogger(),
@@ -87,7 +99,10 @@ describe("runBatch — degraded envelope tier labeling (M1)", () => {
     expect(env.fallback_from).toBe("workhorse");
     expect(env.tier_used).not.toBe(env.fallback_from);
     // model must resolve from tier_used (the instant model), not the original.
-    expect(env.model).toBe(resolveTier("instant", ctx.tiers));
+    expect(env.model).toBe(resolveTier("instant", ctx.tiers)); // "instant-only-model"
+    // Non-vacuous now: instant and workhorse map to DISTINCT models, so this
+    // fails if the envelope reported the original (workhorse) tier's model.
+    expect(env.model).not.toBe(resolveTier("workhorse", ctx.tiers));
     // Sanity: the item succeeded on the fallback.
     expect(env.result.items[0]).toMatchObject({ id: "a", ok: true });
   });
