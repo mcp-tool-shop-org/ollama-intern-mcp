@@ -344,6 +344,50 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
     // Chat is last-resort and MUST advertise itself that way — so Claude doesn't default to it.
     const chat = tools!.find((t) => t.name === "ollama_chat");
     expect(chat?.description).toMatch(/last resort/i);
+
+    // F6 (v2.9): every tool carries MCP annotations — a human `title` plus
+    // machine-readable readOnlyHint/destructiveHint (clients use these for
+    // permission UX; the taxonomy used to live only in prose prefixes).
+    // Classification is against ACTUAL behavior:
+    //   - read-only = no model/embed call AND no writes (doctor's probes and
+    //     the log/corpus/artifact readers). code_citation is NOT here — it
+    //     runs a Deep-tier model call (never mark a model-calling tool
+    //     read-only).
+    //   - destructive = artifact_prune (the only deleter).
+    //   - everything else (model-calling or corpus/artifact writers) is
+    //     explicitly neither: destructiveHint defaults TRUE in the MCP spec
+    //     when omitted, so every tool sets both hints explicitly.
+    // Exact-set equality: a future tool registered without annotations (or
+    // misclassified) fails here by name.
+    const READ_ONLY = new Set([
+      "ollama_doctor",
+      "ollama_log_tail",
+      "ollama_log_stats",
+      "ollama_corpus_list",
+      "ollama_corpus_health",
+      "ollama_corpus_amend_history",
+      "ollama_corpus_rerank",
+      "ollama_artifact_list",
+      "ollama_artifact_read",
+      "ollama_artifact_diff",
+      "ollama_artifact_incident_note_snippet",
+      "ollama_artifact_onboarding_section_snippet",
+      "ollama_artifact_release_note_snippet",
+      "ollama_code_map",
+    ]);
+    const DESTRUCTIVE = new Set(["ollama_artifact_prune"]);
+    for (const t of tools!) {
+      const ann = (
+        t as { annotations?: { title?: unknown; readOnlyHint?: unknown; destructiveHint?: unknown } }
+      ).annotations;
+      expect(ann, `${t.name} is missing annotations`).toBeDefined();
+      expect(typeof ann!.title, `${t.name} is missing a title`).toBe("string");
+      expect((ann!.title as string).length).toBeGreaterThan(0);
+      expect(ann!.readOnlyHint, `${t.name} readOnlyHint misclassified`).toBe(READ_ONLY.has(t.name));
+      expect(ann!.destructiveHint, `${t.name} destructiveHint misclassified`).toBe(
+        DESTRUCTIVE.has(t.name),
+      );
+    }
   }, 30_000);
 
   it("tools/call works end-to-end on a read-only tool that needs no Ollama", async () => {
