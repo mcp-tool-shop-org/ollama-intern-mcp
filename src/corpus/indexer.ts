@@ -139,7 +139,7 @@ export async function sha256File(path: string): Promise<{ hash: string; mtime: s
     const stBefore = await fh.stat();
     if (stBefore.size > MAX_FILE_BYTES) {
       throw new InternError(
-        "SOURCE_PATH_NOT_FOUND",
+        "SOURCE_FILE_TOO_LARGE",
         `File exceeds max size (${stBefore.size} bytes > ${MAX_FILE_BYTES} bytes cap): ${path}`,
         `Split the file or raise the cap. The 50MB limit exists to prevent OOM from a user pointing at a huge file.`,
         false,
