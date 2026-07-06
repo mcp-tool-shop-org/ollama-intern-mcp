@@ -25,7 +25,9 @@
     "verify": "npm run typecheck && npm run build && npm test",
     "ship": "npm run typecheck && npm run build && npm test && npm pack --dry-run",
     "sync-docs": "node scripts/sync-doc-versions.mjs",
-    "sync-docs:check": "node scripts/sync-doc-versions.mjs --check"
+    "sync-docs:check": "node scripts/sync-doc-versions.mjs --check",
+    "gen:tool-docs": "node scripts/gen-tool-docs.mjs",
+    "gen:tool-docs:check": "node scripts/gen-tool-docs.mjs --check"
   },
   "keywords": [
     "mcp",
