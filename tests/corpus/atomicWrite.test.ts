@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile, open, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -235,40 +235,59 @@ describe("atomicWriteFile — path edge cases (F-003)", () => {
   });
 });
 
-// ── F-003 #6 — fsync contract (source-shape pin) ──────────────
-// vi.spyOn on the node:fs/promises namespace is not configurable in
-// ESM, so we can't observe the fsync call at runtime here. Instead we
-// pin the source shape: atomicWrite.ts MUST call fh.sync() before
-// rename. A future "optimization" that drops fsync silently would
-// downgrade the durability promise — this source-grep test catches it
-// cheaply, mirroring the pattern used in tests/startupProbe.test.ts
-// for INTERN_SKIP_STARTUP_PROBE.
+// ── F-003 #6 — fsync-before-rename durability (RUNTIME) ────────
+// L3 (2026-07 health pass): the previous pin grepped atomicWrite.ts's SOURCE
+// TEXT for `await fh.sync()` before `await rename(` — it proved a token exists,
+// not that fsync actually runs before the swap. A refactor that KEPT both
+// tokens but reordered them, or moved the sync onto a different (unrenamed)
+// handle, would pass the grep while breaking durability. Observe the ordering
+// at RUNTIME instead: spy the FileHandle prototype's `sync` and inspect the
+// filesystem at sync-time — the bytes must still be in the `.tmp` and the final
+// path must not exist yet, which is only true if fsync precedes the rename.
 
-describe("atomicWriteFile — fsync contract (source-shape pin)", () => {
-  it("src/corpus/atomicWrite.ts calls fh.sync() before the rename", async () => {
-    const fs = await import("node:fs/promises");
-    const url = new URL("../../src/corpus/atomicWrite.ts", import.meta.url);
-    const src = await fs.readFile(url, "utf8");
-    // Must reference fh.sync() — exact token is the durability
-    // primitive. If a refactor renames the variable, update this test
-    // along with the change.
-    expect(src).toMatch(/await\s+fh\.sync\(\)/);
-    // sync() must appear BEFORE the FIRST `await rename(` call —
-    // textual ordering check that fsync happens before swap. Use
-    // word-boundary-precise tokens so the parent-dir fsync (dirFh.sync)
-    // doesn't false-match the file-handle fsync check.
-    const fhSyncMatch = src.match(/await\s+fh\.sync\(\)/);
-    const renameMatch = src.match(/await\s+rename\(/);
-    expect(fhSyncMatch?.index, "expected `await fh.sync()` in atomicWrite.ts").toBeDefined();
-    expect(renameMatch?.index, "expected `await rename(` in atomicWrite.ts").toBeDefined();
-    expect(fhSyncMatch!.index!).toBeLessThan(renameMatch!.index!);
+describe("atomicWriteFile — fsync precedes rename (runtime durability)", () => {
+  it("fsyncs the tmp BEFORE renaming it into the final path", async () => {
+    const path = join(tempDir, "order.json");
+
+    // Grab the FileHandle prototype (every FileHandle — including
+    // atomicWriteFile's internal tmp handle — shares it) and spy `sync`.
+    const probe = await open(join(tempDir, ".proto-probe"), "w");
+    const proto = Object.getPrototypeOf(probe) as { sync: () => Promise<void> };
+    await probe.close();
+    await rm(join(tempDir, ".proto-probe"), { force: true });
+
+    let recorded = false;
+    let atSyncTmpExists: boolean | undefined;
+    let atSyncFinalExists: boolean | undefined;
+    const origSync = proto.sync;
+    const spy = vi.spyOn(proto, "sync").mockImplementation(async function (this: unknown) {
+      // The FIRST sync is the tmp file handle's, BEFORE the rename. (On POSIX a
+      // second sync fires on the parent DIR after the rename — ignore it.)
+      if (!recorded) {
+        recorded = true;
+        const entries = await readdir(tempDir);
+        atSyncFinalExists = entries.includes("order.json");
+        atSyncTmpExists = entries.some((e) => e.startsWith("order.json.") && e.endsWith(".tmp"));
+      }
+      return origSync.call(this);
+    });
+
+    try {
+      await atomicWriteFile(path, "durable-payload");
+    } finally {
+      spy.mockRestore();
+    }
+
+    // The write landed.
+    expect(await readFile(path, "utf8")).toBe("durable-payload");
+    // …and at the moment fsync ran, the bytes were still in the tmp and the
+    // final path did NOT exist — proving fsync-before-rename at RUNTIME.
+    expect(recorded, "fh.sync() must have been called").toBe(true);
+    expect(atSyncTmpExists, "tmp must exist at fsync time").toBe(true);
+    expect(atSyncFinalExists, "final path must NOT exist at fsync time").toBe(false);
   });
 
-  it("src/corpus/atomicWrite.ts unlinks the .tmp on rename failure", async () => {
-    const fs = await import("node:fs/promises");
-    const url = new URL("../../src/corpus/atomicWrite.ts", import.meta.url);
-    const src = await fs.readFile(url, "utf8");
-    // The cleanup path must reference unlink + tmpPath.
-    expect(src).toMatch(/unlink\(tmpPath\)/);
-  });
+  // Note: the .tmp-cleanup-on-rename-failure durability is exercised at RUNTIME
+  // by the "concurrent writes" + real-fs rename-failure tests above (both drive
+  // the actual cleanup path), so no separate source-grep pin is kept for it.
 });
