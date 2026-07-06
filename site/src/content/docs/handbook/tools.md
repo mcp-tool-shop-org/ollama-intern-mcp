@@ -1,11 +1,11 @@
 ---
 title: Tool Reference
-description: All 42 tools grouped by tier.
+description: All 43 tools grouped by tier.
 sidebar:
   order: 2
 ---
 
-Tools are grouped into four tiers. **At-a-glance:** 29 atoms (15 original + 13 added in v2.1.0 + `code_review`) + 3 briefs + 3 packs + 7 artifact tools = **42 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
+Tools are grouped into four tiers. **At-a-glance:** 30 atoms (15 original + 13 added in v2.1.0 + `code_review` + `verify_claims`) + 3 briefs + 3 packs + 7 artifact tools = **43 total**. Pack and artifact tiers remain frozen at 3 and 7; the atom freeze was lifted at v2.1.0 and new atoms require an audit-justified gap, tests, handbook page, and CHANGELOG entry.
 
 ## Per-tool deep-dives
 
@@ -15,13 +15,14 @@ The most-used tools have dedicated reference pages with schema, examples, common
 - [`ollama_classify`](./tools/classify/) — single-label classification with confidence
 - [`ollama_extract`](./tools/extract/) — schema-constrained JSON extraction
 - [`ollama_corpus_answer`](./tools/corpus-answer/) — chunk-grounded synthesis (flagship)
+- [`ollama_verify_claims`](./tools/verify-claims/) — cross-family cloud panel adjudicates claims (cloud-required)
 - [`ollama_chat`](./tools/chat/) — last-resort catch-all
 
 The remaining 37 tools are documented inline below — open an issue if you'd like a specific tool to get its own page next.
 
 ---
 
-## Atoms (29 total)
+## Atoms (30 total)
 
 ### Original atoms (15)
 
@@ -200,13 +201,14 @@ Tier freeze stays at 4 — everything here extends existing tiers, no new tier c
 | `ollama_log_tail` | Tail the NDJSON call log from inside an MCP session, with filters. See [Observability → ollama_log_tail](../observability/#the-ollama_log_tail-tool). |
 | `ollama_batch_proof_check` | Run `tsc` / `eslint` / `pytest` / `ruff` / `cargo-check` over a set of paths; single envelope with per-check pass/fail. Executes under cwd validation + per-check timeouts — new security surface, see [SECURITY.md](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md). |
 
-### Refactor tools
+### Refactor & verification tools
 
 | Tool | Purpose |
 |---|---|
 | `ollama_code_map` | Structural map of a code tree (languages, frameworks, entrypoints, build commands). Reads the caller-declared `source_paths` (`..` refused); scope is caller-declared, not operator-confined — see [SECURITY.md](https://github.com/mcp-tool-shop-org/ollama-intern-mcp/blob/main/SECURITY.md). |
 | `ollama_code_citation` | Given a question over `source_paths`, returns a synthesized answer with every claim grounded at `{file, start_line, end_line}`. Citations outside scope stripped. |
 | `ollama_code_review` | Structured PR-review findings (bugs, risks, nits) over a diff / `source_paths`. Workhorse tier; **review-only — never edits**. Added post-v2.1.0. |
+| `ollama_verify_claims` | The counterpart to `code_review`: review GENERATES findings, this ADJUDICATES claims — a cross-family Ollama Cloud flagship panel (default deepseek / kimi / glm) votes CONFIRMED / REFUTED / UNCERTAIN per claim, lone-dissent-never-decides. **Cloud-required** (`CLOUD_NOT_CONFIGURED` without a key); served-model-checked jurors; `weak` flag when the panel thins. See [verify-claims](./tools/verify-claims/). Added v2.9. |
 | `ollama_multi_file_refactor_propose` | Reads N files, returns a coordinated per-file change plan with risk levels, cross-file impact, affected imports, and verification steps. No writes — a plan for you (or Claude) to execute. |
 | `ollama_refactor_plan` | Phased sequencing for a proposed refactor: which files change in which phase, parallelism, tests to write, rollback strategy. Pairs with `multi_file_refactor_propose`. |
 

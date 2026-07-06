@@ -30,8 +30,14 @@ import { describe, it, expect, beforeAll } from "vitest";
  *
  * v2.7.0: bumped 470_000 → 528_000 for the opt-in Ollama Cloud routing code
  * (new dist/routing.js + cloud additions across client/runner/index/profiles).
+ *
+ * v2.9 line (F1+F2): bumped 528_000 → 590_000 for the cloud feature pass —
+ * dist/tools/verifyClaims.js (the cross-family verification atom, +schema
+ * +prompt +aggregation), the standby/per-call-directive routing additions,
+ * and their registration/description strings. Measured 589_690 on a clean
+ * build (`npm pack --dry-run`, 2026-07-06).
  */
-export const BASELINE_PACKED_BYTES = 528_000;
+export const BASELINE_PACKED_BYTES = 590_000;
 export const BASELINE_TOLERANCE = 0.10;
 
 type PackEntry = { path: string; size: number; mode: number };
@@ -133,10 +139,12 @@ describe("tarball contract (npm pack --dry-run)", () => {
     expect(report!.entryCount).toBeGreaterThanOrEqual(200);
     expect(report!.entryCount).toBeLessThanOrEqual(400);
 
-    // Hard ceiling: 2MB unpacked. Currently ~1.0 MB. If we ever approach this,
+    // Hard ceiling: 3MB unpacked. Currently ~2.1 MB (measured 2_130_365 on
+    // 2026-07-06 after the v2.9 cloud feature pass; the stale "~1.0 MB" note
+    // predated the v2.7–v2.8 cloud + hardening growth). If we approach 3MB,
     // it's almost certainly a mistake worth investigating before release.
-    const TWO_MB = 2 * 1024 * 1024;
-    expect(report!.unpackedSize).toBeLessThan(TWO_MB);
+    const THREE_MB = 3 * 1024 * 1024;
+    expect(report!.unpackedSize).toBeLessThan(THREE_MB);
   });
 
   it.skipIf(!npmOnPath())("ships the package under the expected name", () => {

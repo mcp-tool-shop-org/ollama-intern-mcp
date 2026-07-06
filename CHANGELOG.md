@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+The cloud CORE of the feature pass (dogfood swarm Phase 3): per-call cloud escalation infrastructure + the cross-family verification atom it exists to power. Local-first defaults are unchanged; with no key set, behavior is byte-identical to v2.8.0.
+
+### Added
+
+- **Cloud STANDBY mode (F2a).** `OLLAMA_API_KEY` alone (without `OLLAMA_CLOUD_PRIMARY`) now arms standby: routing stays **local-primary with zero egress** — no startup cloud probe, no call leaves the machine — while the cloud client stands by for per-call escalation. Previously this env combination loaded nothing, making "local-first but escalate THIS call" inexpressible. `doctor` reports the mode (`Cloud (standby)` vs `Cloud (primary)`).
+- **Per-call `backend` directive (F2b).** `ollama_chat` accepts `backend: "cloud" | "local"`; the runner threads the same directive for internal callers. `"cloud"` escalates a single call (the only cloud path in standby; a no-op under cloud-primary), `"local"` pins a single call local under cloud-primary. With no cloud configured, `backend: "cloud"` fails with the new **`CLOUD_NOT_CONFIGURED`** error code — never silently served local while claiming escalation. The **first** standby escalation prints a loud stderr disclosure and emits a `cloud_egress` NDJSON event: egress is disclosed at the point it happens.
+- **`ollama_verify_claims` (F1)** — tool #43, the counterpart to `ollama_code_review`: review GENERATES findings, this ADJUDICATES claims. Runs a **cross-family Ollama Cloud flagship panel** (default `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` — disjoint families, override via `panel`) over caller claims with optional `source_paths` evidence and a `reference` ground-truth block. Aggregation is **lone-dissent-never-decides**: REFUTED needs ≥`min_refute_votes` (default 2), CONFIRMED needs ≥2 confirms, else NEEDS_REVIEW. Every juror passes a **served-model check** (normalized `/[-:]cloud$/` both tag forms); a juror served by local fallback or a substituted model is excluded and flagged in `result.panel`, never counted. Claim inputs are `strict()` — there is structurally no field for the claim author's reasoning to ride into a juror prompt (reasoning-stripped verification). Cloud-required: refuses with `CLOUD_NOT_CONFIGURED` rather than substituting a too-weak local panel.
+
+### Fixed
+
+- **Per-call `model` override is honored on the cloud path.** Since v2.7.0, cloud-primary routing clobbered the v2.3.0 per-call override with the tier→cloud-model map — the caller's named model was silently substituted. The override now rides the cloud attempt verbatim (`model_requested` vs `model` on the envelope proves it), which per-juror panel selection depends on.
+- **A per-call override's cloud 404 no longer arms the process-wide deterministic cooldown.** One caller's typo'd/retired model id used to suppress cloud for *every* call for 60s; now it releases the breaker probe only (the tier-default 404 cooldown is unchanged).
+- **Standby never inflates local budgets.** The cloud+local budget summing in runner/chat/batch/corpus-search explain applies only when cloud may actually serve the call (`cloudMayServe`), so a standby key doesn't triple local tier ceilings.
+
+### Changed
+
+- Routing provenance (`envelope.model` on cloud-served calls) now carries the backend's **served-model echo** rather than the requested id — live cloud strips the tag suffix, and any further divergence is exactly the substitution signal verify-claims and receipt-backed callers need.
+
 ## [2.8.0] — 2026-07-06
 
 Minor — a **reliability, durability, and security hardening pass** (dogfood swarm: 25 findings, every fix landed test-first with a regression test proving the invariant, then independently cross-family-verified). Local-first behavior is unchanged and **no public tool contract was removed** — existing callers keep working. The headline fixes close two silent-data-loss / correctness classes and a security-doc overclaim; the rest harden concurrency, cloud resilience, and observability honesty.

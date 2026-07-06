@@ -297,6 +297,7 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
       "ollama_code_citation",
       "ollama_code_review",
       "ollama_hypothesis_drill",
+      "ollama_verify_claims",
       "ollama_chat",
     ];
     // Primary contract — exact-set equality. Failure message lists the

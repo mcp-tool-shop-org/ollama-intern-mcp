@@ -87,6 +87,7 @@ import { refactorPlanSchema, handleRefactorPlan } from "./tools/refactorPlan.js"
 import { codeCitationSchema, handleCodeCitation } from "./tools/codeCitation.js";
 import { codeReviewSchema, handleCodeReview } from "./tools/codeReview.js";
 import { hypothesisDrillSchema, handleHypothesisDrill } from "./tools/hypothesisDrill.js";
+import { verifyClaimsSchema, handleVerifyClaims } from "./tools/verifyClaims.js";
 
 export function createServer(ctx: RunContext): McpServer {
   const server = new McpServer({ name: "ollama-intern-mcp", version: VERSION });
@@ -482,6 +483,15 @@ export function createServer(ctx: RunContext): McpServer {
     "DRILL. Zoom into ONE hypothesis from an existing incident_pack artifact. No re-running triage + brief. Pass `artifact_slug` (from ollama_artifact_list), `hypothesis_index` (0-based into that artifact's root_cause_hypotheses), optional `extra_artifact_dirs[]`. Server loads the artifact, extracts the targeted hypothesis + its linked evidence, and runs a Deep-tier focused sub-brief. Returns `{parent_artifact_slug, drilled_hypothesis:{statement, confidence, evidence_cited:[{id, preview}], supporting_reasoning, ruled_out_reasons?}, other_hypotheses_summary:[{index, summary}], weak}`. Invalid index → HYPOTHESIS_INDEX_INVALID with the valid range. Non-incident or missing slug → ARTIFACT_NOT_FOUND with a next-step hint.",
     hypothesisDrillSchema.shape,
     (args, extra) => wrap(() => handleHypothesisDrill(args, ctx), "ollama_hypothesis_drill", extra),
+  );
+
+  // Cross-family verification — the verify muscle for external orchestrators
+  // (role-os EXTERNAL_VERIFIER, advisor-loop cross-checks). CLOUD tool.
+  server.tool(
+    "ollama_verify_claims",
+    "VERIFY. Adjudicate claims with a cross-family Ollama Cloud flagship panel — the counterpart to ollama_code_review (which GENERATES findings; this ADJUDICATES them). CLOUD-REQUIRED: refuses with CLOUD_NOT_CONFIGURED unless OLLAMA_API_KEY is set; the juror calls are the only egress, and claims + source_paths + reference ARE sent to Ollama Cloud. Pass `claims:[{id, statement}]` (1-20, unique ids, falsifiable statements; extra fields like the author's reasoning are REJECTED by schema — jurors judge evidence, not arguments), optional `source_paths[]` (server-loaded shared evidence), optional `reference` (ground truth — test/lint/measured output; supply it whenever you have it, it sharply raises juror reliability), optional `panel[]` (default is a 3-model disjoint-family flagship trio: deepseek-v4-pro:cloud / kimi-k2.7-code:cloud / glm-5.2:cloud; cloud ids rotate server-side — re-check ollama.com/search?c=cloud when a juror 404s), optional `min_refute_votes` (default 2). Aggregation is lone-dissent-never-decides: REFUTED needs >=min_refute_votes refutes, CONFIRMED needs >=2 confirms, else NEEDS_REVIEW. A juror served by local fallback or whose served model mismatches the request is EXCLUDED from the vote and flagged in result.panel — never silently counted. Returns `{claims:[{id, statement, verdict, confidence, refute_votes, confirm_votes, uncertain_votes, jurors:[{model, verdict, severity, rationale}]}], panel:[{model, served_model, included, exclude_reason?, verdicts_returned}], summary, min_refute_votes, weak}`. HONEST CEILING: a CONFIRMED on frontier-model-authored claims is weak evidence, not proof — the panel reliably flags gross errors and is weaker on a strong generator's subtle ones; `confidence` reflects juror agreement, and `weak:true` means fewer than 2 jurors served.",
+    verifyClaimsSchema.shape,
+    (args, extra) => wrap(() => handleVerifyClaims(args, ctx), "ollama_verify_claims", extra),
   );
 
   // Last resort — chat

@@ -8,7 +8,7 @@ sidebar:
 Local 8B models are the hardware bottleneck most people hit. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so you can route the heavy tools to a far stronger model and free up local VRAM — while keeping local as an always-on fallback.
 
 :::caution[Opt-in, off by default]
-The package stays **local-first with zero network egress** unless you set **both** `OLLAMA_CLOUD_PRIMARY=1` and `OLLAMA_API_KEY`. Anyone who doesn't opt in is unaffected. Embeddings **always** stay local.
+With no key set, the package stays **local-first with zero network egress** — anyone who doesn't opt in is unaffected. Setting **both** `OLLAMA_CLOUD_PRIMARY=1` and `OLLAMA_API_KEY` enables **cloud-primary**; setting **only** `OLLAMA_API_KEY` arms **[standby](#cloud-standby--per-call-escalation)** (still local-primary, still zero egress, until a call explicitly escalates). Embeddings **always** stay local.
 :::
 
 ## Enable it
@@ -66,22 +66,39 @@ Every [envelope](./envelope-and-tiers/) reports which backend served the call:
 ollama_log_tail --filter_kind backend_fallback
 ```
 
-`ollama-intern-mcp doctor` shows a **Cloud (primary)** block with reachability + auth status. Note: cloud `/api/tags` lists public models without gating on the key, so doctor reports `auth: unverified (checked on first call)` until a real call validates the key (a bad key then trips the sticky breaker).
+`ollama-intern-mcp doctor` shows a **Cloud (primary | standby)** block with the mode, reachability, and auth status. Note: cloud `/api/tags` lists public models without gating on the key, so doctor reports `auth: unverified (checked on first call)` until a real call validates the key (a bad key then trips the sticky breaker).
+
+## Cloud standby & per-call escalation
+
+*(v2.9)* Cloud-primary is all-or-nothing: every generative call tries cloud first. **Standby** is the per-call middle ground, grounded in the routing literature (per-invocation decisions beat static per-tool policy — RouteLLM):
+
+1. Set **only** `OLLAMA_API_KEY` (leave `OLLAMA_CLOUD_PRIMARY` unset).
+2. Everything runs local, exactly as before — the server doesn't even probe the cloud host at startup, so a globally-exported key never causes boot-time egress.
+3. A single call escalates by passing `backend: "cloud"` — exposed on [`ollama_chat`](./tools/chat/), and used internally by [`ollama_verify_claims`](./tools/verify-claims/) for its juror calls.
+
+Escalated calls get the full cloud machinery: breaker gating, local fallback with an honest `degrade_reason`, envelope `backend` provenance, and the cloud `num_ctx` cap. The **first** escalation in a standby process prints a loud stderr disclosure naming the host and writes a `cloud_egress` NDJSON event — egress is disclosed **at the point it happens**, not just on this page.
+
+Mechanically enforced rules:
+
+- **No key →** `backend: "cloud"` fails with `CLOUD_NOT_CONFIGURED`. Never silently served local while claiming escalation.
+- **Standby + no directive →** local, zero egress.
+- **Cloud-primary + `backend: "local"` →** pins that one call local (the inverse escape hatch, e.g. for a privacy-sensitive call).
+- **Per-call `model` + cloud →** the override is the model actually sent to cloud (it used to be clobbered by the tier map), so per-call flagship selection works — the mechanism `verify_claims` builds its panel on.
 
 ## Env vars
 
 | Var | Default | Purpose |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The opt-in switch.** `1`/`true`/`yes`/`on` enables cloud-primary. Unset = local-only, zero egress. |
-| `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. **Required** when cloud is enabled (fail-fast at startup if missing). |
+| `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The cloud-primary switch.** `1`/`true`/`yes`/`on` routes the generative tiers to cloud. Unset with a key = **standby** (local-primary, per-call escalation only). Unset without a key = local-only, zero egress. |
+| `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. Setting it alone arms **standby**; **required** when `OLLAMA_CLOUD_PRIMARY` is enabled (fail-fast at startup if missing). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Cloud base host. |
-| `INTERN_CLOUD_MODEL` | `minimax-m3:cloud` | Cloud model for instant + workhorse + deep. |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Cloud model for instant + workhorse + deep. Keep the default **non-thinking** — a thinking model here burns short-output `num_predict` budgets on CoT and returns empty replies; put big reasoners on the deep override below. |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Optional deep-tier-only override, e.g. `deepseek-v3.1:671b`. |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000` / `120000` / `300000` | Per-tier cloud-attempt timeouts. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Context-window cap for cloud calls (cloud bills by GPU-time; the cap controls cost). |
 
 :::note[Model availability changes]
-Ollama periodically retires cloud models. `minimax-m3:cloud`, `deepseek-v3.1:671b`, `gpt-oss:120b`, and `qwen3-coder:480b` are current picks; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id.
+Ollama rotates/retires cloud ids server-side. As of 2026-07, `qwen3-coder-next:cloud` (non-thinking default) and the thinking flagships `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` are current; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id. A retired id degrades visibly (`cloud_model_missing`), never silently.
 :::
 
 ## Latency vs quality
