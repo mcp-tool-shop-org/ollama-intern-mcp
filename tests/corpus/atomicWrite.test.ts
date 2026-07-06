@@ -172,9 +172,11 @@ describe("atomicWriteFile — concurrent writes (F-003, contract pin)", () => {
       payloads.map((p) => atomicWriteFile(path, p)),
     );
 
-    // Both calls MUST settle (neither hangs forever). One may reject
-    // if the .tmp collision surfaces an EPERM/EBUSY rename on Windows;
-    // the load-bearing guarantee is "no hang", not "both succeed".
+    // Both calls MUST settle (neither hangs forever). H6-res salted the tmp
+    // name so the shared-`${path}.tmp` rename-ENOENT no longer happens, but a
+    // reject is still tolerated: two concurrent renames to the SAME TARGET can
+    // surface an OS-level EPERM/EBUSY on Windows independent of the tmp. The
+    // load-bearing, salt-guaranteed contract is asserted below: no TORN bytes.
     expect(results).toHaveLength(2);
     for (const r of results) {
       expect(["fulfilled", "rejected"]).toContain(r.status);

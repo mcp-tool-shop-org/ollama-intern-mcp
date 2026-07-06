@@ -20,7 +20,7 @@
  *      leave at most a stray (unlisted, harmless) `.md`, never a `.json`
  *      that points at a missing or torn `.md`.
  */
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, open } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicWriteFile } from "../../corpus/atomicWrite.js";
 
@@ -50,23 +50,46 @@ export async function resolveUniqueArtifactPaths(
   artifactDir: string,
   baseSlug: string,
 ): Promise<ArtifactPaths> {
+  await mkdir(artifactDir, { recursive: true });
   const candidate = (slug: string): ArtifactPaths => ({
     slug,
     mdPath: join(artifactDir, `${slug}.md`),
     jsonPath: join(artifactDir, `${slug}.json`),
   });
-  const isFree = async (c: ArtifactPaths): Promise<boolean> =>
-    !(await pathExists(c.mdPath)) && !(await pathExists(c.jsonPath));
+  // H6-res: RESERVE the slug atomically instead of the old check-then-act
+  // (access() now, a separate write later) which let two genuinely-concurrent
+  // same-slug runs both see the slug free and clobber. Exclusive-create ('wx')
+  // of the `.md` IS the atomic claim: the loser gets EEXIST and uniquifies. The
+  // empty reservation is overwritten by writeArtifactPair's atomic `.md` write;
+  // a reservation left by an aborted run is an unlisted, harmless `.md` (scan
+  // enumerates `.json`). We also skip any slug whose `.json` already exists (a
+  // prior COMPLETE artifact) so a finished pair is never reserved over.
+  const tryReserve = async (c: ArtifactPaths): Promise<boolean> => {
+    if (await pathExists(c.jsonPath)) return false;
+    try {
+      const fh = await open(c.mdPath, "wx"); // exclusive create — throws EEXIST if taken
+      await fh.close();
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw err;
+    }
+  };
 
   let c = candidate(baseSlug);
-  if (await isFree(c)) return c;
+  if (await tryReserve(c)) return c;
   for (let n = 2; n <= 999; n++) {
     c = candidate(`${baseSlug}-${n}`);
-    if (await isFree(c)) return c;
+    if (await tryReserve(c)) return c;
   }
-  // Pathological: ~1000 same-slug artifacts already exist. Use a unique
-  // millisecond suffix instead of overwriting or looping forever.
-  return candidate(`${baseSlug}-${Date.now()}`);
+  // Pathological: ~1000 same-slug artifacts already exist. A millisecond suffix
+  // — still exclusive-create so even this fallback never clobbers a live pair.
+  c = candidate(`${baseSlug}-${Date.now()}`);
+  if (await tryReserve(c)) return c;
+  // Astronomically unlikely double-collision on the ms suffix — return it and
+  // let writeArtifactPair's atomic (salted-tmp, torn-free) write land, rather
+  // than loop forever.
+  return c;
 }
 
 /**

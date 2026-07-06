@@ -51,6 +51,42 @@ describe("resolveUniqueArtifactPaths (H6)", () => {
     const r = await resolveUniqueArtifactPaths(dir, "s");
     expect(r.slug).toBe("s-4");
   });
+
+  it("two genuinely-concurrent resolves for the same slug get DIFFERENT slugs (H6-res)", async () => {
+    // The old check-then-act (access() then, later, write) let two concurrent
+    // runs both see the base slug free and clobber. The exclusive-create
+    // reservation makes the claim atomic: one wins the base slug, the other
+    // gets EEXIST and uniquifies.
+    const [a, b] = await Promise.all([
+      resolveUniqueArtifactPaths(dir, "concurrent"),
+      resolveUniqueArtifactPaths(dir, "concurrent"),
+    ]);
+    expect(a.slug).not.toBe(b.slug);
+    expect(new Set([a.slug, b.slug])).toEqual(new Set(["concurrent", "concurrent-2"]));
+  });
+});
+
+describe("writeArtifactPair — concurrency (H6-res)", () => {
+  it("two concurrent same-title pack writes both survive on disk — neither clobbers", async () => {
+    const run = async (): Promise<string> => {
+      const p = await resolveUniqueArtifactPaths(dir, "boom");
+      await writeArtifactPair(
+        dir,
+        p.mdPath,
+        `# ${p.slug}`,
+        p.jsonPath,
+        JSON.stringify({ pack: "incident_pack", slug: p.slug }),
+      );
+      return p.slug;
+    };
+    const [s1, s2] = await Promise.all([run(), run()]);
+    expect(s1).not.toBe(s2);
+    // Both complete artifact pairs exist — one uniquified, neither clobbered.
+    const jsons = (await readdir(dir)).filter((e) => e.endsWith(".json")).sort();
+    expect(jsons).toEqual(["boom-2.json", "boom.json"].sort());
+    // No leftover reservation / tmp cruft.
+    expect((await readdir(dir)).some((e) => e.endsWith(".tmp"))).toBe(false);
+  });
 });
 
 describe("writeArtifactPair (H6)", () => {
