@@ -256,6 +256,24 @@ interface JurorVote {
   rationale: string;
 }
 
+/**
+ * Fence-tolerant juror JSON parse. Observed live (first dogfood jury,
+ * 2026-07-06): glm-5.2 (both think modes) and kimi-k2.7 (think:false) wrap
+ * their JSON in markdown fences even with `format:"json"` — Ollama Cloud
+ * doesn't grammar-enforce those models the way it does deepseek. The
+ * verdicts inside were valid; a bare JSON.parse discarded them and silently
+ * thinned the panel to 1/3. Layered: try the raw parse first (deepseek's
+ * shape, and the common case), then extract the first fenced block and
+ * retry. Still never throws — a genuinely garbled response stays {}.
+ */
+function parseJurorJson(raw: string): Record<string, unknown> {
+  const direct = parseJsonObject(raw);
+  if (Object.keys(direct).length > 0) return direct;
+  const fence = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
+  if (fence) return parseJsonObject(fence[1]);
+  return {};
+}
+
 function isJurorVerdict(v: unknown): v is JurorVerdict {
   return typeof v === "string" && (JUROR_VERDICTS as readonly string[]).includes(v);
 }
@@ -483,7 +501,7 @@ export async function handleVerifyClaims(
               num_predict: 3000,
             },
           }),
-          parse: (raw) => coerceJurorVerdicts(parseJsonObject(raw), validIds),
+          parse: (raw) => coerceJurorVerdicts(parseJurorJson(raw), validIds),
         });
         return { model: jurorModel, env };
       } catch (error) {
@@ -608,5 +626,6 @@ export const __internal = {
   coerceJurorVerdicts,
   aggregateClaim,
   buildJurorPrompt,
+  parseJurorJson,
   CONFIRM_VOTES_REQUIRED,
 };

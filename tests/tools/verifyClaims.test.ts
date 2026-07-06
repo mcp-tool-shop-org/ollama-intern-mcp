@@ -342,6 +342,29 @@ describe("verify_claims — malformed juror output (invariant e)", () => {
     expect(env.result.weak).toBe(false); // 2 jurors is still a quorum
   });
 
+  it("juror JSON wrapped in markdown fences is parsed, not discarded (glm-5.2 / kimi-k2.7 cloud shape, observed live 2026-07-06)", async () => {
+    // Live finding from the first dogfood jury: glm-5.2 (both think modes)
+    // and kimi-k2.7 (think:false) fence their JSON even with format:"json"
+    // — Ollama Cloud doesn't grammar-enforce those models the way it does
+    // deepseek. The verdicts were valid; only the parse discarded them.
+    const fenced = "```json\n" + jurorJson([{ id: "c1" }, { id: "c2" }]) + "\n```";
+    const { ctx } = makeVerifyCtx({ claimIds: ["c1", "c2"], script: { [GLM]: fenced } });
+    const env = await handleVerifyClaims({ claims: CLAIMS_2 }, ctx);
+    const seat = env.result.panel.find((p) => p.model === GLM)!;
+    expect(seat.included).toBe(true);
+    expect(seat.verdicts_returned).toBe(2);
+    // All three jurors count again — unanimous 3-confirm, high confidence.
+    expect(env.result.claims[0].confirm_votes).toBe(3);
+    expect(env.result.claims[0].confidence).toBe("high");
+  });
+
+  it("a bare-fence wrap (no json language tag) also parses", async () => {
+    const fenced = "```\n" + jurorJson([{ id: "c1" }, { id: "c2" }]) + "\n```";
+    const { ctx } = makeVerifyCtx({ claimIds: ["c1", "c2"], script: { [KIMI]: fenced } });
+    const env = await handleVerifyClaims({ claims: CLAIMS_2 }, ctx);
+    expect(env.result.panel.find((p) => p.model === KIMI)!.included).toBe(true);
+  });
+
   it("malformed ENTRIES are dropped per-entry: unknown id, bad verdict, missing rationale", async () => {
     const { ctx } = makeVerifyCtx({
       claimIds: ["c1", "c2"],
