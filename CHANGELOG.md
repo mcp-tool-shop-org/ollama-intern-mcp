@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.0] — 2026-07-06
+
+Minor — a **reliability, durability, and security hardening pass** (dogfood swarm: 25 findings, every fix landed test-first with a regression test proving the invariant, then independently cross-family-verified). Local-first behavior is unchanged and **no public tool contract was removed** — existing callers keep working. The headline fixes close two silent-data-loss / correctness classes and a security-doc overclaim; the rest harden concurrency, cloud resilience, and observability honesty.
+
+### Security
+
+- **`ollama_batch_proof_check` now really contains the process-execution surface it claimed to.** A custom `cwd` must be contained in a caller-declared `allowed_roots` (validated before any child spawns), `allowed_roots` are schema-enforced absolute, and the exact absolute path validated is the one passed to spawn. A new **operator env cap `INTERN_BATCH_PROOF_ALLOWED_ROOTS`** bounds the exec surface that a caller cannot widen — and it gates the default `process.cwd()` too, not just a caller-supplied cwd. SECURITY.md #8/#10 were reconciled to describe what the code actually does (the previous text over-claimed a containment that did not exist).
+- **Prompt-injection sanitizer coverage + honest ceiling.** The `triage_logs` pattern sanitizer gained the regression tests it lacked; `classify` and `research` now strip the same structural-injection vectors (code fences, CR/LF, over-length) from user-supplied prompt fields before any model call; `classify` additionally output-shape-gates its reply against the label menu (an off-list label now abstains instead of being echoed). SECURITY.md documents the ceiling honestly: the guard stops *structural* injection, not *plaintext* social-engineering of the local model.
+- **Protected-path write guard is case-insensitive on macOS too** (was Windows-only), so a cased path like `Memory/notes.md` can no longer bypass the `memory/` / `canon/` / `.claude/` confirm-write gate on a case-insensitive volume. Linux stays case-sensitive.
+- **Dependency audit surface is fully clear (0 vulnerabilities).** The transitive alerts (via `@modelcontextprotocol/sdk`) were pinned to patched in-range versions with npm `overrides` — no major bumps. The vulnerable paths were HTTP-middleware unreachable from a stdio server, but the surface is cleared regardless.
+
+### Fixed
+
+- **Corpus refresh no longer deletes indexed content on a transient read error.** Previously *any* failure to read a manifest path during `ollama_corpus_refresh` (a Windows file lock, an antivirus hold, an editor's atomic-save window) was classified "missing" and the path — and its chunks — were **permanently deleted** from the corpus and manifest. Now only a genuinely-absent file (ENOENT) is deleted; a transient read error keeps the path, records it for `retry_failed`, and carries its existing chunks forward. **This closes a silent, durable data-loss class.**
+- **Tier timeouts can now cancel a call still queued for a concurrency permit.** A tier-budget timeout that fired while a call was waiting on the internal semaphore couldn't dequeue it — the call hung far past its advertised budget (up to a full deep-tier drain) while receipts reported the timeout fired on schedule. The semaphore wait is now abort-aware, and a timed-out waiter no longer consumes a permit.
+- **`ollama_chat` routes through the timeout/tier seam.** It previously bypassed routing entirely: never reached cloud in cloud-primary mode, carried no backend provenance, and had no application timeout despite its schema claiming one — a single wedged local generation could stall every tool. It now passes a tier-bounded abort signal + tier (the same fix applied to the `corpus_search` explain sub-calls and the embedding rail).
+- **Cloud resilience:** a cloud-model `404` (a retired/typo'd model id) now falls back to local with a distinct `cloud_model_missing` degrade reason and a cloud-specific hint (never "run `ollama pull`") instead of a total outage; the circuit breaker can no longer wedge permanently in half-open on a deterministic probe failure; a persistently-retired model enters a short auto-expiring cooldown instead of paying a cloud round-trip on every call; and a per-call `tier_budget_ms_override` in cloud mode no longer starves the local fallback or trips the breaker from operator config.
+- **Pack artifacts are written atomically and never silently clobber.** Same-minute same-title runs (a retry after a timed-out response) reserve a unique slug atomically instead of check-then-act, the `.md`/`.json` pair is written atomically with the `.json` as the commit marker, and the reservation is reserve-or-throw (never returns an unclaimed slug even in the pathological corner).
+- **Corpus integrity:** the interrupted-write detector now catches a torn write on *any* mutation (not just the first index) via a two-phase `completed_at` marker, with a v1-migration sentinel that stops a false-positive warning on legacy manifests; chunk IDs fold in a path digest so two different files with identical content no longer collide and shadow each other in search; a re-index with changed chunk parameters actually re-chunks unchanged files instead of stamping new geometry over old chunking; and `ollama_artifact_prune` only deletes files that parse as real pack artifacts (a hand-parked JSON/MD pair in the artifact dir now survives).
+- **`loadSources` caps file size before reading** (mirroring the indexer's 50 MB cap) with a distinct `SOURCE_FILE_TOO_LARGE` error, instead of buffering a multi-hundred-MB log into memory and surfacing a misleading "path not found."
+- **Model-name validation no longer rejects legitimate bare version ids** like `glm-5` at startup.
+
+### Changed
+
+- **Degraded batch envelopes report the tier actually used.** A batch that fell back (e.g. workhorse→instant) previously reported `tier_used` equal to `fallback_from` while `model` named the fallback tier — a self-contradictory receipt that mislabeled quality attribution. `tier_used` now names a tier actually used to serve the items.
+- **`corpus_index` / `corpus_amend` re-enforce their cross-field validation** (`chunk_overlap < chunk_chars`) in the handler — the top-level `.refine()` was silently dropped by the transport-layer registration, so an invalid geometry was accepted and recorded into the persistent manifest.
+
+### Docs & CI
+
+- The GHCR docker image is no longer pushed unless the npm verify + tag-vs-`package.json` guard passed for the same commit (the docker job was previously ungated); a CI job now exercises the committed lockfile with `npm ci` (it was regenerated on every prior CI leg, so a lockfile desync went green in CI and red only at tag time); and the release workflow's `needs`-gate is now itself lint-tested.
+- Test-suite honesty: the malformed-args golden test proves input-schema validation actually ran (not just that the handler errored later), the fsync-before-rename durability contract is a runtime observation rather than a source grep, and the degraded-batch model assertion is non-vacuous.
+- The tool count (42) was corrected everywhere it drifted to 41, `ollama_code_review` gained its handbook page, and the ROADMAP's stale "Now" section was refreshed.
+
 ## [2.7.2] — 2026-06-09
 
 Patch — CodeQL alert cleanup. No API or behavior changes. Hardens the lone remaining HIGH alert (a polynomial-ReDoS regex) and sweeps the 14 outstanding `js/unused-local-variable` quality alerts, leaving the code-scanning surface fully clear (0 open alerts of any severity).

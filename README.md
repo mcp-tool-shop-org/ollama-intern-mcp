@@ -27,6 +27,18 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 
 ---
 
+## New in v2.8.0
+
+**Reliability, durability, and security hardening — 25 fixes, every one test-first and cross-family-verified.** Local-first behavior is unchanged and no tool contract was removed; existing callers keep working. The load-bearing wins:
+
+- **No more silent corpus data-loss.** A transient read error during `ollama_corpus_refresh` (a Windows file lock, an antivirus hold, an editor's save window) used to classify the file "missing" and **permanently delete its indexed content**. Now only a genuinely-absent file is dropped; a transient error keeps the path, flags it for retry, and preserves its chunks.
+- **Concurrency that honors its budgets.** A tier timeout can now cancel a call still queued for a permit (it used to hang far past budget while receipts claimed otherwise), and `ollama_chat` finally routes through the timeout/tier seam — so one wedged local generation can't stall every tool, and it actually reaches cloud in cloud-primary mode.
+- **Cloud that degrades instead of dying.** A retired cloud-model id now falls back to local with a clear `cloud_model_missing` reason and a cloud-specific hint instead of a total outage; the circuit breaker can't wedge permanently; a persistently-missing model stops paying a cloud round-trip on every call.
+- **Security surface that matches its docs.** `ollama_batch_proof_check` now really enforces cwd containment (with a new operator env cap `INTERN_BATCH_PROOF_ALLOWED_ROOTS` a caller can't widen), the prompt-injection sanitizers gained coverage + an honestly-disclosed ceiling, and the protected-path guard is case-insensitive on macOS too.
+- **Honest artifacts & receipts.** Pack writes are atomic and never silently clobber; degraded batch envelopes report the tier actually used; the interrupted-write detector catches torn writes on any mutation; chunk IDs no longer collide across identical-content files. Dependency audit is fully clear (0 vulnerabilities).
+
+Full detail in [CHANGELOG.md](./CHANGELOG.md).
+
 ## New in v2.7.0
 
 **Optional Ollama Cloud routing — cloud-primary, local-fallback.** Opt in with a key + a flag and the generative tiers route to a 600B-class cloud model; embeddings stay local; a circuit breaker falls back to your local profile on any cloud failure. **Off by default — zero egress unless you set both `OLLAMA_API_KEY` and `OLLAMA_CLOUD_PRIMARY=1`.** Additive minor — pre-v2.7.0 callers (and anyone not opting in) see byte-identical behavior. See [Ollama Cloud (optional)](#ollama-cloud-optional).
