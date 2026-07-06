@@ -27,7 +27,7 @@ import { callEvent } from "../observability.js";
 import { resolveTier } from "../tiers.js";
 import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import { loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "../corpus/storage.js";
-import { loadManifest, saveManifest, assertSafePath } from "../corpus/manifest.js";
+import { loadManifest, saveManifest, clearCompletedMarker, assertSafePath } from "../corpus/manifest.js";
 import { withCorpusLock } from "../corpus/lock.js";
 import { mintChunkId } from "../corpus/indexer.js";
 import { chunkDocument, type ChunkOptions } from "../corpus/chunker.js";
@@ -253,6 +253,11 @@ export async function handleCorpusAmend(
       },
       indexed_at: new Date().toISOString(),
     };
+    // M5 two-phase marker (phase 1): clear completed_at BEFORE overwriting the
+    // corpus so a crash between this saveCorpus and the saveManifest below is
+    // detected as a torn write (write_complete:false), not hidden behind the
+    // prior run's still-valid marker. The saveManifest below restores it.
+    await clearCompletedMarker(input.corpus);
     await saveCorpus(updatedCorpus);
 
     // Manifest bookkeeping:
@@ -282,6 +287,10 @@ export async function handleCorpusAmend(
       ],
       embed_model_resolved: embedModelResolved ?? manifest.embed_model_resolved ?? null,
       updated_at: amendedAt,
+      // M5 two-phase marker (phase 2): re-stamp completed_at fresh — this amend
+      // IS a completed corpus write, and clearCompletedMarker removed the prior
+      // marker before saveCorpus above.
+      completed_at: amendedAt,
     };
     await saveManifest(updatedManifest);
 

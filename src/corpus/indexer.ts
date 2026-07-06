@@ -24,7 +24,7 @@ import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
-import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, type CorpusManifest, assertSafePath } from "./manifest.js";
+import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, clearCompletedMarker, type CorpusManifest, assertSafePath } from "./manifest.js";
 import { withCorpusLock } from "./lock.js";
 import { InternError } from "../errors.js";
 import { embedWithTimeout } from "../guardrails/embedTimeout.js";
@@ -443,6 +443,12 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     chunks: allChunks,
   };
 
+  // M5 two-phase marker (phase 1): clear the prior manifest's completed_at
+  // BEFORE overwriting the corpus, so a crash between this saveCorpus and the
+  // final saveManifest below is DETECTED as a torn write (write_complete:false)
+  // instead of hiding behind the last clean run's still-valid marker. No-op on
+  // a first index. The final saveManifest (with completed_at) restores it.
+  await clearCompletedMarker(params.name);
   await saveCorpus(corpus);
 
   // Within-refresh drift: more than one distinct resolved tag across the
