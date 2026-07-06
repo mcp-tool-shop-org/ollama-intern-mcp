@@ -110,6 +110,30 @@ jobs:
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
 
+  lockfile-sync:
+    # M14: every OTHER install in CI regenerates the lockfile
+    # (rm -f package-lock.json && npm install) to sidestep the npm optional-deps
+    # platform bug — so the COMMITTED package-lock.json that release.yml:72 and
+    # the Dockerfile `npm ci` against is exercised by ZERO pre-tag gates. A
+    # package.json/lockfile desync then goes green in CI and red at tag time on
+    # an already-pushed immutable tag. This cheap ubuntu leg runs the SAME
+    # `npm ci` those release artifacts use, so a desync turns CI red BEFORE a tag
+    # exists. --ignore-scripts keeps it fast (the verify matrix covers build/test);
+    # npm ci checks package.json/lockfile sync before it would run any script.
+    name: Lockfile in sync (npm ci)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: npm ci against the committed lockfile (fails on desync)
+        run: npm ci --ignore-scripts
+
   docker-build:
     # H8: the release docker job now `needs: npm`, so a broken Dockerfile would
     # otherwise surface only AFTER npm already published. Prove the release

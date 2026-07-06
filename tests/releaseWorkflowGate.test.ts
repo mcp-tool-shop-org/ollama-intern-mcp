@@ -50,3 +50,18 @@ describe("release.yml — GHCR push is gated on the npm verify job (H8-res)", ()
     ).toMatch(/^\s*needs:\s*(?:npm\b|\[[^\]]*\bnpm\b[^\]]*\])/m);
   });
 });
+
+describe("ci.yml — the committed lockfile is gated by an npm ci job (M14)", () => {
+  it("some CI job runs `npm ci` against the committed lockfile", async () => {
+    const src = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+    // Every other install regenerates the lockfile (rm -f package-lock.json &&
+    // npm install), so the committed lockfile that release.yml + the Dockerfile
+    // `npm ci` against would be gated nowhere pre-tag without this leg. Require a
+    // real `run: npm ci` step (line-anchored so a comment mentioning "npm ci"
+    // can't false-match).
+    expect(
+      src,
+      "ci.yml must run `npm ci` in some job so a package.json/lockfile desync fails CI before a tag",
+    ).toMatch(/^\s*run:\s*npm ci\b/m);
+  });
+});
