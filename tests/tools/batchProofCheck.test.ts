@@ -8,10 +8,12 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
+import { resolve, isAbsolute } from "node:path";
 import {
   handleBatchProofCheck,
   __setSpawner,
   assertSafeFilePath,
+  batchProofCheckSchema,
   type SpawnOutcome,
 } from "../../src/tools/batchProofCheck.js";
 import { InternError } from "../../src/errors.js";
@@ -293,5 +295,92 @@ describe("ollama_batch_proof_check — cwd containment (H7)", () => {
     __setSpawner(async () => fakeOk());
     const env = await handleBatchProofCheck({ checks: ["eslint"] }, makeCtx());
     expect(env.result.all_passed).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// H7-res: (1) the validated cwd (resolve(input.cwd)) must be the SAME cwd
+// handed to spawn — the original relative string would be re-resolved against
+// process.cwd() at spawn time. (2) allowed_roots must be schema-absolute.
+// (3) an OPTIONAL operator env cap bounds the exec surface regardless of what a
+// (prompt-injectable) caller declares.
+// ═══════════════════════════════════════════════════════════════
+describe("ollama_batch_proof_check — cwd hardening (H7-res)", () => {
+  it("spawns with the RESOLVED absolute cwd, byte-identical to the validated one", async () => {
+    let spawnedCwd: string | undefined;
+    __setSpawner(async (_cmd, _args, opts) => {
+      spawnedCwd = opts.cwd;
+      return fakeOk();
+    });
+    const root = process.cwd();
+    await handleBatchProofCheck(
+      { checks: ["eslint"], cwd: ".", allowed_roots: [root] },
+      makeCtx(),
+    );
+    // The spawner must receive resolve("."), NOT the relative "." the OS would
+    // re-resolve at spawn time (validated cwd === spawned cwd).
+    expect(spawnedCwd).toBe(resolve("."));
+    expect(isAbsolute(spawnedCwd!)).toBe(true);
+  });
+
+  it("schema rejects a relative allowed_roots entry (must be absolute)", () => {
+    const bad = batchProofCheckSchema.safeParse({
+      checks: ["eslint"],
+      cwd: resolve("x"),
+      allowed_roots: ["relative/root"],
+    });
+    expect(bad.success).toBe(false);
+    const good = batchProofCheckSchema.safeParse({
+      checks: ["eslint"],
+      cwd: resolve("x"),
+      allowed_roots: [resolve("abs/root")],
+    });
+    expect(good.success).toBe(true);
+  });
+
+  it("the operator env cap refuses a caller-permitted cwd outside it, spawning NO child", async () => {
+    const orig = process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+    let spawned = false;
+    __setSpawner(async () => {
+      spawned = true;
+      return fakeOk();
+    });
+    try {
+      // Operator restricts to one root; a prompt-injected caller declares its
+      // OWN root + a cwd inside THAT — inside the caller's roots but OUTSIDE the
+      // operator's. The operator cap must win.
+      process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = resolve("operator-only");
+      await expect(
+        handleBatchProofCheck(
+          {
+            checks: ["eslint"],
+            cwd: resolve("caller-root"),
+            allowed_roots: [resolve("caller-root")],
+          },
+          makeCtx(),
+        ),
+      ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+      expect(spawned).toBe(false);
+    } finally {
+      if (orig === undefined) delete process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+      else process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = orig;
+    }
+  });
+
+  it("the operator env cap allows a cwd inside it", async () => {
+    const orig = process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+    __setSpawner(async () => fakeOk());
+    try {
+      const root = process.cwd();
+      process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = root;
+      const env = await handleBatchProofCheck(
+        { checks: ["eslint"], cwd: root, allowed_roots: [root] },
+        makeCtx(),
+      );
+      expect(env.result.checks[0].status).toBe("pass");
+    } finally {
+      if (orig === undefined) delete process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+      else process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS = orig;
+    }
   });
 });

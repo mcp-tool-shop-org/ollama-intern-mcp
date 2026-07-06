@@ -79,11 +79,31 @@ function isContained(child: string, root: string): boolean {
 }
 
 /**
+ * H7-res: OPTIONAL operator-declared exec-surface cap. Caller-declared
+ * allowed_roots is self-satisfiable — a prompt-injected caller can declare any
+ * root and a matching cwd. When the operator sets INTERN_BATCH_PROOF_ALLOWED_ROOTS
+ * (mirroring INTERN_CORPUS_ALLOWED_ROOTS), the cwd must ALSO be contained in an
+ * operator root, so a caller cannot widen the surface. Returns null (no cap)
+ * when unset — caller-declared roots govern, preserving prior behavior.
+ */
+function operatorAllowedRoots(): string[] | null {
+  const raw = process.env.INTERN_BATCH_PROOF_ALLOWED_ROOTS;
+  if (!raw) return null;
+  const sep = process.platform === "win32" ? ";" : ":";
+  const roots = raw
+    .split(sep)
+    .map((r) => r.trim())
+    .filter(Boolean);
+  return roots.length > 0 ? roots : null;
+}
+
+/**
  * H7: refuse a caller-supplied cwd that isn't contained in a caller-declared
  * allowed_root. batch_proof_check shells out to eslint/pytest/etc., which
  * execute config + plugins FROM the cwd — an undeclared cwd is an
  * arbitrary-code-execution surface. Throws SCHEMA_INVALID (before any child
- * is spawned) when allowed_roots is missing/empty or the cwd escapes.
+ * is spawned) when allowed_roots is missing/empty or the cwd escapes. H7-res:
+ * ALSO enforce the operator env cap (a caller can't widen it).
  */
 function assertCwdContained(cwd: string, allowedRoots: string[] | undefined): void {
   if (!allowedRoots || allowedRoots.length === 0) {
@@ -99,6 +119,16 @@ function assertCwdContained(cwd: string, allowedRoots: string[] | undefined): vo
       "SCHEMA_INVALID",
       `batch_proof_check: cwd is not contained in any allowed_roots: ${cwd}`,
       `Allowed roots: ${allowedRoots.join(", ")}. Add the cwd's parent to allowed_roots, or pick a cwd inside a declared root.`,
+      false,
+    );
+  }
+  // H7-res: the operator cap wins over the (self-satisfiable) caller roots.
+  const opRoots = operatorAllowedRoots();
+  if (opRoots && !opRoots.some((root) => isContained(cwd, root))) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `batch_proof_check: cwd is outside the operator-declared INTERN_BATCH_PROOF_ALLOWED_ROOTS: ${cwd}`,
+      `The operator restricted proof runs to: ${opRoots.join(", ")}. A caller's allowed_roots cannot widen this — pick a cwd inside an operator-allowed root, or ask the operator to adjust INTERN_BATCH_PROOF_ALLOWED_ROOTS.`,
       false,
     );
   }
@@ -122,10 +152,17 @@ export const batchProofCheckSchema = z.object({
     .optional()
     .describe("Working directory for the spawned CLIs. Default: process.cwd(). When set, must be contained in allowed_roots."),
   allowed_roots: z
-    .array(z.string().min(1))
+    .array(
+      z
+        .string()
+        .min(1)
+        .refine((p) => isAbsolute(p), {
+          message: "allowed_roots entries must be absolute paths (a relative root is a moving target)",
+        }),
+    )
     .optional()
     .describe(
-      "Absolute directories a custom `cwd` may launch from. REQUIRED when `cwd` is set — the proof run executes tool config (eslint.config.js, plugins, pytest conftest) FROM the cwd, so an undeclared cwd is a code-execution surface. Omit both to run in the server's own working directory.",
+      "Absolute directories a custom `cwd` may launch from. REQUIRED when `cwd` is set — the proof run executes tool config (eslint.config.js, plugins, pytest conftest) FROM the cwd, so an undeclared cwd is a code-execution surface. Entries must be absolute. Omit both to run in the server's own working directory.",
     ),
   timeout_ms: z
     .number()
@@ -374,10 +411,14 @@ export async function handleBatchProofCheck(
   // plugins, pytest conftest) FROM the cwd, so an undeclared cwd is an
   // arbitrary-code-execution surface (SECURITY.md #8). Validate BEFORE
   // spawning any child. Omitting cwd uses the server's own trusted cwd.
+  // H7-res: resolve the cwd ONCE and use the same absolute value for both the
+  // containment check and spawn. A relative input.cwd would otherwise be
+  // re-resolved against process.cwd() at spawn time — so the path validated
+  // wouldn't be byte-identical to the path the child actually launches from.
+  const cwd = input.cwd !== undefined ? resolve(input.cwd) : process.cwd();
   if (input.cwd !== undefined) {
-    assertCwdContained(resolve(input.cwd), input.allowed_roots);
+    assertCwdContained(cwd, input.allowed_roots);
   }
-  const cwd = input.cwd ?? process.cwd();
   const timeoutMs = input.timeout_ms ?? 60_000;
 
   // Pre-validate every file path BEFORE building argv. defaultSpawner runs
