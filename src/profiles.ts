@@ -16,6 +16,8 @@
  *
  * Per-tier env vars (INTERN_TIER_INSTANT, etc.) still override a profile's
  * model picks, so one-off experiments don't require a new profile.
+ * INTERN_PREWARM=off disables the startup prewarm on any profile — the
+ * seat-as-needed mode for GPUs shared with training / rendering.
  *
  * The retired `dev-rtx5080-llama` profile (Llama 3.1 on Deep) was dropped
  * at v2.0.0 — Llama 3.1 8B is obsolete, and the parity-rail experiment ran
@@ -49,6 +51,10 @@ export interface Profile {
    * poison early product feel. NOT a blanket "make everything hot" knob —
    * Workhorse and Deep are deliberately excluded so VRAM pressure and
    * unintended residency churn don't start mattering.
+   *
+   * The warm is a bounded window (PREWARM_KEEP_ALIVE in prewarm.ts), not a
+   * permanent VRAM pin, and INTERN_PREWARM=off empties this list at load
+   * time (resolvePrewarm) for operators whose GPU is shared with other work.
    */
   prewarm: Tier[];
 }
@@ -149,6 +155,7 @@ function isProfileName(x: string | undefined): x is ProfileName {
  * ladder and bury the signal in late tier-timeout errors.
  *
  * Per-tier env vars (INTERN_TIER_INSTANT, etc.) override the profile's picks.
+ * INTERN_PREWARM=off disables the startup prewarm (see resolvePrewarm).
  * Profile.timeouts are not env-overridable — they are a hardware property,
  * not a one-off tuning knob.
  */
@@ -196,7 +203,45 @@ export function loadProfile(env: NodeJS.ProcessEnv = process.env): Profile {
     // propagate to ctx.tiers.num_ctx for runner.ts / batch.ts to resolve.
     ...(base.tiers.num_ctx !== undefined ? { num_ctx: base.tiers.num_ctx } : {}),
   };
-  return { name, description: base.description, tiers, timeouts: base.timeouts, prewarm: base.prewarm };
+  return {
+    name,
+    description: base.description,
+    tiers,
+    timeouts: base.timeouts,
+    prewarm: resolvePrewarm(env, base),
+  };
+}
+
+/** INTERN_PREWARM values that disable the startup prewarm entirely. */
+const PREWARM_OFF = new Set(["off", "0", "false", "no", "none"]);
+/** INTERN_PREWARM values that explicitly keep the profile's default. */
+const PREWARM_ON = new Set(["on", "1", "true", "yes"]);
+
+/**
+ * Resolve the effective prewarm list. INTERN_PREWARM is an OFF-switch over
+ * the profile's default, not a tier selector:
+ *   - `off|0|false|no|none` → no startup warm at all. Pure load-on-demand:
+ *     the model enters VRAM on first use and idles out on Ollama's own
+ *     keep_alive default. This is the right mode for a GPU shared with
+ *     training / rendering, where even a bounded startup warm is unwanted.
+ *   - `on|1|true|yes` / unset / empty → the profile's declared default.
+ *     Truthy forms cannot force prewarm onto a profile that declares none
+ *     (m5-max) — which tiers warm is profile policy, not an env knob.
+ *   - anything else → CONFIG_INVALID, synchronously at startup. A silently
+ *     ignored `INTERN_PREWARM=instant` would leave the operator believing
+ *     they'd tuned something (FT-002 fail-fast rationale).
+ */
+function resolvePrewarm(env: NodeJS.ProcessEnv, base: Profile): Tier[] {
+  const raw = (env.INTERN_PREWARM ?? "").trim().toLowerCase();
+  if (raw === "") return base.prewarm;
+  if (PREWARM_OFF.has(raw)) return [];
+  if (PREWARM_ON.has(raw)) return base.prewarm;
+  throw new InternError(
+    "CONFIG_INVALID",
+    `Invalid INTERN_PREWARM value '${raw}'`,
+    "INTERN_PREWARM is an on/off switch: off|0|false|no|none disables the startup prewarm, on|1|true|yes (or unset) keeps the profile default. Which tiers warm is profile policy, not an env knob.",
+    false,
+  );
 }
 
 /**

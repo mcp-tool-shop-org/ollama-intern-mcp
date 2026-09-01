@@ -80,3 +80,9 @@ Env vars beat profile picks for one-off swaps:
 | `INTERN_TIER_WORKHORSE` | `hermes3:8b` |
 | `INTERN_TIER_DEEP` | `hermes3:8b` |
 | `INTERN_EMBED_MODEL` | `nomic-embed-text` |
+
+## Startup prewarm
+
+Dev profiles warm the Instant model at server startup so the first call is never cold. The warm is **bounded** — `keep_alive: "10m"`, not a permanent pin — and after any real call, Ollama's own idle eviction (default 5 minutes after the last request) governs residency. `m5-max` prewarms nothing (cold load on unified memory is ~free).
+
+On a GPU shared with training or rendering, set `INTERN_PREWARM=off` (also accepts `0`/`false`/`no`/`none`) to skip the startup warm entirely: models load on first use and idle out on their own. Truthy values keep the profile default — the knob is an off-switch, and cannot force prewarm onto a profile that declares none. Unknown values fail fast at startup with `CONFIG_INVALID`.

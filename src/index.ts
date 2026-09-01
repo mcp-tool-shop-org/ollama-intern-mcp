@@ -704,10 +704,12 @@ async function main(): Promise<void> {
     }
   }
 
-  // Profile-policy prewarm: pulls Instant tier into VRAM on dev profiles
+  // Profile-policy prewarm: warms the Instant tier into VRAM on dev profiles
   // before connecting transport, so the first real Claude call doesn't eat
-  // cold-load latency. Failures are logged but never throw — server startup
-  // must not depend on Ollama being reachable.
+  // cold-load latency. The warm is a bounded window (PREWARM_KEEP_ALIVE),
+  // and INTERN_PREWARM=off empties profile.prewarm for shared-GPU rigs.
+  // Failures are logged but never throw — server startup must not depend
+  // on Ollama being reachable.
   // Prewarm warms the LOCAL fallback model into VRAM — never cloud (cloud has
   // no residency and keep_alive is meaningless there). Pass the local client
   // explicitly so prewarm bypasses the routing layer in cloud-primary mode.

@@ -179,7 +179,7 @@ Ollama unloaded your tier model to make room for another, or VRAM pressure force
 
 1. `ollama ps` — confirm the model isn't resident.
 2. Lower `OLLAMA_MAX_LOADED_MODELS` so the tier model stays pinned.
-3. Set `OLLAMA_KEEP_ALIVE=-1` so it doesn't idle out.
+3. Raise `OLLAMA_KEEP_ALIVE` (e.g. `30m`) so it doesn't idle out mid-burst. `-1` pins every touched model in VRAM until Ollama restarts — reserve that for a box dedicated to Ollama.
 4. Restart Ollama if the residency probe keeps reporting stale state.
 
 ### `size_vram_bytes < size_bytes`

@@ -79,8 +79,9 @@ The default `dev-rtx5080` profile collapses all three work tiers (Instant / Work
 ollama pull hermes3:8b
 ollama pull nomic-embed-text
 export OLLAMA_MAX_LOADED_MODELS=2
-export OLLAMA_KEEP_ALIVE=-1
 ```
+
+On the dev profiles the server prewarms the Instant model at startup with a bounded 10-minute `keep_alive`, so the first call is never cold; after that, Ollama's own idle eviction governs. If the GPU is shared with training or rendering, set `INTERN_PREWARM=off` in the server's `env` block to skip the startup warm entirely — models then load on first use and idle out on their own.
 
 Four tiers, top to bottom:
 

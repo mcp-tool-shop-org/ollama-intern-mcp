@@ -56,13 +56,9 @@ The JSON Schema below is generated from the same zod schema the server validates
             }
           },
           "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           }
         },

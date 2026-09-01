@@ -402,7 +402,6 @@ mcp_servers:
 ollama pull hermes3:8b
 ollama pull nomic-embed-text
 export OLLAMA_MAX_LOADED_MODELS=2
-export OLLAMA_KEEP_ALIVE=-1
 ```
 
 **Qwen 3 alternate rail (same hardware, for Qwen tooling):**
@@ -424,6 +423,8 @@ export INTERN_PROFILE=m5-max
 ```
 
 Per-tier env vars (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) still override profile picks for one-offs.
+
+**Residency.** On the dev profiles the server prewarms the Instant model at startup with a **bounded** `keep_alive` (10 minutes) so the first call is never cold; after any real call, Ollama's own idle eviction (default 5 minutes after the last request) governs. Set `INTERN_PREWARM=off` to skip the startup warm entirely — the right mode when the GPU is shared with training or rendering: models load on first use and idle out on their own. Raising `OLLAMA_KEEP_ALIVE` is for boxes dedicated to Ollama; `-1` pins every touched model in VRAM until the server restarts.
 
 ---
 

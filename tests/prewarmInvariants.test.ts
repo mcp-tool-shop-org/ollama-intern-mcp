@@ -3,14 +3,14 @@
  *
  * Covers:
  * - prewarm ONLY touches declared tiers (Workhorse + Deep stay untouched)
- * - prewarm uses keep_alive=-1 (model stays resident, not evicted after call)
+ * - prewarm uses a BOUNDED keep_alive (warm window — never the permanent -1 pin)
  * - prewarm uses minimal generate (num_predict=1), doesn't burn tokens
  * - residency snapshot after successful prewarm reflects in_vram=true
  * - multiple prewarm tiers fire in the declared order
  */
 
 import { describe, it, expect } from "vitest";
-import { runPrewarm } from "../src/prewarm.js";
+import { runPrewarm, PREWARM_KEEP_ALIVE } from "../src/prewarm.js";
 import { PROFILES } from "../src/profiles.js";
 import { NullLogger } from "../src/observability.js";
 import type {
@@ -85,11 +85,16 @@ describe("prewarm policy matrix", () => {
 });
 
 describe("prewarm request shape", () => {
-  it("every prewarm call sends keep_alive=-1 (model stays resident)", async () => {
+  it("every prewarm call sends a bounded keep_alive — never the permanent -1 pin", async () => {
     const client = new OrderedMock();
     const ctx = ctxFor("dev-rtx5080", client);
     await runPrewarm(ctx, ["instant"]);
-    expect(client.generateKeepAlive).toEqual([-1]);
+    expect(client.generateKeepAlive).toEqual([PREWARM_KEEP_ALIVE]);
+    // Regression guard: keep_alive -1 permanently parked the Instant model
+    // (~6 GB for hermes3:8b) in VRAM on shared-GPU rigs — every MCP session
+    // that connected re-pinned it, even sessions that never called a tool.
+    expect(client.generateKeepAlive).not.toContain(-1);
+    expect(PREWARM_KEEP_ALIVE).not.toBe(-1);
   });
 
   it("every prewarm call sends num_predict=1 (minimal token burn)", async () => {
