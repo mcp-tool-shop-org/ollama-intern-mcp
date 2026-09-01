@@ -139,6 +139,55 @@ describe("profiles", () => {
     expect(loadProfile({}).prewarm).toEqual(PROFILES[DEFAULT_PROFILE].prewarm);
   });
 
+  // ── INTERN_PREWARM off-switch ────────────────────────────────────
+  //
+  // Operational driver: prewarm's old keep_alive=-1 permanently parked
+  // hermes3:8b on shared-GPU rigs. The bounded window (prewarm.ts) fixes
+  // the pin; this knob lets a shared-GPU operator skip the startup warm
+  // entirely — the model loads on first use and idles out on its own.
+
+  it("INTERN_PREWARM=off disables prewarm on any profile (seat-as-needed mode)", () => {
+    expect(loadProfile({ INTERN_PREWARM: "off" }).prewarm).toEqual([]);
+    expect(
+      loadProfile({ INTERN_PROFILE: "dev-rtx5080-qwen3", INTERN_PREWARM: "off" }).prewarm,
+    ).toEqual([]);
+  });
+
+  it("INTERN_PREWARM accepts every documented off-form (0/false/no/none, case-insensitive)", () => {
+    for (const v of ["0", "false", "no", "none", "OFF", " Off "]) {
+      expect(loadProfile({ INTERN_PREWARM: v }).prewarm).toEqual([]);
+    }
+  });
+
+  it("truthy INTERN_PREWARM keeps the profile default — it cannot force prewarm onto m5-max", () => {
+    for (const v of ["on", "1", "true", "yes"]) {
+      expect(loadProfile({ INTERN_PREWARM: v }).prewarm).toEqual(
+        PROFILES[DEFAULT_PROFILE].prewarm,
+      );
+      // Which tiers warm is profile policy — m5-max declares none, and a
+      // truthy switch must not conjure a prewarm the profile never asked for.
+      expect(loadProfile({ INTERN_PROFILE: "m5-max", INTERN_PREWARM: v }).prewarm).toEqual([]);
+    }
+  });
+
+  it("unset/empty INTERN_PREWARM keeps the profile default (no behavior change)", () => {
+    expect(loadProfile({}).prewarm).toEqual(PROFILES[DEFAULT_PROFILE].prewarm);
+    expect(loadProfile({ INTERN_PREWARM: "" }).prewarm).toEqual(PROFILES[DEFAULT_PROFILE].prewarm);
+  });
+
+  it("unknown INTERN_PREWARM values throw CONFIG_INVALID (fail-fast, not silently ignored)", () => {
+    let caught: unknown;
+    try {
+      loadProfile({ INTERN_PREWARM: "instant" });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(InternError);
+    const err = caught as InternError;
+    expect(err.code).toBe("CONFIG_INVALID");
+    expect(err.hint).toContain("off|0|false|no|none");
+  });
+
   // ── Per-tier num_ctx (v2.4.0) ────────────────────────────────────
   //
   // Operational driver: hermes3:8b at 32K context on RTX 5080 16GB VRAM

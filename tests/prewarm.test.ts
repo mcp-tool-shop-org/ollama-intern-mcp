@@ -57,7 +57,7 @@ describe("runPrewarm", () => {
     expect(successes).toBe(1);
     expect(client.generates).toHaveLength(1);
     expect(client.generates[0].model).toBe(PROFILES["dev-rtx5080"].tiers.instant);
-    expect(client.generates[0].keep_alive).toBe(-1);
+    expect(client.generates[0].keep_alive).toBe("10m");
     const events = ctx.logger.events.filter((e) => e.kind === "prewarm");
     expect(events).toHaveLength(1);
     const e = events[0] as Extract<typeof events[number], { kind: "prewarm" }>;

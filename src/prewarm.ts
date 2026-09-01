@@ -4,8 +4,12 @@
  *
  * Behavior is profile policy, not magic:
  *   - dev-rtx5080:        prewarm = ["instant"]
- *   - dev-rtx5080-llama:  prewarm = ["instant"]
+ *   - dev-rtx5080-qwen3:  prewarm = ["instant"]
  *   - m5-max:             prewarm = []  (cold-load on unified memory is ~free)
+ *   - INTERN_PREWARM=off  empties the list on any profile (profiles.ts) —
+ *     pure load-on-demand for GPUs shared with training / rendering.
+ *
+ * Residency is BOUNDED (PREWARM_KEEP_ALIVE below), never a permanent pin.
  *
  * Each prewarm attempt logs a {kind: "prewarm", ...} NDJSON event with
  * model, success/failure, elapsed_ms, and residency. That keeps benchmarks
@@ -29,6 +33,21 @@ import { timestamp } from "./observability.js";
  */
 const PREWARM_TIMEOUT_FLOOR_MS = 60_000;
 
+/**
+ * Residency window for the prewarm generate. Bounded on purpose: prewarm
+ * exists to kill cold-load on the FIRST call after startup, and 10 minutes
+ * covers the session-start → first-intern-call gap. After any real call,
+ * Ollama's own rolling idle eviction (default 5m after the last request,
+ * OLLAMA_KEEP_ALIVE-tunable) governs residency.
+ *
+ * This was `-1` (resident forever) through v2.9.1 — which meant every MCP
+ * session that connected on a dev profile permanently parked the Instant
+ * model (~6 GB for hermes3:8b + KV cache) in VRAM, even sessions that never
+ * called a single tool, starving co-resident GPU work (training, ComfyUI).
+ * A warm-window aid must not be a parking brake.
+ */
+export const PREWARM_KEEP_ALIVE = "10m";
+
 /** Per-tier prewarm timeout: max(floor, 2× the tier's runtime timeout). */
 function prewarmTimeoutForTier(ctx: RunContext, tier: Tier): number {
   const tierTimeout = ctx.timeouts[tier] ?? 0;
@@ -43,8 +62,8 @@ export { prewarmTimeoutForTier };
  * runPrewarm and cleared when it resolves. A tool call that arrives during
  * this window is what the Stage C humanization cares about: the first real
  * request after startup is slow because it serializes behind prewarm on
- * Ollama's side (keep_alive=-1 + single GPU), and the operator reading the
- * log needs to see that reason instead of blaming the tool.
+ * Ollama's side (single GPU, one load at a time), and the operator reading
+ * the log needs to see that reason instead of blaming the tool.
  */
 let prewarmInProgress = false;
 
@@ -66,8 +85,9 @@ export function notePrewarmInProgressRequest(logger: Logger, tool: string): void
 
 /**
  * Run prewarm for the given tiers. Each tier issues a minimal generate
- * (`prompt: "ok", num_predict: 1`) with `keep_alive: -1` so the model
- * stays resident afterwards.
+ * (`prompt: "ok", num_predict: 1`) with the bounded `PREWARM_KEEP_ALIVE`
+ * window so the model is warm for the first real call without being
+ * pinned in VRAM indefinitely.
  *
  * Returns the count of successful prewarms; never throws.
  */
@@ -97,7 +117,7 @@ export async function runPrewarm(ctx: RunContext, tiers: Tier[]): Promise<number
             temperature: 0,
             ...(numCtx !== undefined ? { num_ctx: numCtx } : {}),
           },
-          keep_alive: -1,
+          keep_alive: PREWARM_KEEP_ALIVE,
         },
         controller.signal,
         // F-004 — tag the call with the tier being prewarmed so any

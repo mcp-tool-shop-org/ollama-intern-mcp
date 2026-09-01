@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Prewarm no longer pins the model in VRAM forever.** The startup prewarm sent `keep_alive: -1`, so every MCP session that connected on a dev profile parked the Instant model (default `hermes3:8b`, ~6 GB with KV cache) in VRAM permanently — even sessions that never called a single tool — starving co-resident GPU work (training, rendering). Prewarm now uses a bounded `keep_alive: "10m"` (`PREWARM_KEEP_ALIVE`): the first-call warm window the feature was built for, after which Ollama's normal idle eviction (default 5m after the last real call) governs residency. Runtime tool calls never set `keep_alive`, so post-first-call behavior is unchanged.
+- **Docs stop recommending `export OLLAMA_KEEP_ALIVE=-1` as default setup.** README + handbook now give bounded guidance with an explicit caveat: `-1` pins every touched model until the Ollama server restarts, and belongs only on a box dedicated to Ollama.
+
+### Added
+
+- **`INTERN_PREWARM` off-switch.** `INTERN_PREWARM=off` (also `0|false|no|none`, case-insensitive) skips the startup prewarm entirely — pure load-on-demand for GPUs shared with training/rendering. Unset or truthy (`on|1|true|yes`) keeps the profile default; truthy cannot force prewarm onto a profile that declares none (m5-max). Unknown values fail fast at startup with `CONFIG_INVALID` (FT-002 rationale: a silently ignored knob is worse than a loud one).
+
 ## [2.9.1] — 2026-07-06
 
 Patch — the v2.9.0 fast-follows: verify-lane observability, handbook coverage, and repo hygiene. No public tool contract changed; local-first behavior is byte-identical.
