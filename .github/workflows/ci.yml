@@ -48,15 +48,27 @@ jobs:
     # Cross-OS matrix. Stage A surfaced Windows-specific bugs in the
     # primitives (shell-injection vector in batchProofCheck, path-with-spaces
     # handling in compileCheck, case-insensitivity bypass in protectedPaths)
-    # that Linux-only CI would never catch. macOS is in the matrix because
-    # the M5 Max profile is a documented first-class target. fail-fast: false
-    # ensures one OS's flake doesn't mask another OS's real failure. Cost:
-    # this triples (or quadruples, when both Node majors hit) the minutes the
-    # verify job burns — that is the price of platform parity.
+    # that Linux-only CI would never catch. fail-fast: false ensures one OS's
+    # flake doesn't mask another OS's real failure.
+    #
+    # macOS REMOVED 2026-09-07 under the studio Actions rule ("never
+    # macos-latest unless explicitly requested"), and this is the one removal
+    # in the sweep that overrode a STATED rationale, so the reasoning is
+    # recorded rather than the cell just deleted. The old comment justified the
+    # cell with "the M5 Max profile is a documented first-class target" -- true,
+    # and unchanged. What the cell could not do is verify it: a hosted
+    # macos-latest runner is not an M5 Max, and every bug the matrix has
+    # actually caught was Windows-specific (the three named above). Measured on
+    # September org billing, macOS bills at ~10x Linux per minute and this
+    # repo's 12 macOS minutes cost more gross than its 21 Windows minutes.
+    # The 6-cell matrix is now 4, inside the studio job cap with room to spare.
+    #
+    # If macOS parity needs a real gate, the M5 Max itself is the runner that
+    # would prove it -- not a hosted cell that shares only the OS name.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         node: ["20", "22"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
