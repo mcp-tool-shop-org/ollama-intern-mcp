@@ -9,6 +9,8 @@
  * context-saving thesis.
  */
 
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { loadProfile } from "../dist/profiles.js";
 import { HttpOllamaClient } from "../dist/ollama.js";
 import { NdjsonLogger } from "../dist/observability.js";
@@ -51,7 +53,11 @@ async function run(name, p) {
 }
 
 // ── SUMMARIZE_DEEP via source_paths (5 calls) ──────────────
-const memDir = "C:/Users/mikey/.claude/projects/F--AI/memory";
+// Derived from the running user's home directory, not hardcoded. This was an
+// absolute path containing a username: it resolved on exactly one machine, and
+// it put that username in a public repo. Override with OLLAMA_INTERN_MEMORY_DIR.
+const memDir = process.env.OLLAMA_INTERN_MEMORY_DIR
+  ?? join(homedir(), ".claude", "projects", "F--AI", "memory");
 
 await run(
   "sd1 — saints-mile-build-constitution.md, focus=opening arc milestones",

@@ -7,6 +7,7 @@
  * 4. Search the corpus with 3 real queries that should map to known files
  */
 
+import { homedir } from "node:os";
 import { loadProfile } from "../dist/profiles.js";
 import { HttpOllamaClient } from "../dist/ollama.js";
 import { NdjsonLogger } from "../dist/observability.js";
@@ -26,7 +27,11 @@ const ctx = {
   logger: new NdjsonLogger(),
 };
 
-const MEM = "C:/Users/mikey/.claude/projects/F--AI/memory";
+// Derived from the running user's home directory, not hardcoded. This was an
+// absolute path containing a username: it resolved on exactly one machine, and
+// it put that username in a public repo. Override with OLLAMA_INTERN_MEMORY_DIR.
+const MEM = process.env.OLLAMA_INTERN_MEMORY_DIR
+  ?? join(homedir(), ".claude", "projects", "F--AI", "memory");
 
 // Pick ~15 .md files from memory/ spanning different topics — not ALL of them
 // (that'd take too long for a smoke). Enough to prove the plumbing and that

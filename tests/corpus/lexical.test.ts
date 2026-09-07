@@ -51,9 +51,9 @@ describe("tokenize", () => {
   });
 
   it("tokenizePath splits dirs/dots/dashes/underscores", () => {
-    const tokens = tokenizePath("C:/Users/mikey/memory/foo_bar-baz.md");
+    const tokens = tokenizePath("C:/Users/Public/memory/foo_bar-baz.md");
     expect(tokens).toContain("users");
-    expect(tokens).toContain("mikey");
+    expect(tokens).toContain("public");
     expect(tokens).toContain("memory");
     expect(tokens).toContain("foo");
     expect(tokens).toContain("bar");
