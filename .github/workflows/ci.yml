@@ -104,11 +104,17 @@ jobs:
             v20.*|v22.*) echo "ok" ;;
             *) echo "::error::Unsupported Node version: $NODE_V (want v20.x or v22.x)"; exit 1 ;;
           esac
-      - name: Install (regenerate lockfile for runner platform)
+      # Was `rm -f package-lock.json && npm install`. That deleted the committed
+      # lockfile and re-resolved from scratch, so CI never actually validated the
+      # tree this repo ships -- and on npm 11 (bundled with newer Node 22 images)
+      # the fresh resolve crashed arborist outright:
+      #   npm error Cannot read properties of null (reading 'edgesOut')
+      # The workaround predates lockfiles recording cross-platform optional deps.
+      # This one already does: 27 entries across android/darwin/freebsd/linux/
+      # win32, so `npm ci` installs the right binaries on every runner.
+      - name: Install (npm ci, from the committed lockfile)
         shell: bash
-        run: |
-          rm -f package-lock.json
-          npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
@@ -132,10 +138,9 @@ jobs:
             v20.*|v22.*) echo "ok" ;;
             *) echo "::error::Unsupported Node version: $NODE_V (want v20.x or v22.x)"; exit 1 ;;
           esac
-      - name: Install (regenerate lockfile for runner platform)
-        run: |
-          rm -f package-lock.json
-          npm install --no-audit --no-fund
+      # See the note on the verify job's install step: `npm ci`, not a re-resolve.
+      - name: Install (npm ci, from the committed lockfile)
+        run: npm ci --no-audit --no-fund
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
 
@@ -217,10 +222,9 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-      - name: Install (regenerate lockfile for runner platform)
-        run: |
-          rm -f package-lock.json
-          npm install --no-audit --no-fund
+      # See the note on the verify job's install step: `npm ci`, not a re-resolve.
+      - name: Install (npm ci, from the committed lockfile)
+        run: npm ci --no-audit --no-fund
       - name: Build
         run: npm run build
       - name: "Cloud doctor probe (reachable: yes)"
