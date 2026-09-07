@@ -1,3 +1,14 @@
+# --- Measured CI cost (dogfood-swarm SKILL item 8) --------------------------
+# 11 billable min per push across 8 jobs (3.7 min actual wall time),
+# measured 2026-09-07 from run 34122815694. Most expensive jobs:
+#     4 min  verify (windows-latest, 20)  (1.2 min wall, x2 runner)
+#     2 min  verify (windows-latest, 22)  (0.7 min wall, x2 runner)
+#     1 min  audit  (0.2 min wall)
+# GitHub bills per JOB, rounded UP to the minute, x2 Windows / x10 macOS, so
+# billable minutes exceed wall time — many short jobs cost more than one long
+# one. This number is measured, never estimated; re-measure after any change:
+#   gh api repos/mcp-tool-shop-org/ollama-intern-mcp/actions/runs/<id>/jobs
+# ---------------------------------------------------------------------------
 name: CI
 
 on:
