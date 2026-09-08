@@ -105,11 +105,14 @@ jobs:
           node-version: "22"
           cache: "npm"
 
-      - name: Install
+      # 603394f moved every other install in this repo to `npm ci` after
+      # `rm -f package-lock.json && npm install` began dying on npm 11.x with
+      # "Cannot read properties of null (reading edgesOut)". This workflow was
+      # missed, so it kept the old pattern and stayed red on main while ci.yml
+      # went green -- and its paths filter meant no later push re-ran it.
+      - name: Install (npm ci, from the committed lockfile)
         shell: bash
-        run: |
-          rm -f package-lock.json
-          npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       # Several tests (cli.test.ts, mcpGolden.test.ts, mcp.integration.test.ts,
       # pack.test.ts) spawn or inspect dist/index.js + the packed tarball, so a
