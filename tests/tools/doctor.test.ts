@@ -100,6 +100,8 @@ describe("ollama_doctor", () => {
     expect(env.result.models.missing).toEqual([]);
     expect(env.result.models.loaded).toContain("hermes3:8b");
     expect(env.result.healthy).toBe(true);
+    expect(env.result.paths.log_path).toContain("log.ndjson");
+    expect(env.result.paths.log_over_stats_cap ?? false).toBe(false);
   });
 
   it("reports unhealthy when Ollama unreachable", async () => {

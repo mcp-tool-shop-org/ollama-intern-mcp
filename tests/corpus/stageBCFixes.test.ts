@@ -364,6 +364,17 @@ describe("Fix 5: completed_at marker", () => {
     const s = summaries.find((s) => s.name === "clean1");
     expect(s!.write_complete).toBe(true);
   });
+
+  it("corpus_list lists write_complete:false when the manifest sibling is SCHEMA_INVALID (F-32ff261f)", async () => {
+    const p = await writeSource("a.md", "alpha");
+    await indexCorpus({ name: "badman", paths: [p], model: MODEL, client: new Mock() });
+    const mPath = manifestPath("badman");
+    await writeFile(mPath, "{not-json", "utf8");
+    const summaries = await listCorpora();
+    const s = summaries.find((row) => row.name === "badman");
+    expect(s).toBeDefined();
+    expect(s!.write_complete).toBe(false);
+  });
 });
 
 // ── Fix 6: humanized hints (shape only) ────────────────────

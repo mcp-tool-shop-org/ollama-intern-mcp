@@ -178,6 +178,14 @@ describe("normalizePath / matchesProtectedPath / checkWriteConfirm — Win32 tra
     expectProtectedAndBlocked(".git./config");
   });
 
+  it("[win32] ADS ::$DATA / :stream and 8.3 ~N aliases are protected+blocked (F-586c4962)", () => {
+    stubPlatform("win32");
+    expectProtectedAndBlocked("SECURITY.md::$DATA");
+    expectProtectedAndBlocked("SECURITY.md:stream");
+    expectProtectedAndBlocked("SECURI~1.MD");
+    expectProtectedAndBlocked("MEMORY~1/x.md");
+  });
+
   it("[win32] trailing-dot and trailing-space aliases of every exact-file and directory rule", () => {
     stubPlatform("win32");
     expect(PROTECTED_PATHS.length).toBeGreaterThan(0);
