@@ -51,6 +51,8 @@ export async function handleArtifactExportToPath(
     target_path: input.target_path,
     allowed_roots: input.allowed_roots,
     overwrite: input.overwrite,
+    extra_artifact_dirs: extraDirs,
+    source_json_path: metadata.json_path,
   });
 
   const envelope = buildEnvelope<ExportResult>({

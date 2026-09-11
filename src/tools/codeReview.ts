@@ -37,7 +37,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
-import { loadSources, formatSourcesBlock } from "../sources.js";
+import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { parseModelJsonObject, readObjectArray, readString } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
 
@@ -198,6 +198,67 @@ function coerceFinding(entry: Record<string, unknown>): CodeReviewFinding | null
   return out;
 }
 
+function posixPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function pathsMatch(cited: string, allowed: string): boolean {
+  const a = posixPath(cited);
+  const b = posixPath(allowed);
+  if (a === b) return true;
+  return a.endsWith("/" + b) || b.endsWith("/" + a);
+}
+
+/** Collect `diff --git a/... b/...` (and +++ / ---) paths plus optional source_paths. */
+function reviewFileAllowlist(diffText: string, sourcePaths: string[] | undefined): Set<string> {
+  const set = new Set<string>();
+  const gitRe = /^diff --git a\/(.+?) b\/(.+)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = gitRe.exec(diffText)) !== null) {
+    if (m[1] && m[1] !== "/dev/null") set.add(m[1]);
+    if (m[2] && m[2] !== "/dev/null") set.add(m[2]);
+  }
+  const plusRe = /^\+\+\+ (?:b\/)?(.+)$/gm;
+  const minusRe = /^--- (?:a\/)?(.+)$/gm;
+  while ((m = plusRe.exec(diffText)) !== null) {
+    const p = m[1]?.trim();
+    if (p && p !== "/dev/null") set.add(p);
+  }
+  while ((m = minusRe.exec(diffText)) !== null) {
+    const p = m[1]?.trim();
+    if (p && p !== "/dev/null") set.add(p);
+  }
+  if (sourcePaths) {
+    for (const p of sourcePaths) set.add(p);
+  }
+  return set;
+}
+
+function fileInAllowlist(file: string, allow: Set<string>): boolean {
+  if (allow.has(file)) return true;
+  for (const a of allow) {
+    if (pathsMatch(file, a)) return true;
+  }
+  return false;
+}
+
+function lineCountsByPath(sources: LoadedSource[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const s of sources) {
+    m.set(s.path, s.body.split("\n").length);
+  }
+  return m;
+}
+
+function lineCountFor(file: string, counts: Map<string, number>): number | undefined {
+  const direct = counts.get(file);
+  if (direct !== undefined) return direct;
+  for (const [k, v] of counts) {
+    if (pathsMatch(file, k)) return v;
+  }
+  return undefined;
+}
+
 /**
  * Coerce the model's full output into a CodeReviewResult.
  *
@@ -215,7 +276,14 @@ function coerceFinding(entry: Record<string, unknown>): CodeReviewFinding | null
  */
 function coerceReview(
   data: unknown,
-  opts: { severityFloor: Severity; maxFindings: number; diffSize: number },
+  opts: {
+    severityFloor: Severity;
+    maxFindings: number;
+    diffSize: number;
+    allowedFiles?: Set<string>;
+    lineCounts?: Map<string, number>;
+    warnings?: string[];
+  },
 ): CodeReviewResult {
   // Tolerant top-level: model returned non-object / null / array →
   // empty result with the floor + cap honored. summary stays "" so
@@ -228,11 +296,28 @@ function coerceReview(
   const floorRank = SEVERITY_RANK[opts.severityFloor];
 
   const raw: CodeReviewFinding[] = [];
+  let strippedUnknownFile = 0;
   for (const entry of readObjectArray(obj, "findings")) {
     const coerced = coerceFinding(entry);
     if (coerced === null) continue;
     if (SEVERITY_RANK[coerced.severity] < floorRank) continue;
+    if (opts.allowedFiles && opts.allowedFiles.size > 0 && !fileInAllowlist(coerced.file, opts.allowedFiles)) {
+      strippedUnknownFile += 1;
+      continue;
+    }
+    if (opts.lineCounts && opts.lineCounts.size > 0 && coerced.line > 0) {
+      const maxLine = lineCountFor(coerced.file, opts.lineCounts);
+      if (maxLine !== undefined && coerced.line > maxLine) {
+        coerced.line = 0;
+      }
+    }
     raw.push(coerced);
+  }
+
+  if (strippedUnknownFile > 0 && opts.warnings) {
+    opts.warnings.push(
+      `Stripped ${strippedUnknownFile} finding(s) pointing at files not in the diff or source_paths. This is BY DESIGN — ollama_code_review refuses invented paths.`,
+    );
   }
 
   const findings = raw.slice(0, opts.maxFindings);
@@ -316,12 +401,17 @@ export async function handleCodeReview(
   // so the prompt builder stays pure and the loadSources call is
   // observable in stack traces.
   let sourceBody = "";
+  let loadedSources: LoadedSource[] = [];
   if (input.source_paths && input.source_paths.length > 0) {
-    const sources = await loadSources(input.source_paths, 60_000);
-    sourceBody = formatSourcesBlock(sources);
+    loadedSources = await loadSources(input.source_paths, 60_000);
+    sourceBody = formatSourcesBlock(loadedSources);
   }
 
-  return runTool<CodeReviewResult>({
+  const allowedFiles = reviewFileAllowlist(input.diff_text, input.source_paths);
+  const lineCounts = loadedSources.length > 0 ? lineCountsByPath(loadedSources) : undefined;
+  const warnings: string[] = [];
+
+  const envelope = await runTool<CodeReviewResult>({
     tool: "ollama_code_review",
     tier,
     ctx,
@@ -349,9 +439,20 @@ export async function handleCodeReview(
     }),
     parse: (raw): CodeReviewResult => {
       const o = parseModelJsonObject(raw);
-      return coerceReview(o, { severityFloor, maxFindings, diffSize });
+      return coerceReview(o, {
+        severityFloor,
+        maxFindings,
+        diffSize,
+        allowedFiles,
+        lineCounts,
+        warnings,
+      });
     },
   });
+  if (warnings.length > 0) {
+    envelope.warnings = [...(envelope.warnings ?? []), ...warnings];
+  }
+  return envelope;
 }
 
 // Internal exports for tests. Tests are the tests-agent's domain, but

@@ -107,13 +107,17 @@ describe("error hint quality", () => {
       byCode.get(h.code)!.push(h.hint);
     }
 
-    // OLLAMA_UNREACHABLE → mention OLLAMA_HOST or ollama serve
+    // OLLAMA_UNREACHABLE has two flavors: a reachability outage (point at
+    // OLLAMA_HOST / `ollama serve`) and a definitive 4xx refusal that keeps
+    // the same error code but must not claim Ollama is down.
     const unreach = byCode.get("OLLAMA_UNREACHABLE") ?? [];
     expect(unreach.length).toBeGreaterThan(0);
     for (const h of unreach) {
+      const outage = /OLLAMA_HOST|ollama serve/i.test(h);
+      const refused = /HTTP/.test(h) && /refus/i.test(h);
       expect(
-        /OLLAMA_HOST|ollama serve/i.test(h),
-        `OLLAMA_UNREACHABLE hint should mention OLLAMA_HOST or 'ollama serve' — got: ${h}`,
+        outage || refused,
+        `OLLAMA_UNREACHABLE hint should mention OLLAMA_HOST / 'ollama serve' or name an HTTP refusal — got: ${h}`,
       ).toBe(true);
     }
 

@@ -28,7 +28,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { runWithTimeoutAndFallback } from "../guardrails/timeouts.js";
-import { getRoutingInfo, type Backend } from "../routing.js";
+import { getRoutingInfo, type Backend, type DegradeReason } from "../routing.js";
 import { cloudMayServe } from "../profiles.js";
 import { countTokens } from "../ollama.js";
 import { InternError, toErrorShape, type ErrorShape } from "../errors.js";
@@ -208,7 +208,7 @@ async function runBatchInner<I extends BatchItem, R>(
   // the last backend + whether ANY item degraded, plus the last reason.
   let lastBackend: Backend | undefined;
   let anyDegraded = false;
-  let lastDegradeReason: string | undefined;
+  let lastDegradeReason: DegradeReason | undefined;
   let lastNumCtx: number | undefined;
   // M1: capture the actual tier + model of the FIRST item that fell back, so
   // the degraded batch envelope reports the tier actually used — not the

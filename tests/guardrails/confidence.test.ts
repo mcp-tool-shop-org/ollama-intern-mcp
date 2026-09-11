@@ -53,8 +53,9 @@ describe("applyConfidenceThreshold", () => {
   // ── Table-driven edge cases ──────────────────────────────────
   // Behaviors documented against the actual module contract:
   //   - Threshold comparison is strict `<` (boundary equality passes).
-  //   - Module is a pure passthrough for label/confidence — no clamping,
-  //     no validation. Callers upstream are responsible for shape.
+  //   - In-range confidence is preserved unchanged (no silent clamp of 0..1).
+  //   - Out-of-range / non-finite confidence (NaN, > 1) is fail-closed:
+  //     below_threshold true, label null when allow_none (Stage C default).
   //   - allow_none nulls the label only when below_threshold is true.
 
   describe("boundary confidence values (table-driven)", () => {
@@ -65,12 +66,14 @@ describe("applyConfidenceThreshold", () => {
       { name: "zero confidence with allow_none=true → null",            conf: 0.0, threshold: undefined, allow_none: true,  expectBelow: true,  expectLabel: null },
       { name: "zero confidence without allow_none → kept",              conf: 0.0, threshold: undefined, allow_none: false, expectBelow: true,  expectLabel: "x" },
       { name: "perfect 1.0 confidence → passes",                        conf: 1.0, threshold: undefined, allow_none: true,  expectBelow: false, expectLabel: "x" },
-      // Observable behavior for out-of-range values: no clamping, no
-      // rejection — the module is a passthrough. Documenting that so a
-      // future "silent clamp" change will break this test.
       { name: "negative confidence → treated as below, passthrough",    conf: -0.5, threshold: undefined, allow_none: true,  expectBelow: true, expectLabel: null },
-      { name: "confidence > 1 → treated as above, passthrough",         conf: 1.5, threshold: undefined, allow_none: true,  expectBelow: false, expectLabel: "x" },
-      { name: "NaN confidence → NaN < n is false → not below",          conf: NaN, threshold: undefined, allow_none: true,  expectBelow: false, expectLabel: "x" },
+      // F-bbbd6eaa: model-emitted NaN / >1 must fail-closed. Passthrough
+      // (NaN < n is false; 1.5 is above threshold) is NOT the API —
+      // Stage C strips weak labels, and a non-finite or out-of-range
+      // score is untrusted. Mutate applyConfidenceThreshold to treat
+      // NaN as `NaN < n` / >1 as above-threshold and these rows go RED.
+      { name: "confidence > 1 → fail-closed below_threshold, label null", conf: 1.5, threshold: undefined, allow_none: true,  expectBelow: true,  expectLabel: null },
+      { name: "NaN confidence → fail-closed below_threshold, label null",  conf: NaN, threshold: undefined, allow_none: true,  expectBelow: true,  expectLabel: null },
     ] as const;
 
     for (const c of cases) {

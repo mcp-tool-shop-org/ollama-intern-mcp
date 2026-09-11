@@ -55,6 +55,16 @@ import type { RunContext } from "../runContext.js";
 const SHELL_METACHARACTERS = /[&|;^"><`\r\n!%$]/;
 
 export function assertSafeFilePath(p: string, fieldName = "files"): void {
+  // Leading dashes are CLI flags, not operands — `--config=...` must not
+  // ride in the files[] slot even though hyphens mid-path are legitimate.
+  if (p.startsWith("-")) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `${fieldName}[]: path must not start with "-": ${p}`,
+      "Leading-dash entries are forwarded as CLI flags to eslint/pytest/ruff (e.g. --config=...). Pass a relative or absolute path that does not begin with a dash.",
+      false,
+    );
+  }
   const m = SHELL_METACHARACTERS.exec(p);
   if (m !== null) {
     throw new InternError(
@@ -140,6 +150,26 @@ function assertCwdWithinOperatorCap(cwd: string): void {
       "SCHEMA_INVALID",
       `batch_proof_check: cwd is outside the operator-declared INTERN_BATCH_PROOF_ALLOWED_ROOTS: ${cwd}`,
       `The operator restricted proof runs to: ${opRoots.join(", ")}. A caller cannot widen this — pick a cwd inside an operator-allowed root, or ask the operator to adjust INTERN_BATCH_PROOF_ALLOWED_ROOTS.`,
+      false,
+    );
+  }
+}
+
+/**
+ * files[] are appended onto eslint/pytest/ruff argv, so they must sit
+ * under the spawn cwd or a caller-declared allowed_root — same
+ * containment math as the cwd/export gates. Relative entries resolve
+ * against the spawn cwd (not process.cwd()), matching how the child
+ * will see them.
+ */
+function assertFileContained(p: string, cwd: string, allowedRoots: string[] | undefined): void {
+  const resolvedFile = isAbsolute(p) ? resolve(p) : resolve(cwd, p);
+  const roots = [cwd, ...(allowedRoots ?? [])];
+  if (!roots.some((root) => isContained(resolvedFile, root))) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `batch_proof_check: files[] path is not contained in cwd/allowed_roots: ${p}`,
+      `Resolved to ${resolvedFile}. Allowed roots: ${roots.join(", ")}. Pass a path inside the proof cwd or a declared allowed_root.`,
       false,
     );
   }
@@ -309,19 +339,19 @@ function specFor(check: BatchProofCheckInput["checks"][number], files: string[] 
     case "eslint":
       return {
         cmd: "npx",
-        args: files && files.length > 0 ? ["eslint", ...files] : ["eslint", "."],
+        args: files && files.length > 0 ? ["eslint", "--", ...files] : ["eslint", "."],
         acceptsFiles: true,
       };
     case "pytest":
       return {
         cmd: "pytest",
-        args: files && files.length > 0 ? [...files] : [],
+        args: files && files.length > 0 ? ["--", ...files] : [],
         acceptsFiles: true,
       };
     case "ruff":
       return {
         cmd: "ruff",
-        args: files && files.length > 0 ? ["check", ...files] : ["check", "."],
+        args: files && files.length > 0 ? ["check", "--", ...files] : ["check", "."],
         acceptsFiles: true,
       };
     case "cargo-check":
@@ -445,6 +475,7 @@ export async function handleBatchProofCheck(
   if (input.files) {
     for (const p of input.files) {
       assertSafeFilePath(p, "files");
+      assertFileContained(p, cwd, input.allowed_roots);
     }
   }
 

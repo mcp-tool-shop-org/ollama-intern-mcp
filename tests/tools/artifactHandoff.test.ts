@@ -393,6 +393,60 @@ describe("handleArtifactExportToPath — handoff move", () => {
       source_json_path: jsonPath,
     });
   });
+
+  async function writeRedirectedPack(markdownPath: string): Promise<void> {
+    const dir = join(tempRoot, "incident");
+    await mkdir(dir, { recursive: true });
+    const jsonPath = join(dir, "redir.json");
+    const siblingMd = join(dir, "redir.md");
+    await writeFile(siblingMd, "# sibling markdown — the only legal source\n", "utf8");
+    const payload = incidentArtifact();
+    const full = {
+      schema_version: 1,
+      pack: "incident_pack",
+      title: "redir",
+      slug: "redir",
+      generated_at: "2026-04-17T10:00:00Z",
+      hardware_profile: "dev-rtx5080",
+      ...payload,
+      artifact: { markdown_path: markdownPath, json_path: jsonPath },
+      steps: [],
+    };
+    await writeFile(jsonPath, JSON.stringify(full), "utf8");
+  }
+
+  // F-5f1f984e: prune already refuses a markdown_path that is not the
+  // scanned sibling .md; export must too. Deleting these assertions
+  // must fail CI — a redirect would otherwise leak an arbitrary readable
+  // file into the exported body.
+  it("refuses when artifact.markdown_path redirects to another file under the artifact dir lexical tree", async () => {
+    const decoy = join(tempRoot, "incident", "decoy.md");
+    await mkdir(join(tempRoot, "incident"), { recursive: true });
+    await writeFile(decoy, "# SECRETS from redirected markdown_path\n", "utf8");
+    await writeRedirectedPack(decoy);
+    const target = join(exportRoot, "leaked.md");
+    await expect(
+      handleArtifactExportToPath(
+        { pack: "incident_pack", slug: "redir", target_path: target, allowed_roots: [exportRoot] },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({ code: expect.stringMatching(/SCHEMA_INVALID|SOURCE_PATH_NOT_FOUND/) });
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it("refuses when artifact.markdown_path is an absolute path other than the scanned sibling", async () => {
+    const outside = join(exportRoot, "outside.md");
+    await writeFile(outside, "# absolute redirect away from sibling\n", "utf8");
+    await writeRedirectedPack(outside);
+    const target = join(exportRoot, "leaked-abs.md");
+    await expect(
+      handleArtifactExportToPath(
+        { pack: "incident_pack", slug: "redir", target_path: target, allowed_roots: [exportRoot] },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({ code: expect.stringMatching(/SCHEMA_INVALID|SOURCE_PATH_NOT_FOUND/) });
+    expect(existsSync(target)).toBe(false);
+  });
 });
 
 // ── incident_note_snippet ──────────────────────────────────

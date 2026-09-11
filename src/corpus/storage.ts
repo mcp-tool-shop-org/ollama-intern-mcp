@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
 import { loadManifest } from "./manifest.js";
 import { atomicWriteFile } from "./atomicWrite.js";
+import { withCorpusLock } from "./lock.js";
+import { canonicalCorpusKey, canonicalFsPath } from "./identity.js";
 
 export const CORPUS_SCHEMA_VERSION = 2;
 /**
@@ -99,7 +101,7 @@ export function corpusDir(): string {
 }
 
 export function corpusPath(name: string): string {
-  return join(corpusDir(), `${name}.json`);
+  return join(corpusDir(), `${canonicalCorpusKey(name)}.json`);
 }
 
 const NAME_RX = /^[a-zA-Z0-9_-]+$/;
@@ -120,7 +122,17 @@ export async function loadCorpus(name: string): Promise<CorpusFile | null> {
   const path = corpusPath(name);
   if (!existsSync(path)) return null;
   const raw = await readFile(path, "utf8");
-  const parsed = JSON.parse(raw) as Partial<CorpusFile> & { schema_version?: number };
+  let parsed: Partial<CorpusFile> & { schema_version?: number };
+  try {
+    parsed = JSON.parse(raw) as Partial<CorpusFile> & { schema_version?: number };
+  } catch {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" is not valid JSON. File: ${path}`,
+      `Re-index to rewrite: ollama_corpus_index({ name: "${name}", paths: [<your source paths>] }). The file is corrupt or truncated.`,
+      false,
+    );
+  }
   const found = parsed.schema_version;
   if (found !== CORPUS_SCHEMA_VERSION) {
     throw new InternError(
@@ -145,8 +157,40 @@ export async function loadCorpus(name: string): Promise<CorpusFile | null> {
   return parsed as CorpusFile;
 }
 
+/**
+ * On win32, refuse a second corpus name that casefolds onto an existing
+ * file whose stored `name` uses different spelling (Notes vs notes).
+ */
+export function rejectWin32NameAlias(name: string, path: string): void {
+  if (process.platform !== "win32") return;
+  if (!existsSync(path)) return;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { name?: string };
+    if (
+      typeof parsed.name === "string" &&
+      parsed.name !== name &&
+      canonicalCorpusKey(parsed.name) === canonicalCorpusKey(name)
+    ) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `Corpus name "${name}" aliases existing corpus "${parsed.name}" on this case-insensitive filesystem.`,
+        `Use the existing name "${parsed.name}" instead of "${name}".`,
+        false,
+      );
+    }
+  } catch (err) {
+    if (err instanceof InternError) throw err;
+    // Malformed existing file — the upcoming write is the recovery path.
+  }
+}
+
 export async function saveCorpus(corpus: CorpusFile): Promise<void> {
+  return withCorpusLock(corpus.name, () => saveCorpusUnlocked(corpus));
+}
+
+async function saveCorpusUnlocked(corpus: CorpusFile): Promise<void> {
   assertValidCorpusName(corpus.name);
+  rejectWin32NameAlias(corpus.name, corpusPath(corpus.name));
   // Refuse to serialize absurdly large corpora — a single JSON.stringify
   // over 100k+ chunks will hit Node's max string length and OOM.
   if (corpus.chunks.length > MAX_CHUNKS) {
@@ -238,8 +282,15 @@ export async function listCorpora(): Promise<CorpusSummary[]> {
         ...(failedCount > 0 ? { failed_path_count: failedCount } : {}),
         ...(writeComplete === undefined ? {} : { write_complete: writeComplete }),
       });
-    } catch {
-      // Skip malformed corpora silently in list; load will surface the error.
+    } catch (err) {
+      const reason =
+        err instanceof InternError
+          ? `${err.code}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      // eslint-disable-next-line no-console
+      console.error(`[corpus:list] skip name=${name} reason=${reason}`);
     }
   }
   summaries.sort((a, b) => a.name.localeCompare(b.name));
@@ -284,17 +335,19 @@ export async function isCorpusStale(
   for (const c of corpus.chunks) {
     const t = Date.parse(c.file_mtime);
     if (Number.isNaN(t)) continue;
-    const prev = storedMtimeByPath.get(c.path);
-    if (prev === undefined || t > prev) storedMtimeByPath.set(c.path, t);
+    const key = canonicalFsPath(c.path);
+    const prev = storedMtimeByPath.get(key);
+    if (prev === undefined || t > prev) storedMtimeByPath.set(key, t);
   }
 
-  const manifestSet = new Set(manifest.paths);
+  const manifestSet = new Set(manifest.paths.map(canonicalFsPath));
   // Paths in corpus that are no longer declared by the manifest.
   for (const p of storedMtimeByPath.keys()) {
     if (!manifestSet.has(p)) return { stale: true, reason: `path_removed:${p}` };
   }
 
   for (const p of manifest.paths) {
+    const key = canonicalFsPath(p);
     let currentMtime: number;
     try {
       const st = await stat(p);
@@ -302,7 +355,7 @@ export async function isCorpusStale(
     } catch {
       return { stale: true, reason: `path_missing:${p}` };
     }
-    const stored = storedMtimeByPath.get(p);
+    const stored = storedMtimeByPath.get(key);
     if (stored === undefined) return { stale: true, reason: `path_added:${p}` };
     // Only flag when current is strictly later — allow clock skew that
     // happens to produce an earlier mtime (e.g. touch to an older date).

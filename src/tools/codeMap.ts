@@ -17,7 +17,7 @@
  */
 
 import { z } from "zod";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import { extname, basename, join, resolve } from "node:path";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
@@ -139,11 +139,21 @@ async function walkPaths(
         // the lstat-based refusal in src/corpus/indexer.ts (sha256File). We
         // intentionally do NOT add a follow_symlinks opt-in — the indexer
         // doesn't have one either, so the contract stays consistent.
-        if (ent.isSymbolicLink()) continue;
+        //
+        // Dirent.isSymbolicLink() is not enough on Windows: libuv reports
+        // junctions as directories, not symlinks. lstat each child and skip
+        // isSymbolicLink() (junctions map to S_IFLNK after lstat).
         const full = join(dir, ent.name);
-        if (ent.isDirectory()) {
+        let lst;
+        try {
+          lst = await lstat(full);
+        } catch {
+          continue;
+        }
+        if (lst.isSymbolicLink()) continue;
+        if (lst.isDirectory()) {
           queue.push(full);
-        } else if (ent.isFile()) {
+        } else if (lst.isFile()) {
           out.push(full);
           if (out.length >= maxFiles) {
             hitCap = true;

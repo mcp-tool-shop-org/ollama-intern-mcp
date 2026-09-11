@@ -60,8 +60,9 @@ interface RawChunk {
  * so existing tests can exercise window math directly.
  */
 export function chunk(text: string, opts: ChunkOptions = DEFAULT_CHUNK): RawChunk[] {
-  const size = Math.max(100, opts.chunk_chars);
-  const overlap = Math.min(opts.chunk_overlap, Math.floor(size / 2));
+  const size = Math.max(100, Number.isFinite(opts.chunk_chars) ? opts.chunk_chars : DEFAULT_CHUNK.chunk_chars);
+  const rawOverlap = Number.isFinite(opts.chunk_overlap) ? opts.chunk_overlap : 0;
+  const overlap = Math.max(0, Math.min(rawOverlap, Math.floor(size / 2)));
   if (text.length === 0) return [];
   if (text.length <= size) {
     return [{ index: 0, char_start: 0, char_end: text.length, text }];
@@ -91,6 +92,8 @@ interface Segment {
   char_start: number;
   char_end: number;
   content: string;
+  /** Leading whitespace stripped from `content` relative to [char_start, char_end). */
+  trim_lead: number;
 }
 
 const HEADING_RX = /^(#{1,6})\s+(.+?)\s*$/;
@@ -142,7 +145,8 @@ function pushSegment(
   end: number,
   content: string,
 ): void {
-  const trimmed = content.replace(/^\s+|\s+$/g, "");
+  const lead = content.length - content.trimStart().length;
+  const trimmed = content.trim();
   if (trimmed.length === 0) return;
   segments.push({
     type,
@@ -150,6 +154,7 @@ function pushSegment(
     char_start: start,
     char_end: end,
     content: trimmed,
+    trim_lead: lead,
   });
 }
 
@@ -308,8 +313,8 @@ export function chunkDocument(
     for (const s of sub) {
       chunks.push({
         index: idx++,
-        char_start: seg.char_start + s.char_start,
-        char_end: seg.char_start + s.char_end,
+        char_start: seg.char_start + seg.trim_lead + s.char_start,
+        char_end: seg.char_start + seg.trim_lead + s.char_end,
         text: s.text,
         heading_path: seg.heading_path,
         chunk_type: seg.type,

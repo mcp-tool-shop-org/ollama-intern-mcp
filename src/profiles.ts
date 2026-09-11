@@ -465,14 +465,41 @@ function normalizeCloudHost(raw: string | undefined): string {
   const value = (raw ?? "").trim();
   if (!value) return CLOUD_DEFAULT_HOST;
   const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-  return withScheme.replace(/\/+$/, "");
+  // Linear trim — same shape as normalizeOllamaHost. `/\/+$/` is the
+  // polynomial-ReDoS form (unbounded `+` vs end anchor); endsWith/slice cannot backtrack.
+  let trimmed = withScheme;
+  while (trimmed.endsWith("/")) trimmed = trimmed.slice(0, -1);
+  return trimmed;
 }
 
-/** Parse a positive-integer env value; fall back when unset/empty/invalid. */
-function positiveIntEnv(raw: string | undefined, fallback: number): number {
+/**
+ * Parse a positive-integer env value. Unset/empty → fallback. A non-empty
+ * value that is not a positive integer throws CONFIG_INVALID (FT-002 fail-fast),
+ * matching parseConcurrency / validateEnvModel — a typo must not silently
+ * become the default.
+ */
+function positiveIntEnv(varName: string, raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const n = Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : fallback;
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new InternError(
+      "CONFIG_INVALID",
+      `Invalid ${varName}: '${raw}'`,
+      `${varName} must be a positive integer. Got '${raw}'.`,
+      false,
+    );
+  }
+  return n;
+}
+
+/**
+ * Cloud num_ctx: unset/empty → default. Non-empty must be an integer in
+ * [NUM_CTX_MIN, NUM_CTX_MAX] — never fall back after a typo (FT-002).
+ */
+function cloudNumCtxEnv(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return CLOUD_DEFAULT_NUM_CTX;
+  validateNumCtx("INTERN_CLOUD_NUM_CTX", raw);
+  return Number(raw);
 }
 
 /**
@@ -515,8 +542,7 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
   validateEnvModel("INTERN_CLOUD_MODEL", model);
   validateEnvModel("INTERN_CLOUD_DEEP_MODEL", deepModel);
 
-  const numCtx = positiveIntEnv(env.INTERN_CLOUD_NUM_CTX, CLOUD_DEFAULT_NUM_CTX);
-  validateNumCtx("INTERN_CLOUD_NUM_CTX", numCtx);
+  const numCtx = cloudNumCtxEnv(env.INTERN_CLOUD_NUM_CTX);
 
   const tiers: TierConfig = {
     instant: model,
@@ -526,9 +552,9 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
     embed: env.INTERN_EMBED_MODEL || "nomic-embed-text",
   };
   const timeouts: Record<Tier, number> = {
-    instant: positiveIntEnv(env.INTERN_CLOUD_TIMEOUT_INSTANT_MS, CLOUD_DEFAULT_TIMEOUTS.instant),
-    workhorse: positiveIntEnv(env.INTERN_CLOUD_TIMEOUT_WORKHORSE_MS, CLOUD_DEFAULT_TIMEOUTS.workhorse),
-    deep: positiveIntEnv(env.INTERN_CLOUD_TIMEOUT_DEEP_MS, CLOUD_DEFAULT_TIMEOUTS.deep),
+    instant: positiveIntEnv("INTERN_CLOUD_TIMEOUT_INSTANT_MS", env.INTERN_CLOUD_TIMEOUT_INSTANT_MS, CLOUD_DEFAULT_TIMEOUTS.instant),
+    workhorse: positiveIntEnv("INTERN_CLOUD_TIMEOUT_WORKHORSE_MS", env.INTERN_CLOUD_TIMEOUT_WORKHORSE_MS, CLOUD_DEFAULT_TIMEOUTS.workhorse),
+    deep: positiveIntEnv("INTERN_CLOUD_TIMEOUT_DEEP_MS", env.INTERN_CLOUD_TIMEOUT_DEEP_MS, CLOUD_DEFAULT_TIMEOUTS.deep),
     embed: CLOUD_DEFAULT_TIMEOUTS.embed,
   };
 

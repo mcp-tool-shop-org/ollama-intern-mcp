@@ -1,11 +1,22 @@
 name: Doc Drift
 
+# --- Measured CI cost (dogfood-swarm SKILL item 8) --------------------------
+# This job no longer runs the vitest suite (F-f613f553). Live pass count is
+# produced fail-closed by ci.yml verify (ubuntu-latest × node 20). Remaining
+# work is checkout + grep + node scripts/sync-doc-versions.mjs (builtins
+# only; no npm ci / build / test). Re-measure after the first green run of
+# this shape:
+#   gh api repos/mcp-tool-shop-org/ollama-intern-mcp/actions/runs/<id>/jobs
+# timeout-minutes is 5 as a ceiling, not a measurement.
+# ---------------------------------------------------------------------------
+#
 # Catches the failure mode where docs and source-of-truth drift apart between
 # releases — a CHANGELOG entry is missing for the package.json version, a
 # release-notes file still says "Released: TBD" weeks after the tag, or the
-# README's stated test count no longer matches what the suite actually runs.
-# All three have shipped in past releases; this gate makes the next instance
-# fail loudly in CI instead of silently going public.
+# README's stated test count no longer matches the TEST_COUNT marker (live
+# suite count is asserted in ci.yml). All three have shipped in past
+# releases; this gate makes the next instance fail loudly in CI instead of
+# silently going public.
 
 on:
   push:
@@ -20,6 +31,7 @@ on:
       - "docs/release-notes/**"
       - "site/src/site-config.ts"
       - "site/src/content/docs/**"
+      - "scripts/sync-doc-versions.mjs"
       - ".github/workflows/doc-drift.yml"
   pull_request:
     paths:
@@ -32,6 +44,7 @@ on:
       - "docs/release-notes/**"
       - "site/src/site-config.ts"
       - "site/src/content/docs/**"
+      - "scripts/sync-doc-versions.mjs"
       - ".github/workflows/doc-drift.yml"
   workflow_dispatch:
 
@@ -42,7 +55,7 @@ concurrency:
 jobs:
   drift:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       # v6
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -94,72 +107,24 @@ jobs:
           echo "ok — no TBD dates in release notes"
 
       # ----------------------------------------------------------------------
-      # Check 3: README / HANDOFF stated test count matches reality.
-      # We install + run the suite so the count is real (not cached). The
-      # parsed line is vitest's summary: "Tests N passed". If README or
-      # HANDOFF mentions a test count that disagrees, fail.
+      # Check 3: README / HANDOFF / SHIP_GATE stated test count matches the
+      # TEST_COUNT HTML marker. Live suite measurement lives in ci.yml
+      # verify (ubuntu-latest × node 20) — this job must not spawn
+      # `npm test` and must not continue on a partial count (F-f613f553).
       # ----------------------------------------------------------------------
-      # v6
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      # 603394f moved every other install in this repo to `npm ci` after
-      # `rm -f package-lock.json && npm install` began dying on npm 11.x with
-      # "Cannot read properties of null (reading edgesOut)". This workflow was
-      # missed, so it kept the old pattern and stayed red on main while ci.yml
-      # went green -- and its paths filter meant no later push re-ran it.
-      - name: Install (npm ci, from the committed lockfile)
+      - name: Check README/HANDOFF test count matches TEST_COUNT marker
         shell: bash
-        run: npm ci --no-audit --no-fund
-
-      # Several tests (cli.test.ts, mcpGolden.test.ts, mcp.integration.test.ts,
-      # pack.test.ts) spawn or inspect dist/index.js + the packed tarball, so a
-      # fresh build is a prerequisite for the count to match what the user gets
-      # post-publish. Without this step the count was parseable but artificially
-      # low because half the suite errored at beforeAll on missing dist/.
-      - name: Build
-        shell: bash
-        run: npm run build
-
-      - name: Run tests and capture pass count
-        id: tests
-        shell: bash
-        env:
-          # vitest still emits ANSI in CI by default; CI=1 + NO_COLOR=1 both
-          # required by different code paths in the vitest reporter chain.
-          NO_COLOR: "1"
-          FORCE_COLOR: "0"
         run: |
-          # Capture both streams; vitest writes the summary to stdout.
-          set +e
-          OUTPUT="$(npm test --silent 2>&1)"
-          STATUS=$?
-          # Strip ANSI escape codes before grepping — if any survive, "Tests"
-          # won't match because ESC isn't whitespace and the regex then fails
-          # under bash -o pipefail (GH Actions default), aborting the step.
-          CLEAN="$(printf '%s' "$OUTPUT" | sed -E 's/\x1b\[[0-9;]*m//g')"
-          set -e
-          printf '%s\n' "$CLEAN" | tail -20
-          if [ "$STATUS" -ne 0 ]; then
-            echo "::warning::Tests failed; doc-drift count check will use the partial-pass count if parseable."
-          fi
-          # vitest 4.x summary line: "Tests  N passed (M)" or "Tests  X failed | N passed (M)"
-          # `|| true` keeps pipefail from killing the step on no-match — we
-          # check the empty result explicitly below.
-          PASSED="$(printf '%s\n' "$CLEAN" | grep -E "^\s*Tests\s+" | tail -1 | sed -E 's/.*\b([0-9]+)\s+passed.*/\1/' || true)"
-          if [ -z "$PASSED" ]; then
-            echo "::error::Could not parse passing-test count from vitest output. Fix the doc-drift workflow or the test runner."
+          if [ ! -f HANDOFF.md ]; then
+            echo "::error file=HANDOFF.md::HANDOFF.md missing; cannot resolve TEST_COUNT marker."
             exit 1
           fi
-          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
-          echo "Resolved passing test count: $PASSED"
-
-      - name: Check README/HANDOFF test count matches reality
-        shell: bash
-        run: |
-          ACTUAL="${{ steps.tests.outputs.passed }}"
+          ACTUAL="$(grep -oE '<!-- TEST_COUNT:start -->[0-9]+<!-- TEST_COUNT:end -->' HANDOFF.md | head -1 | grep -oE '[0-9]+' || true)"
+          if [ -z "$ACTUAL" ]; then
+            echo "::error file=HANDOFF.md::Could not parse TEST_COUNT marker."
+            exit 1
+          fi
+          echo "Resolved TEST_COUNT marker: $ACTUAL"
           DRIFT=0
 
           # README: look for "<N> tests" or "<N> passing" near the badge / header.
@@ -173,7 +138,7 @@ jobs:
               NUM="$(echo "$line" | grep -oE '[0-9]+')"
               if [ -z "$NUM" ]; then continue; fi
               if [ "$NUM" != "$ACTUAL" ]; then
-                echo "::error file=$file::Stated test count '$line' (parsed: $NUM) does not match actual count ($ACTUAL). Run 'npm run sync-docs' to refresh."
+                echo "::error file=$file::Stated test count '$line' (parsed: $NUM) does not match TEST_COUNT marker ($ACTUAL). Run 'npm run sync-docs' to refresh."
                 DRIFT=1
               fi
             done <<< "$STATED"
@@ -182,4 +147,20 @@ jobs:
           if [ "$DRIFT" -ne 0 ]; then
             exit 1
           fi
-          echo "ok — stated test counts match actual ($ACTUAL passing)"
+          echo "ok — stated test counts match TEST_COUNT marker ($ACTUAL)"
+
+      # ----------------------------------------------------------------------
+      # Check 4: marker-level VERSION / TOOL_COUNT / TEST_COUNT + site-config
+      # / handbook regex rewrites. Test count is the marker on docs-only
+      # PRs; live pass count is asserted in ci.yml verify so this step never
+      # spawns the suite (F-7df86b73).
+      # ----------------------------------------------------------------------
+      - name: Check doc version/count markers (sync-docs:check)
+        shell: bash
+        run: |
+          COUNT="$(grep -oE '<!-- TEST_COUNT:start -->[0-9]+<!-- TEST_COUNT:end -->' HANDOFF.md | head -1 | grep -oE '[0-9]+' || true)"
+          if [ -z "$COUNT" ]; then
+            echo "::error file=HANDOFF.md::Could not parse TEST_COUNT marker for sync-docs:check."
+            exit 1
+          fi
+          node scripts/sync-doc-versions.mjs --check --test-count="$COUNT"

@@ -630,9 +630,7 @@ export async function handleVerifyClaims(
     startedAt,
     residency: null, // cloud adjudication — local VRAM residency does not apply
     backend: includedCount > 0 ? "cloud" : "local",
-    ...(excludedCount > 0
-      ? { degraded: true, degradeReason: `jury_excluded:${excludedCount}/${seats.length}` }
-      : {}),
+    ...(excludedCount > 0 ? { degraded: true } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
   });
 

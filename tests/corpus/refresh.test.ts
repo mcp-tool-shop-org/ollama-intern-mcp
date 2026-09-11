@@ -546,3 +546,41 @@ describe("refreshCorpus — transient read errors preserve the path (H5)", () =>
     expect(corpusAfter.chunks.some((c) => c.path === pGone)).toBe(false);
   });
 });
+
+// ── F-e58c150e: all-ENOENT (unmount / wiped tree) must not empty both files ──
+//
+// Single-file ENOENT still deletes (H5). When EVERY indexed path is gone,
+// treating them all as missing and handing the indexer an empty livePaths
+// rewrites corpus.json to zero chunks and manifest.paths to []. Fail-closed:
+// keep the names (or throw) and leave the chunk list non-empty. Mutate
+// refresh to drop all missing paths and this goes RED.
+describe("refreshCorpus — all-ENOENT must not empty corpus+manifest", () => {
+  it("after index of two files, unlinking both preserves manifest.paths and a non-empty chunk list (or fails closed)", async () => {
+    const pA = await writeSource("all-a.md", "alpha document content that must survive a wiped tree");
+    const pB = await writeSource("all-b.md", "bravo document content that must survive a wiped tree");
+    const client = new CountingEmbedMock();
+    await indexCorpus({ name: "wipe", paths: [pA, pB], model: MODEL, client });
+
+    const corpusBefore = (await loadCorpus("wipe"))!;
+    expect(corpusBefore.chunks.length).toBeGreaterThan(0);
+    const manifestBefore = (await loadManifest("wipe"))!;
+    expect(manifestBefore.paths).toEqual(expect.arrayContaining([pA, pB]));
+
+    await unlink(pA);
+    await unlink(pB);
+
+    let threw = false;
+    try {
+      await refreshCorpus({ name: "wipe", model: MODEL, client });
+    } catch {
+      threw = true;
+    }
+
+    const manifestAfter = (await loadManifest("wipe"))!;
+    const corpusAfter = (await loadCorpus("wipe"))!;
+    expect(manifestAfter.paths).toEqual(expect.arrayContaining([pA, pB]));
+    expect(corpusAfter.chunks.length).toBeGreaterThan(0);
+    expect(corpusAfter.chunks.length).toBe(corpusBefore.chunks.length);
+    void threw;
+  });
+});

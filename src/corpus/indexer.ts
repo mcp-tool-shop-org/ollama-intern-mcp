@@ -28,6 +28,7 @@ import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, clearCompletedMark
 import { withCorpusLock } from "./lock.js";
 import { InternError } from "../errors.js";
 import { embedWithTimeout } from "../guardrails/embedTimeout.js";
+import { canonicalFsPath, parentDirMissing } from "./identity.js";
 
 const EMBED_BATCH = 64;
 /** Hard cap on input file size. Prevents OOM from a user pointing at a 100GB file. */
@@ -186,21 +187,33 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   // Serialize per corpus name. Two concurrent indexCorpus / refreshCorpus
   // calls targeting the same corpus would otherwise interleave their
   // corpus.json and manifest.json writes, producing a pair that no
-  // longer describes the same state.
-  return withCorpusLock(params.name, () => indexCorpusUnlocked(params));
+  // longer describes the same state. Nested callers (refresh already
+  // holding the lock) re-enter via withCorpusLock.
+  return withCorpusLock(params.name, () => indexCorpusBody(params));
+}
+
+function assertChunkGeometry(chunk_chars: number, chunk_overlap: number): void {
+  if (!Number.isFinite(chunk_chars) || !Number.isFinite(chunk_overlap)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Invalid chunk geometry: chunk_chars=${chunk_chars}, chunk_overlap=${chunk_overlap}.`,
+      "chunk_chars and chunk_overlap must be finite numbers. Re-index with explicit values.",
+      false,
+    );
+  }
 }
 
 /**
- * Internal: indexCorpus body without the per-corpus lock. Refresh uses
- * this because it already holds the lock — calling indexCorpus from
- * inside a held lock would self-deadlock.
+ * Internal: indexCorpus body. Not exported — refresh/index take the lock
+ * and call through indexCorpus (reentrant).
  */
-export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexReport> {
+async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
   const t0 = Date.now();
   const opts: ChunkOptions = {
     chunk_chars: params.chunk_chars ?? DEFAULT_CHUNK.chunk_chars,
     chunk_overlap: params.chunk_overlap ?? DEFAULT_CHUNK.chunk_overlap,
   };
+  assertChunkGeometry(opts.chunk_chars, opts.chunk_overlap);
 
   // Load existing corpus (if any) to reuse unchanged chunks.
   // An out-of-date schema version throws SCHEMA_INVALID from loadCorpus —
@@ -247,15 +260,16 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   const priorChunksByPath = new Map<string, CorpusChunk[]>();
   if (existing && existing.model_version === params.model) {
     for (const c of existing.chunks) {
+      const pathKey = canonicalFsPath(c.path);
       if (!paramsChanged) {
-        const key = `${c.path}::${c.file_hash}`;
+        const key = `${pathKey}::${c.file_hash}`;
         const arr = reusable.get(key) ?? [];
         arr.push(c);
         reusable.set(key, arr);
       }
-      const byPath = priorChunksByPath.get(c.path) ?? [];
+      const byPath = priorChunksByPath.get(pathKey) ?? [];
       byPath.push(c);
-      priorChunksByPath.set(c.path, byPath);
+      priorChunksByPath.set(pathKey, byPath);
     }
   }
 
@@ -264,7 +278,7 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   let reusedCount = 0;
   let newlyEmbeddedCount = 0;
   let totalChars = 0;
-  const seenPaths = new Set<string>();
+  const seenPaths = new Map<string, string>();
 
   // Preserve titles from reusable files (they were captured at previous index).
   if (existing) {
@@ -290,16 +304,27 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   const failedPaths: IndexFailedPath[] = [];
   for (const rawPath of params.paths) {
     const absPath = resolve(rawPath);
-    seenPaths.add(absPath);
+    try {
+      assertSafePath(absPath);
+    } catch (err) {
+      failedPaths.push({
+        path: absPath,
+        reason: (err as Error).message ?? String(err),
+      });
+      continue;
+    }
+    const pathKey = canonicalFsPath(absPath);
+    seenPaths.set(pathKey, absPath);
     let fileInfo: { hash: string; mtime: string; content: string };
     try {
       fileInfo = await sha256File(absPath);
     } catch (err) {
       // Stage C humanization: capture per-file failure and continue so one
       // bad file in a batch of 1000 does not halt the whole pass. Caller
-      // sees failed_paths in the report.
+      // sees failed_paths in the report. Always persist the resolved
+      // absolute path (same identity as seenPaths / manifest.paths).
       failedPaths.push({
-        path: rawPath,
+        path: absPath,
         reason: (err as Error).message ?? String(err),
       });
       // H5: a TRANSIENT read failure (Windows file lock, antivirus hold,
@@ -307,10 +332,13 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
       // not delete already-indexed content. Carry this path's prior chunks
       // forward verbatim — it stays in seenPaths (→ manifest.paths) and was
       // recorded in failed_paths above, so retry_failed can re-verify it.
-      // Only a genuinely-absent file (ENOENT) drops: there is nothing to
-      // carry, and it must fall out per the living-corpus delete law.
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-        const prior = priorChunksByPath.get(absPath);
+      // Genuine file-ENOENT (parent dir still present) drops chunks.
+      // Parent-dir ENOENT is a volume/share gap: carry chunks so an
+      // unmount cannot empty the corpus.
+      const code = (err as NodeJS.ErrnoException).code;
+      const volumeGap = code === "ENOENT" && (await parentDirMissing(absPath));
+      if (code !== "ENOENT" || volumeGap) {
+        const prior = priorChunksByPath.get(pathKey);
         if (prior && prior.length > 0) {
           allChunks.push(
             ...prior.map((c) => ({
@@ -324,7 +352,7 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
       continue;
     }
     totalChars += fileInfo.content.length;
-    const reuseKey = `${absPath}::${fileInfo.hash}`;
+    const reuseKey = `${pathKey}::${fileInfo.hash}`;
     const reused = reusable.get(reuseKey);
     if (reused && reused.length > 0) {
       // Re-mint ids through mintChunkId so a corpus indexed under the old
@@ -414,7 +442,7 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   if (existing) {
     const previousPaths = new Set(existing.chunks.map((c) => c.path));
     for (const p of previousPaths) {
-      if (!seenPaths.has(p)) droppedFiles.push(p);
+      if (!seenPaths.has(canonicalFsPath(p))) droppedFiles.push(p);
     }
   }
   for (const p of droppedFiles) delete titles[p];
@@ -435,7 +463,7 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
     chunk_chars: opts.chunk_chars,
     chunk_overlap: opts.chunk_overlap,
     stats: {
-      documents: new Set(allChunks.map((c) => c.path)).size,
+      documents: new Set(allChunks.map((c) => canonicalFsPath(c.path))).size,
       chunks: allChunks.length,
       total_chars: totalChars,
     },
@@ -448,8 +476,26 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   // final saveManifest below is DETECTED as a torn write (write_complete:false)
   // instead of hiding behind the last clean run's still-valid marker. No-op on
   // a first index. The final saveManifest (with completed_at) restores it.
+  // F-9234c173: if saveCorpus throws, restore the previous completed_at so a
+  // failed corpus write is not reported as torn (corpus unchanged, marker gone).
+  const prevManifest = await loadManifest(params.name).catch(() => null);
+  const prevCompletedAt = prevManifest?.completed_at;
   await clearCompletedMarker(params.name);
-  await saveCorpus(corpus);
+  try {
+    await saveCorpus(corpus);
+  } catch (err) {
+    if (typeof prevCompletedAt === "string") {
+      try {
+        const dirty = await loadManifest(params.name);
+        if (dirty) {
+          await saveManifest({ ...dirty, completed_at: prevCompletedAt });
+        }
+      } catch {
+        // Best-effort restore — still throw the original saveCorpus error.
+      }
+    }
+    throw err;
+  }
 
   // Within-refresh drift: more than one distinct resolved tag across the
   // batches of this single run. Means Ollama silently bumped `:latest`
@@ -463,8 +509,7 @@ export async function indexCorpusUnlocked(params: IndexParams): Promise<IndexRep
   // Write the manifest alongside the corpus. The corpus is "reality";
   // the manifest is "intent" — what the caller declared should be here.
   // Refresh later reconciles the two.
-  const manifestPaths = [...seenPaths].sort();
-  const prevManifest = await loadManifest(params.name).catch(() => null);
+  const manifestPaths = [...seenPaths.values()].sort();
   const now = new Date().toISOString();
   // Preserve the prior resolved tag when nothing was embedded this run.
   // Writing null over a previously-known value would lose the freshness anchor.

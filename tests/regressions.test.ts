@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, devNull } from "node:os";
 import { join } from "node:path";
 
 import { PROFILES } from "../src/profiles.js";
@@ -149,6 +149,19 @@ describe("regression: compileCheck captures stdout diagnostics (commit fed244c)"
   // Note: an end-to-end "tsc produces stderr_tail content" check requires npx
   // typescript which can take >15s on a cold cache. Not run in unit tests to
   // keep vitest fast. The live smoke in smoke/targeted.mjs proves it.
+
+  // F-fe2c44f3: rustc `-o /dev/null` is a Windows false-failure. checker
+  // is built from baseArgs even when rustc is missing (spawn error is
+  // folded into compiles:false, not skipped), so argv is observable.
+  it.skipIf(process.platform !== "win32")(
+    "[win32] rustc -o uses os.devNull / NUL, not hardcoded /dev/null",
+    async () => {
+      const r = await compileCheck("fn main() {}\n", "rust");
+      if (r.skipped) return; // rustc/temp-dir truly unavailable — argv unobservable
+      expect(r.checker).toContain(`-o ${devNull}`);
+      expect(r.checker).not.toContain("-o /dev/null");
+    },
+  );
 });
 
 // ═══════════════════════════════════════════════════════════════
