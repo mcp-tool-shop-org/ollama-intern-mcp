@@ -221,6 +221,35 @@ function pct(x: number): string {
   return (x * 100).toFixed(0).padStart(3, " ") + "%";
 }
 
+/** Column width for a rendered cell — fits "100%/100% (n=999)". */
+const CELL_WIDTH = 18;
+
+/**
+ * Render one (mode, class) cell.
+ *
+ * `finalize()` leaves an n=0 cell at precision1 = precision3 = 0, which
+ * `pct()` renders as "  0%/  0%" — glyph-identical to a cell with 20 gold
+ * queries and not one hit. Since this report exists to be DIFFED between
+ * runs, that read "a mode that fails every query in this class" when the
+ * truth was "this class has no coverage": a false regression signal on the
+ * file that is the measurement law for retrieval. Empty cells now say so,
+ * and every cell carries its own denominator instead of leaving the single
+ * overall `n` at the bottom of the report as the only visible one.
+ */
+function cell(m: CellMetrics): string {
+  if (m.n === 0) return "— (n=0)".padStart(CELL_WIDTH);
+  return `${pct(m.precision1)}/${pct(m.precision3)} (n=${m.n})`.padStart(CELL_WIDTH);
+}
+
+/**
+ * Render the phrase-anchor column for a mode. `—` when no query in that
+ * mode carried expected_phrases (distinct from a 0% phrase-hit rate).
+ */
+function phraseCell(m: CellMetrics): string {
+  if (m.phrase_n === 0) return "—".padStart(CELL_WIDTH);
+  return `${pct(m.phrase_hit)} (n=${m.phrase_n})`.padStart(CELL_WIDTH);
+}
+
 /**
  * Markdown-friendly report suitable for console.log during tests. The
  * shape is stable so it can be diffed between runs.
@@ -230,19 +259,27 @@ export function formatEvalReport(summary: EvalSummary): string {
   lines.push("");
   lines.push("## Retrieval eval — precision@1 / precision@3");
   lines.push("");
-  lines.push("Per mode × class (n = queries in that class):");
+  lines.push("Per mode × class (n = queries in that class; '—' = no gold queries, NOT a 0% score):");
   lines.push("");
-  const header = ["mode".padEnd(11), ...QUERY_CLASSES.map((c) => c.padStart(14)), "overall".padStart(14)].join(" | ");
+  const header = [
+    "mode".padEnd(11),
+    ...QUERY_CLASSES.map((c) => c.padStart(CELL_WIDTH)),
+    "overall".padStart(CELL_WIDTH),
+    "phrase_hit".padStart(CELL_WIDTH),
+  ].join(" | ");
   lines.push(header);
   lines.push("-".repeat(header.length));
   for (const mode of SEARCH_MODES) {
     const cells: string[] = [mode.padEnd(11)];
     for (const c of QUERY_CLASSES) {
-      const m = summary.byModeByClass[mode][c];
-      cells.push(`${pct(m.precision1)}/${pct(m.precision3)}`.padStart(14));
+      cells.push(cell(summary.byModeByClass[mode][c]));
     }
     const o = summary.byMode[mode];
-    cells.push(`${pct(o.precision1)}/${pct(o.precision3)}`.padStart(14));
+    cells.push(cell(o));
+    // Phrase-anchor failures used to be visible only in the aggregate line
+    // below, so a mode that missed every expected phrase was indistinguishable
+    // from one that was never phrase-tested.
+    cells.push(phraseCell(o));
     lines.push(cells.join(" | "));
   }
   lines.push("");

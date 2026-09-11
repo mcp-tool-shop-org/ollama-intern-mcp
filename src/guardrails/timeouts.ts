@@ -97,10 +97,24 @@ export async function runWithTimeoutAndFallback<T>(
           `fallback_attempted=${fallbackAttempted}`,
           allowFallback ? "no cheaper tier available" : "fallback disabled",
         ].filter(Boolean);
+        // Joined with " · ", not " ": run together, the prose head and the
+        // key=value tail read as one unscannable sentence, which is exactly
+        // what the comment above says this message exists to avoid.
+        //
+        // The hint leads with something the operator can actually DO. It
+        // used to lead with "increase the tier's timeout (switch
+        // INTERN_PROFILE)" — not a lever that exists. loadProfile returns
+        // the base profile's timeouts verbatim, and the only timeout env
+        // vars in the tree are the cloud ones (INTERN_CLOUD_TIMEOUT_*_MS).
+        // The default profile (dev-rtx5080) also already carries the LARGER
+        // Instant budget, so "switch profiles for more time" had no valid
+        // target for most operators, and switching swaps the whole model
+        // ladder rather than a budget. The profile note stays, demoted to
+        // a statement of fact.
         throw new InternError(
           "TIER_TIMEOUT",
-          parts.join(" "),
-          `Increase the tier's timeout (switch INTERN_PROFILE — dev profiles run Instant at 15s, m5-max at 5s), reduce input size, or ensure the model is resident ('ollama ps' / check /api/ps). Fallback target ${TIER_FALLBACK[tier] ?? "(none — terminal tier)"} ${fallbackFrom ? "was exhausted." : "was not used."}`,
+          parts.join(" · "),
+          `Reduce the input size (fewer/shorter source_paths, a smaller max_tokens), or make sure the model is resident before the call — a cold load can eat the entire budget ('ollama ps' / check /api/ps). Local tier budgets are fixed by the profile: INTERN_PROFILE selects a whole model ladder AND its budgets (dev profiles run Instant at 15s, m5-max at 5s); there is no per-tier timeout env override for local tiers. Fallback target ${TIER_FALLBACK[tier] ?? "(none — terminal tier)"} ${fallbackFrom ? "was exhausted." : "was not used."}`,
           true,
         );
       }

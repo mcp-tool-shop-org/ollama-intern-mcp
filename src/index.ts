@@ -26,7 +26,8 @@ import {
   type OllamaClient,
 } from "./ollama.js";
 import { RoutingOllamaClient } from "./routing.js";
-import { NdjsonLogger, timestamp } from "./observability.js";
+import { LOG_EVENT_KINDS, NdjsonLogger, timestamp } from "./observability.js";
+import { formatBytes } from "./format.js";
 import { InternError, toErrorShape } from "./errors.js";
 import { runPrewarm, notePrewarmInProgressRequest } from "./prewarm.js";
 import { detectEnvOverrides } from "./profiles.js";
@@ -79,6 +80,7 @@ import { chatSchema, handleChat } from "./tools/chat.js";
 import { doctorSchema, handleDoctor } from "./tools/doctor.js";
 import { artifactPruneSchema, handleArtifactPrune } from "./tools/artifactPrune.js";
 import { logTailSchema, handleLogTail } from "./tools/logTail.js";
+import { LOG_STATS_MAX_BYTES } from "./tools/logRead.js";
 import { logStatsSchema, handleLogStats } from "./tools/logStats.js";
 import { codeMapSchema, handleCodeMap } from "./tools/codeMap.js";
 // ── Feature-pass tools (agent: Tools-new) — refactor/proof/citation/drill ──
@@ -89,6 +91,18 @@ import { codeCitationSchema, handleCodeCitation } from "./tools/codeCitation.js"
 import { codeReviewSchema, handleCodeReview } from "./tools/codeReview.js";
 import { hypothesisDrillSchema, handleHypothesisDrill } from "./tools/hypothesisDrill.js";
 import { verifyClaimsSchema, handleVerifyClaims } from "./tools/verifyClaims.js";
+
+/**
+ * Rendered `filter_kind` roster for the ollama_log_tail description,
+ * derived from LOG_EVENT_KINDS (src/observability.ts) rather than typed
+ * out by hand. The hand-maintained list read as exhaustive — a
+ * pipe-separated set with no "e.g." — while omitting `backend_fallback`
+ * and `cloud_egress`, the latter being the event that records data
+ * leaving the machine. `filter_kind` matches by exact equality, so an
+ * undocumented kind is undiscoverable and a guessed one returns an empty
+ * result rather than an error.
+ */
+const LOG_FILTER_KIND_ROSTER = LOG_EVENT_KINDS.map((k) => `'${k}'`).join(" | ");
 
 export function createServer(ctx: RunContext): McpServer {
   const server = new McpServer({ name: "ollama-intern-mcp", version: VERSION });
@@ -306,7 +320,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus builder
   server.tool(
     "ollama_corpus_index",
-    "Build a persistent named corpus. Pass `name` + `paths: string[]`; the server chunks, embeds, stores the corpus at ~/.ollama-intern/corpora/<name>.json AND writes a manifest at <name>.manifest.json that captures the declared paths + chunk params + embed model. Idempotent — unchanged files are reused by sha256; changed files are re-embedded; paths not in the input are dropped. For day-to-day upkeep once a manifest exists, prefer `ollama_corpus_refresh` — it reconciles corpus vs manifest and reports drift.",
+    "CORPUS. Build a persistent named corpus. Pass `name` + `paths: string[]`; the server chunks, embeds, stores the corpus at ~/.ollama-intern/corpora/<name>.json AND writes a manifest at <name>.manifest.json that captures the declared paths + chunk params + embed model. Idempotent — unchanged files are reused by sha256; changed files are re-embedded; paths not in the input are dropped. For day-to-day upkeep once a manifest exists, prefer `ollama_corpus_refresh` — it reconciles corpus vs manifest and reports drift.",
     corpusIndexSchema.shape,
     { title: "Index corpus", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusIndex(args, ctx), "ollama_corpus_index", extra),
@@ -315,7 +329,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus refresh — living-corpus workflow: reconcile against manifest
   server.tool(
     "ollama_corpus_refresh",
-    "Reconcile a named corpus against its manifest (intent vs reality). Single arg: `name`. The manifest's declared paths, chunk params, and embed model are the source of truth — refresh doesn't accept them. Returns a drift report: added / changed / unchanged / deleted / missing (per-path lists) plus reused / reembedded / dropped (chunk-level counts) plus no_op. Idempotent: a no-change refresh is fast, boring, and makes zero embed calls.",
+    "CORPUS. Reconcile a named corpus against its manifest (intent vs reality). Single arg: `name`. The manifest's declared paths, chunk params, and embed model are the source of truth — refresh doesn't accept them. Returns a drift report: added / changed / unchanged / deleted / missing (per-path lists) plus reused / reembedded / dropped (chunk-level counts) plus no_op. Idempotent: a no-change refresh is fast, boring, and makes zero embed calls.",
     corpusRefreshSchema.shape,
     { title: "Refresh corpus", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusRefresh(args, ctx), "ollama_corpus_refresh", extra),
@@ -324,7 +338,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus list
   server.tool(
     "ollama_corpus_list",
-    "List named corpora on disk with stats. No Ollama call. Use to discover what's been indexed, check freshness (indexed_at), or verify a corpus exists before searching.",
+    "CORPUS. List named corpora on disk with stats. No Ollama call. Use to discover what's been indexed, check freshness (indexed_at), or verify a corpus exists before searching.",
     corpusListSchema.shape,
     { title: "List corpora", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusList(args, ctx), "ollama_corpus_list", extra),
@@ -333,7 +347,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus health — dedicated superset of corpus_list with drift + staleness surfaced.
   server.tool(
     "ollama_corpus_health",
-    "Health summary for indexed corpora. No Ollama call. Superset of ollama_corpus_list: staleness_days, embed_model_resolved, within-refresh :latest drift, failed_paths_count, write_complete, and per-corpus warnings[]. Optional `name` narrows to a single corpus (typos fail loud). Optional `detailed: true` adds a per-file list with mtime + stale_days. Use this as your go-to 'is anything broken?' check before search or refresh.",
+    "CORPUS. Health summary for indexed corpora. No Ollama call. Superset of ollama_corpus_list: staleness_days, embed_model_resolved, within-refresh :latest drift, failed_paths_count, write_complete, and per-corpus warnings[]. Optional `name` narrows to a single corpus (typos fail loud). Optional `detailed: true` adds a per-file list with mtime + stale_days. Use this as your go-to 'is anything broken?' check before search or refresh.",
     corpusHealthSchema.shape,
     { title: "Corpus health", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusHealth(args, ctx), "ollama_corpus_health", extra),
@@ -342,7 +356,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus amend — single-file mutation, breaks snapshot invariant (warned).
   server.tool(
     "ollama_corpus_amend",
-    "Update one file's chunks in a corpus without running a full refresh. INVARIANT CAVEAT: the corpus is normally a snapshot of disk — amend bypasses that. new_content doesn't have to match (or even exist on) disk. The manifest records has_amended_content: true so corpus_list / corpus_health surface the break; a subsequent clean index/refresh re-establishes the invariant. Takes the per-corpus lock. Re-chunks + re-embeds the new_content using the manifest's chunk params (unless explicitly overridden). Returns `{corpus, file_path, chunks_removed, chunks_added, embed_model_resolved}`.",
+    "CORPUS. Update one file's chunks in a corpus without running a full refresh. INVARIANT CAVEAT: the corpus is normally a snapshot of disk — amend bypasses that. new_content doesn't have to match (or even exist on) disk. The manifest records has_amended_content: true so corpus_list / corpus_health surface the break; a subsequent clean index/refresh re-establishes the invariant. Takes the per-corpus lock. Re-chunks + re-embeds the new_content using the manifest's chunk params (unless explicitly overridden). Returns `{corpus, file_path, chunks_removed, chunks_added, embed_model_resolved}`.",
     corpusAmendSchema.shape,
     { title: "Amend corpus", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusAmend(args, ctx), "ollama_corpus_amend", extra),
@@ -351,7 +365,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus amend history — read-only companion to corpus_amend (no LLM).
   server.tool(
     "ollama_corpus_amend_history",
-    "Read-only companion to ollama_corpus_amend. Lists which paths have been amended on top of the disk snapshot, when each amendment happened, and the chunk-count delta. Use this before deciding whether to re-index — a clean ollama_corpus_index or ollama_corpus_refresh re-establishes the snapshot invariant and clears the history. No LLM call; pure manifest read.",
+    "CORPUS. Read-only companion to ollama_corpus_amend. Lists which paths have been amended on top of the disk snapshot, when each amendment happened, and the chunk-count delta. Use this before deciding whether to re-index — a clean ollama_corpus_index or ollama_corpus_refresh re-establishes the snapshot invariant and clears the history. No LLM call; pure manifest read.",
     corpusAmendHistorySchema.shape,
     { title: "Corpus amend history", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusAmendHistory(args, ctx), "ollama_corpus_amend_history", extra),
@@ -360,7 +374,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus rerank — post-retrieval re-sort (no LLM).
   server.tool(
     "ollama_corpus_rerank",
-    "Post-retrieval re-sort of hits from a prior ollama_corpus_search. No Ollama call (no embed, no generate). Three modes: 'recency' (newer file mtime wins; stats the file), 'path_specificity' (deeper paths win), 'lexical_boost' (boosts hits whose preview/heading_path/title contains any lexical_terms — case-insensitive, word-boundary; lexical_terms REQUIRED for this mode). Preserves each hit's original score + original_rank; appends rerank_score + rank. Use after corpus_search when you need a different ordering heuristic than semantic similarity.",
+    "CORPUS. Post-retrieval re-sort of hits from a prior ollama_corpus_search. No Ollama call (no embed, no generate). Three modes: 'recency' (newer file mtime wins; stats the file), 'path_specificity' (deeper paths win), 'lexical_boost' (boosts hits whose preview/heading_path/title contains any lexical_terms — case-insensitive, word-boundary; lexical_terms REQUIRED for this mode). Preserves each hit's original score + original_rank; appends rerank_score + rank. Use after corpus_search when you need a different ordering heuristic than semantic similarity.",
     corpusRerankSchema.shape,
     { title: "Rerank hits", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusRerank(args, ctx), "ollama_corpus_rerank", extra),
@@ -378,7 +392,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — classify (batch-capable)
   server.tool(
     "ollama_classify",
-    "Single-label classification with confidence. Single: pass `text`. BATCH: pass `items:[{id,text}]` — returns ONE envelope with `result.items[]` of `{id, ok, result|error}` plus `batch_count/ok_count/error_count`. Use the batch shape to chew through bulk labeling (commit types, PR titles, log severities) in one handoff instead of N round-trips. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7). FRAME CONTRACT (optional): pass `frame` (the question / section purpose this label set is FOR) and the model first decides whether the input is on-topic. Off-topic inputs return label=null with `off_topic: true` + `off_topic_reason` regardless of label fit — distinct from below_threshold (weak fit within the right frame). Omitting `frame` preserves the legacy result shape.",
+    "EXTRACT. Single-label classification with confidence. Single: pass `text`. BATCH: pass `items:[{id,text}]` — returns ONE envelope with `result.items[]` of `{id, ok, result|error}` plus `batch_count/ok_count/error_count`. Use the batch shape to chew through bulk labeling (commit types, PR titles, log severities) in one handoff instead of N round-trips. Set allow_none=true when weak guesses are worse than 'unsure' — label returns null below threshold (default 0.7). FRAME CONTRACT (optional): pass `frame` (the question / section purpose this label set is FOR) and the model first decides whether the input is on-topic. Off-topic inputs return label=null with `off_topic: true` + `off_topic_reason` regardless of label fit — distinct from below_threshold (weak fit within the right frame). Omitting `frame` preserves the legacy result shape.",
     classifySchema.shape,
     { title: "Classify", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleClassify(args, ctx), "ollama_classify", extra),
@@ -387,7 +401,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — triage_logs (batch-capable)
   server.tool(
     "ollama_triage_logs",
-    "Stable-shape log digest: {errors, warnings, suspected_root_cause}. Single: pass `log_text`. BATCH: pass `items:[{id,log_text}]` for triaging many log blobs at once (multiple CI runs, matrix legs, per-service logs) — returns one envelope with per-item entries. Use before grep-storms on long CI/test output.",
+    "DIGEST. Stable-shape log digest: {errors, warnings, suspected_root_cause}. Single: pass `log_text`. BATCH: pass `items:[{id,log_text}]` for triaging many log blobs at once (multiple CI runs, matrix legs, per-service logs) — returns one envelope with per-item entries. Use before grep-storms on long CI/test output.",
     triageLogsSchema.shape,
     { title: "Triage logs", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleTriageLogs(args, ctx), "ollama_triage_logs", extra),
@@ -396,7 +410,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — summarize_fast
   server.tool(
     "ollama_summarize_fast",
-    "Gist of short input (best under ~4k tokens). Use as a decision gate: 'is this file worth reading in full?' Summary carries source_preview so you can spot-check fabrication. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this summary is FOR) and the model first decides whether the input addresses it. Off-topic inputs return summary='(off-topic for frame: ...)' with `on_topic: false` instead of paraphrasing unrelated content. Omitting `frame` preserves the legacy result shape.",
+    "DIGEST. Gist of short input (best under ~4k tokens). Use as a decision gate: 'is this file worth reading in full?' Summary carries source_preview so you can spot-check fabrication. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this summary is FOR) and the model first decides whether the input addresses it. Off-topic inputs return summary='(off-topic for frame: ...)' with `on_topic: false` instead of paraphrasing unrelated content. Omitting `frame` preserves the legacy result shape.",
     summarizeFastSchema.shape,
     { title: "Summarize (fast)", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleSummarizeFast(args, ctx), "ollama_summarize_fast", extra),
@@ -405,7 +419,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — summarize_deep
   server.tool(
     "ollama_summarize_deep",
-    "Digest of long input with optional focus. Pass EXACTLY ONE of: `text` (raw content in hand), `source_path` (single file — server reads + chunks, Claude never pre-reads), or `source_paths[]` (multiple files). The path-based shapes save Claude context — the whole point of delegating summarization. Carries source_preview for fabrication spot-checks. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this digest is FOR — distinct from `focus`, which is emphasis WITHIN an in-frame source). Sources that don't address the frame are dropped from the digest and listed under `unaddressed_sources`; if NO source addresses it, summary='' and `frame_addressed: false`. Omitting `frame` preserves the legacy result shape.",
+    "DIGEST. Digest of long input with optional focus. Pass EXACTLY ONE of: `text` (raw content in hand), `source_path` (single file — server reads + chunks, Claude never pre-reads), or `source_paths[]` (multiple files). The path-based shapes save Claude context — the whole point of delegating summarization. Carries source_preview for fabrication spot-checks. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this digest is FOR — distinct from `focus`, which is emphasis WITHIN an in-frame source). Sources that don't address the frame are dropped from the digest and listed under `unaddressed_sources`; if NO source addresses it, summary='' and `frame_addressed: false`. Omitting `frame` preserves the legacy result shape.",
     summarizeDeepSchema.shape,
     { title: "Summarize (deep)", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleSummarizeDeep(args, ctx), "ollama_summarize_deep", extra),
@@ -423,7 +437,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Core — extract (batch-capable)
   server.tool(
     "ollama_extract",
-    "Schema-constrained JSON extraction using Ollama's JSON mode. Single: pass `text`, returns `{ok: true, data}` or `{ok: false, error: 'unparseable'}` — never partial. BATCH: pass `items:[{id,text}]` with a shared schema — returns one envelope with per-item `{id, ok, result|error}`. Use the batch shape for any 10+-similar-inputs workload (frontmatter, package.json, release metadata) so you hand over the whole job, not N calls. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this extraction is FOR). The model first judges on-topic vs off-topic; result lifts a top-level `frame_alignment: { on_topic, reason, unaddressed_aspects? }`. Off-topic sources return an empty data shape rather than paraphrasing unrelated content into the schema. Omitting `frame` preserves the legacy result shape.",
+    "EXTRACT. Schema-constrained JSON extraction using Ollama's JSON mode. Single: pass `text`, returns `{ok: true, data}` or `{ok: false, error: 'unparseable'}` — never partial. BATCH: pass `items:[{id,text}]` with a shared schema — returns one envelope with per-item `{id, ok, result|error}`. Use the batch shape for any 10+-similar-inputs workload (frontmatter, package.json, release metadata) so you hand over the whole job, not N calls. FRAME CONTRACT (optional): pass `frame` (the question / section purpose this extraction is FOR). The model first judges on-topic vs off-topic; result lifts a top-level `frame_alignment: { on_topic, reason, unaddressed_aspects? }`. Off-topic sources return an empty data shape rather than paraphrasing unrelated content into the schema. Omitting `frame` preserves the legacy result shape.",
     extractSchema.shape,
     { title: "Extract structured data", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleExtract(args, ctx), "ollama_extract", extra),
@@ -454,7 +468,7 @@ export function createServer(ctx: RunContext): McpServer {
   // OPS — ollama_log_tail (structured NDJSON log tail)
   server.tool(
     "ollama_log_tail",
-    "OPS. Structured tail of the NDJSON observability log at ~/.ollama-intern/log.ndjson (override via INTERN_LOG_PATH). No model call. Optional filters: `limit` (default 50, max 500), `filter_kind` ('call' | 'timeout' | 'fallback' | 'guardrail' | 'pack_step' | 'semaphore:wait' | 'prewarm' | 'prewarm:in_progress_request'), `filter_tool`, `since` (ISO-8601). Truncated final lines are skipped silently. Missing log file is a soft-empty case, not an error. Returns `{events, total_returned, log_path, log_present}`. Use this to debug why a call was slow / what timed out / what the last failures were.",
+    `OPS. Structured tail of the NDJSON observability log at ~/.ollama-intern/log.ndjson (override via INTERN_LOG_PATH). No model call. Optional filters: \`limit\` (default 50, max 500), \`filter_kind\` (the COMPLETE roster, matched by EXACT equality — ${LOG_FILTER_KIND_ROSTER} — so mind the colon forms, and note that 'cloud_egress' is the data-left-the-machine event), \`filter_tool\`, \`since\` (ISO-8601). Truncated final lines are skipped silently. Missing log file is a soft-empty case, not an error. Returns \`{events, total_returned, log_path, log_present}\`. Use this to debug why a call was slow / what timed out / what the last failures were.`,
     logTailSchema.shape,
     { title: "Tail NDJSON log", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleLogTail(args, ctx), "ollama_log_tail", extra),
@@ -877,7 +891,7 @@ async function runCli(argv: string[]): Promise<boolean> {
   // becomes a hung stdio handshake. Future verbs (e.g. `intern logs`)
   // land in the switch above before this fall-through fires.
   // eslint-disable-next-line no-console
-  console.error(`ollama-intern-mcp: unknown command '${first}'. See --help for usage.`);
+  console.error(`ollama-intern: unknown command '${first}'. See --help for usage.`);
   process.exit(1);
 }
 
@@ -898,7 +912,8 @@ function printHelp(): void {
     `COMMANDS`,
     `  (no args)        Start the MCP stdio server (default — used by MCP clients).`,
     `  doctor           Run ollama_doctor logic and print the report to stdout.`,
-    `                   --json emits the structured DoctorResult (pipeable to jq);`,
+    `                   --json emits the structured DoctorResult plus warnings[]`,
+    `                   and cloud_config_error (pipeable to jq);`,
     `                   --fail-unhealthy exits 1 when unhealthy (CI gate — a bad`,
     `                   cloud key counts as unhealthy; a cloud outage does not).`,
     `  init             Scaffold hermes.config.yaml in the current directory.`,
@@ -915,6 +930,14 @@ function printHelp(): void {
     `  INTERN_EMBED_MODEL     Override the embed-tier model (e.g. nomic-embed-text).`,
     `  OLLAMA_HOST            Ollama base URL (default: http://127.0.0.1:11434).`,
     `  INTERN_LOG_PATH        Override NDJSON log path (default: ~/.ollama-intern/log.ndjson).`,
+    // INTERN_PREWARM and INTERN_MAX_CONCURRENT are both fail-fast
+    // CONFIG_INVALID vars: an operator could previously only discover them
+    // by already knowing the name, or by crashing the server with a typo
+    // of one. A knob that refuses to start has to be documented where the
+    // product itself can show it.
+    `  INTERN_PREWARM         off|0|false|no|none disables the startup prewarm`,
+    `                         (on|1|true|yes or unset = the profile's default).`,
+    `  INTERN_MAX_CONCURRENT  Max concurrent Ollama calls, positive integer (default: 2).`,
     ``,
     `  Ollama Cloud (optional — no key = zero egress; key alone = STANDBY, per-call`,
     `  backend:'cloud' escalation only; key + PRIMARY = cloud-primary routing):`,
@@ -924,6 +947,12 @@ function printHelp(): void {
     `  OLLAMA_CLOUD_HOST      Cloud base URL (default: https://ollama.com).`,
     `  INTERN_CLOUD_MODEL     Cloud model for instant+workhorse+deep (default: qwen3-coder-next:cloud).`,
     `  INTERN_CLOUD_DEEP_MODEL  Deep-tier-only cloud override (e.g. deepseek-v3.1:671b).`,
+    `  INTERN_CLOUD_TIMEOUT_INSTANT_MS    Cloud instant-tier budget (default: 30000).`,
+    `  INTERN_CLOUD_TIMEOUT_WORKHORSE_MS  Cloud workhorse-tier budget (default: 120000).`,
+    `  INTERN_CLOUD_TIMEOUT_DEEP_MS       Cloud deep-tier budget (default: 300000).`,
+    `  INTERN_CLOUD_NUM_CTX   Cloud context window (default: 32768).`,
+    ``,
+    `  Partial list — see the README (Hardware profiles / Cloud env vars) for the rest.`,
     ``,
     `DOCS`,
     `  https://github.com/mcp-tool-shop-org/ollama-intern-mcp#readme`,
@@ -938,8 +967,10 @@ function printHelp(): void {
  * with the MCP tool — no parallel implementation to keep aligned.
  *
  * Flags (F5, v2.9 — the CI persona):
- *   --json            emit the structured DoctorResult as JSON (stdout is
- *                     ONLY the JSON — pipeable to jq; the old comment
+ *   --json            emit the structured DoctorResult as JSON, plus the
+ *                     envelope's `warnings[]` and (when the cloud config
+ *                     itself failed to load) `cloud_config_error` (stdout
+ *                     is ONLY the JSON — pipeable to jq; the old comment
  *                     suggested `doctor | jq .` against the prose report,
  *                     which never worked).
  *   --fail-unhealthy  exit 1 when `healthy` is false OR the cloud config
@@ -950,13 +981,22 @@ function printHelp(): void {
  * Default (no flags): the human prose report, exit 0 regardless of health —
  * doctor's job is to REPORT; gating is the explicit flag's job. Returns the
  * exit code; the runCli dispatcher owns process.exit.
+ *
+ * Both modes render the envelope's `warnings[]`, not just `envelope.result`.
+ * handleDoctor composes the actual remediation sentences there ("Start it
+ * with 'ollama serve' or set OLLAMA_HOST", "check OLLAMA_API_KEY …"), and
+ * this CLI used to drop every one of them: the prose showed the raw facts
+ * (`reachable: no`) with no fix instruction, and the --json branch
+ * serialized `result` rather than the envelope, so a CI consumer got none
+ * either. The MCP client was being told strictly more than the operator
+ * standing at the terminal that `init` points at.
  */
 async function runCliDoctor(flags: string[] = []): Promise<number> {
   const unknown = flags.filter((f) => f !== "--json" && f !== "--fail-unhealthy");
   if (unknown.length > 0) {
     // eslint-disable-next-line no-console
     console.error(
-      `ollama-intern-mcp: unknown doctor flag(s): ${unknown.join(", ")}. Supported: --json, --fail-unhealthy.`,
+      `ollama-intern: unknown doctor flag(s): ${unknown.join(", ")}. Supported: --json, --fail-unhealthy.`,
     );
     return 1;
   }
@@ -978,21 +1018,25 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
   // Cloud config for the doctor report. A CONFIG_INVALID (e.g. PRIMARY set
   // without a key) is REPORTED, not fatal — doctor's job is to surface broken
   // config, so we print the hint and continue with cloud disabled. The
-  // brokenness is REMEMBERED so --fail-unhealthy gates on it (the JSON has
-  // no cloud block in this case; the stderr hint carries the specifics).
+  // brokenness is REMEMBERED so --fail-unhealthy gates on it, and it is also
+  // CARRIED into both renderings: a box with OLLAMA_CLOUD_PRIMARY set and no
+  // key produces no `cloud` block at all, which was byte-identical to a box
+  // with cloud deliberately not configured. Without the field below, the only
+  // trace was a stderr line the machine payload never saw.
   let cloud: CloudConfig | null = null;
-  let cloudConfigBroken = false;
+  let cloudConfigError: string | null = null;
   try {
     cloud = loadCloudConfig();
   } catch (err) {
     if (err instanceof InternError) {
       // eslint-disable-next-line no-console
       console.error(`ollama-intern: cloud config error — ${err.message}\n  hint: ${err.hint}`);
-      cloudConfigBroken = true;
+      cloudConfigError = `${err.message} — ${err.hint}`;
     } else {
       throw err;
     }
   }
+  const cloudConfigBroken = cloudConfigError !== null;
   // Doctor needs a RunContext but we don't want the NDJSON logger to
   // append a `call` event for a CLI invocation — that would pollute
   // tool-call histograms. NullLogger captures events in memory and is
@@ -1007,10 +1051,28 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
   };
   const env = await handleDoctor({}, ctx);
   const r = env.result;
+  // The envelope's warnings carry the remediation sentences; a broken cloud
+  // config is not one of them (handleDoctor never saw the config that failed
+  // to load), so it is prepended as a synthetic warning and leads the list —
+  // it is operator config that must be fixed, not an outage to wait out.
+  const warnings: string[] = [
+    ...(cloudConfigError ? [`Cloud config error — ${cloudConfigError}`] : []),
+    ...(env.warnings ?? []),
+  ];
   if (asJson) {
-    // Machine mode: stdout is ONLY the JSON (config hints go to stderr).
+    // Machine mode: stdout is ONLY the JSON (config hints also go to stderr).
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify(r, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...r,
+          warnings,
+          ...(cloudConfigError ? { cloud_config_error: cloudConfigError } : {}),
+        },
+        null,
+        2,
+      ),
+    );
     return failUnhealthy && (!r.healthy || cloudConfigBroken) ? 1 : 0;
   }
   // Compact, human-readable rendering for stdout (unchanged default path).
@@ -1055,6 +1117,17 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
   out.push(``);
   out.push(`Paths:`);
   out.push(`  log:       ${r.paths.log_path}`);
+  // log_bytes / log_over_stats_cap exist on DoctorResult but never reached
+  // this report, so the operator running plain `doctor` got no warning that
+  // log_stats was about to refuse to read the log it just pointed them at.
+  if (r.paths.log_bytes !== undefined) {
+    out.push(`  log size:  ${formatBytes(r.paths.log_bytes)}`);
+    if (r.paths.log_over_stats_cap) {
+      out.push(
+        `             over the ${formatBytes(LOG_STATS_MAX_BYTES)} log_stats cap — log_stats will refuse; rotate or truncate the log.`,
+      );
+    }
+  }
   out.push(`  artifacts: ${r.paths.artifact_root}`);
   if (r.paths.allowed_roots.length > 0) {
     out.push(`  allowed:   ${r.paths.allowed_roots.join(", ")}`);
@@ -1065,6 +1138,14 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
     for (const e of r.recent_errors) {
       out.push(`  ${e.ts}  ${e.code}  ${e.tool}`);
     }
+    out.push(``);
+  }
+  // Immediately before Healthy: the facts above say WHAT is wrong, these say
+  // what to do about it. Rendered last so the fix is the final thing on
+  // screen next to the verdict it explains.
+  if (warnings.length > 0) {
+    out.push(`Warnings:`);
+    for (const w of warnings) out.push(`  - ${w}`);
     out.push(``);
   }
   out.push(`Healthy: ${r.healthy ? "yes" : "no"}`);
@@ -1094,7 +1175,7 @@ async function runCliInit(flags: string[] = []): Promise<number> {
   if (unknown.length > 0) {
     // eslint-disable-next-line no-console
     console.error(
-      `ollama-intern-mcp: unknown init flag(s): ${unknown.join(", ")}. Supported: --claude.`,
+      `ollama-intern: unknown init flag(s): ${unknown.join(", ")}. Supported: --claude.`,
     );
     return 1;
   }
@@ -1137,7 +1218,7 @@ async function runCliInit(flags: string[] = []): Promise<number> {
   if (existsSync(target)) {
     // eslint-disable-next-line no-console
     console.error(
-      `ollama-intern-mcp: ${target} already exists — refusing to overwrite. Move or delete it first if you want a fresh scaffold.`,
+      `ollama-intern: ${target} already exists — refusing to overwrite. Move or delete it first if you want a fresh scaffold.`,
     );
     return 1;
   }
@@ -1149,7 +1230,7 @@ async function runCliInit(flags: string[] = []): Promise<number> {
   if (!existsSync(example)) {
     // eslint-disable-next-line no-console
     console.error(
-      `ollama-intern-mcp: example config not found at ${example}. This is a packaging bug — please report at https://github.com/mcp-tool-shop-org/ollama-intern-mcp/issues.`,
+      `ollama-intern: example config not found at ${example}. This is a packaging bug — please report at https://github.com/mcp-tool-shop-org/ollama-intern-mcp/issues.`,
     );
     return 1;
   }
@@ -1158,7 +1239,7 @@ async function runCliInit(flags: string[] = []): Promise<number> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // eslint-disable-next-line no-console
-    console.error(`ollama-intern-mcp: failed to write ${target}: ${msg}`);
+    console.error(`ollama-intern: failed to write ${target}: ${msg}`);
     return 1;
   }
   // eslint-disable-next-line no-console
