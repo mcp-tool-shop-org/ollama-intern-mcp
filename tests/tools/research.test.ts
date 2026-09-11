@@ -206,7 +206,7 @@ describe("handleResearch — line_range bounds check", () => {
       makeCtx(client),
     );
     expect(env.result.citations[0].line_range).toBe("2-4");
-    expect(env.warnings?.some((w) => w.includes("past EOF"))).toBeFalsy();
+    expect(env.warnings?.some((w) => w.includes("past EOF")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBeFalsy();
   });
 });
 

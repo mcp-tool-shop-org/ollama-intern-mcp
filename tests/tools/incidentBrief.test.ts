@@ -242,8 +242,8 @@ describe("handleIncidentBrief — evidence shape", () => {
     const s = env.result.affected_surfaces[0];
     expect(s.evidence_refs).toEqual(["e1"]);
     // Coverage notes surface the stripping.
-    expect(env.result.coverage_notes.some((n) => n.includes("Stripped"))).toBe(true);
-    expect(env.warnings?.some((w) => w.includes("Stripped"))).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes("Stripped")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("Stripped")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("dedupes repeated evidence_refs within a single hypothesis", async () => {
@@ -274,7 +274,7 @@ describe("handleIncidentBrief — weak / honest degradation", () => {
     const env = await handleIncidentBrief({ log_text: "nothing to see here" }, makeCtx(client));
     expect(env.result.weak).toBe(true);
     expect(env.result.coverage_notes.length).toBeGreaterThan(0);
-    expect(env.result.coverage_notes.some((n) => n.includes("No root-cause hypotheses"))).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes("No root-cause hypotheses")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
   });
 
   it("non-JSON model output → empty brief + weak + warning", async () => {
@@ -282,7 +282,7 @@ describe("handleIncidentBrief — weak / honest degradation", () => {
     const env = await handleIncidentBrief({ log_text: "anything" }, makeCtx(client));
     expect(env.result.root_cause_hypotheses).toEqual([]);
     expect(env.result.weak).toBe(true);
-    expect(env.warnings?.some((w) => w.includes("empty brief"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("empty brief")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("max_hypotheses caps oversized output", async () => {
@@ -340,7 +340,7 @@ describe("handleIncidentBrief — corpus integration", () => {
       makeCtx(client),
     );
     expect(env.result.corpus_used?.chunks_used).toBe(0);
-    expect(env.result.coverage_notes.some((n) => n.includes('Corpus "thin"') && n.includes("0 chunks"))).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes('Corpus "thin"') && n.includes("0 chunks")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
   });
 
   it("rejects unknown corpus with SCHEMA_INVALID", async () => {

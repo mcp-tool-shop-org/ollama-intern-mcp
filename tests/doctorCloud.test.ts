@@ -88,7 +88,7 @@ describe("ollama_doctor — cloud block", () => {
     // 200 from /api/tags can't confirm a GOOD key → unverified, never "ok".
     expect(env.result.cloud?.auth).toBe("unverified");
     expect(env.result.cloud?.models.instant).toBe("minimax-m3:cloud");
-    expect(env.warnings?.some((w) => /Cloud auth failed/.test(w)) ?? false).toBe(false);
+    expect(env.warnings?.some((w) => /Cloud auth failed/.test(w)) ?? false, `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(false);
   });
 
   it("flags auth='failed' on a 401 AND surfaces healthy:false — a bad key is broken operator config (F5, v2.9)", async () => {
@@ -96,7 +96,7 @@ describe("ollama_doctor — cloud block", () => {
     const env = await handleDoctor({}, makeCtx());
     expect(env.result.cloud?.reachable).toBe(true); // HTTP 401 = server answered
     expect(env.result.cloud?.auth).toBe("failed");
-    expect(env.warnings?.some((w) => /Ollama Cloud auth failed/.test(w))).toBe(true);
+    expect(env.warnings?.some((w) => /Ollama Cloud auth failed/.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     // v2.9 (F5): a DEFINITIVE cloud misconfiguration flips healthy — the
     // operator opted into cloud and their key is bad; "is this box set up?"
     // is honestly NO. (Local serving still works via fallback — the warning

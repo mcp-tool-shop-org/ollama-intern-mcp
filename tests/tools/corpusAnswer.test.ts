@@ -202,7 +202,7 @@ describe("handleCorpusAnswer", () => {
     expect(env.result.citations[0].path).toBe("/docs/alpha.md");
     const strippedNote = env.result.coverage_notes.find((n) => n.includes("Stripped"));
     expect(strippedNote).toBeDefined();
-    expect(env.warnings?.some((w) => w.includes("Stripped"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("Stripped")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("coverage: flags omitted retrieved paths when answer cites only a subset", async () => {
@@ -239,7 +239,7 @@ describe("handleCorpusAnswer", () => {
     expect(env.result.retrieval.weak).toBe(true);
     expect(env.result.citations).toEqual([]);
     expect(env.result.answer).toMatch(/No matching chunks/);
-    expect(env.warnings?.some((w) => w.includes("zero retrieval"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("zero retrieval")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("single-hit retrieval flags weak and adds a coverage note", async () => {
@@ -321,7 +321,7 @@ describe("handleCorpusAnswer", () => {
     );
     expect(env.result.answer).toBe("this is not JSON — just prose.");
     expect(env.result.citations).toEqual([]);
-    expect(env.warnings?.some((w) => w.includes("no structured citations"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("no structured citations")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("duplicate citation numbers are deduped against the retrieval list", async () => {
@@ -417,7 +417,7 @@ describe("handleCorpusAnswer", () => {
     expect(env.result.answer).toMatch(/below threshold/);
     const note = env.result.coverage_notes.find((n) => n.includes("below caller-supplied min_top_score"));
     expect(note).toBeDefined();
-    expect(env.warnings?.some((w) => w.includes("min_top_score"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("min_top_score")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("min_top_score below top hit score → normal synthesis path", async () => {

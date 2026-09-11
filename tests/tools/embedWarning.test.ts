@@ -79,7 +79,7 @@ describe("handleEmbed payload-size warning", () => {
     const batch = Array.from({ length: 256 }, (_, i) => `item-${i}`);
     const env = await handleEmbed({ input: batch }, makeCtx(client));
     expect(env.warnings).toBeDefined();
-    expect(env.warnings!.some((w) => /overflow/i.test(w) || /embed_search/i.test(w))).toBe(true);
+    expect(env.warnings!.some((w) => /overflow/i.test(w) || /embed_search/i.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     // But the result is still returned — warning, not refusal.
     expect(env.result.embeddings.length).toBe(256);
   });

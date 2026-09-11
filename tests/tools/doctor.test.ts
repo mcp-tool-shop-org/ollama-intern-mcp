@@ -110,7 +110,7 @@ describe("ollama_doctor", () => {
     expect(env.result.ollama.reachable).toBe(false);
     expect(env.result.ollama.error).toContain("ECONNREFUSED");
     expect(env.result.healthy).toBe(false);
-    expect(env.warnings?.some((w) => w.includes("unreachable"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("unreachable")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("flags missing models with suggested_pulls", async () => {

@@ -120,7 +120,7 @@ describe("ollama_code_citation — citation validation", () => {
       );
       expect(env.result.citations).toHaveLength(1);
       expect(env.result.citations[0].file).toBe(a);
-      expect((env.warnings ?? []).some((w) => /not in source_paths/.test(w))).toBe(true);
+      expect((env.warnings ?? []).some((w) => /not in source_paths/.test(w)), `(env.warnings ?? []) = ${JSON.stringify(env.warnings ?? [])}`).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -144,7 +144,7 @@ describe("ollama_code_citation — citation validation", () => {
         makeCtx(client),
       );
       expect(env.result.citations).toHaveLength(0);
-      expect((env.warnings ?? []).some((w) => /outside the loaded file bounds/.test(w))).toBe(true);
+      expect((env.warnings ?? []).some((w) => /outside the loaded file bounds/.test(w)), `(env.warnings ?? []) = ${JSON.stringify(env.warnings ?? [])}`).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -6,17 +6,17 @@ quality number.
 
 ## Gold packs (`evals/gold/`)
 
-| Tool | Quality metric | File |
-|---|---|---|
-| `ollama_classify` | accuracy vs. `expected` label | `gold/classify.jsonl` |
-| `ollama_triage_logs` | precision/recall on error list, usefulness of root cause | `gold/triageLogs.jsonl` |
-| `ollama_summarize_fast` | factuality (no fabricated entities) vs. `source_facts` | `gold/summarizeFast.jsonl` |
-| `ollama_summarize_deep` | factuality + focus adherence | `gold/summarizeDeep.jsonl` |
-| `ollama_draft` | compile rate + usefulness (human scored 1–5) | `gold/draft.jsonl` |
-| `ollama_extract` | schema conformance + field accuracy | `gold/extract.jsonl` |
-| `ollama_research` | citation validity + answer factuality against sources | `gold/research.jsonl` |
-| `ollama_embed` | retrieval recall@k on seeded queries | `gold/embed.jsonl` |
-| `ollama_corpus_search` (retrieval rails) | precision@1 / precision@3 per mode × query class | `gold/retrieval.jsonl` |
+| Tool | Quality metric | File | State |
+|---|---|---|---|
+| `ollama_classify` | accuracy vs. `expected` label | `gold/classify.jsonl` | live seed |
+| `ollama_triage_logs` | precision/recall on error list, usefulness of root cause | `gold/triageLogs.jsonl` | live seed |
+| `ollama_summarize_fast` | factuality (no fabricated entities) vs. `source_facts` | `gold/summarizeFast.jsonl` | live seed |
+| `ollama_summarize_deep` | factuality + focus adherence | `gold/summarizeDeep.jsonl` | ⚠ **placeholder** |
+| `ollama_draft` | compile rate + usefulness (human scored 1–5) | `gold/draft.jsonl` | live seed |
+| `ollama_extract` | schema conformance + field accuracy | `gold/extract.jsonl` | live seed |
+| `ollama_research` | citation validity + answer factuality against sources | `gold/research.jsonl` | live seed |
+| `ollama_embed` | retrieval recall@k on seeded queries | `gold/embed.jsonl` | live seed |
+| `ollama_corpus_search` (retrieval rails) | precision@1 / precision@3 per mode × query class | `gold/retrieval.jsonl` | live — 20 cases, wired to a runner |
 
 ## Retrieval pack (`gold/retrieval.jsonl`)
 
@@ -43,6 +43,18 @@ npx vitest run tests/evals/retrieval.test.ts
 
 Each gold file is JSONL. One seed case per tool ships now so the schema is
 frozen; the rest fill in during Phase 2.
+
+**"live seed" vs "placeholder".** A live seed is one *real* case with real
+expectations — small, but scoreable today. `gold/summarizeDeep.jsonl` is not
+that: its single record is a stub whose `text` reads `PLACEHOLDER — Phase 2
+seeds…` and whose `required_facts` / `forbidden_fabrications` are literally
+`["TODO"]`. It carries `"status": "placeholder"` so the state is visible from
+the file itself, not just from this table. **The runner below must skip or
+hard-fail on `status: placeholder` rather than score it** — scoring a summary
+against the string `TODO` yields a pass/fail number that means nothing. Filling
+it in needs a 20k+ char real excerpt whose facts span early/mid/late sections
+(that is the point of the pack: does the digest preserve breadth), which is why
+it is still a stub.
 
 ## Running evals
 

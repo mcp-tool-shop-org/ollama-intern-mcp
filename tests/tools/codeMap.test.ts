@@ -106,7 +106,7 @@ describe("ollama_code_map", () => {
     const env = await handleCodeMap({ source_paths: [dir], max_files: 5 }, makeCtx());
     expect(env.result.total_files_scanned).toBe(5);
     expect(env.result.max_files_hit).toBe(true);
-    expect(env.warnings?.some((w) => w.includes("max_files"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("max_files")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("aggregates a multi-language tree and skips node_modules", async () => {

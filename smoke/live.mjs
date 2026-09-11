@@ -1,9 +1,16 @@
 /**
- * Live smoke — exercises all 8 handlers against the running Ollama at
- * localhost:11434 using the dev-rtx5080 profile. Prints envelopes + guardrail
- * proofs + the tail of the NDJSON log.
+ * Live smoke — exercises the 9 ATOM handlers (triage_logs, summarize_fast,
+ * summarize_deep, research, draft, embed, classify, extract, chat) against the
+ * running Ollama at localhost:11434 using the dev-rtx5080 profile. Prints
+ * envelopes + guardrail proofs + the tail of the NDJSON log.
  *
- * Not a benchmark — a functional proof of the delegation spine.
+ * NOT the full surface: the server registers 44 tools (atoms + packs +
+ * artifacts + corpus). This covers the delegation spine only — a functional
+ * proof that a call reaches a model and comes back as a well-formed envelope,
+ * not a coverage claim. The 44-tool surface is pinned by
+ * tests/mcpGolden.test.ts, which needs no live model.
+ *
+ * Not a benchmark either. Manual rig ritual — see smoke/README.md.
  */
 
 import { loadProfile } from "../dist/profiles.js";
