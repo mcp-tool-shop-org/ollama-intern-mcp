@@ -36,8 +36,9 @@ import type { OllamaClient } from "../ollama.js";
 import { InternError } from "../errors.js";
 import { loadCorpus } from "./storage.js";
 import { loadManifest, saveManifest } from "./manifest.js";
-import { indexCorpusUnlocked, sha256File } from "./indexer.js";
+import { indexCorpus, sha256File } from "./indexer.js";
 import { withCorpusLock } from "./lock.js";
+import { canonicalFsPath, parentDirMissing } from "./identity.js";
 
 export interface RefreshReport {
   name: string;
@@ -104,6 +105,22 @@ export interface RefreshParams {
   retry_failed?: boolean;
 }
 
+async function sha256FileWithEnoentRetry(
+  absPath: string,
+): Promise<{ hash: string; mtime: string; content: string }> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await sha256File(absPath);
+    } catch (err) {
+      lastErr = err;
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT" || attempt === 2) throw err;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+  throw lastErr;
+}
+
 interface PathClassification {
   path: string;
   klass: "added" | "changed" | "unchanged" | "missing" | "unreadable";
@@ -151,10 +168,14 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   // which manifest paths are unchanged / changed / added without re-reading
   // any file more than once.
   const priorHashByPath = new Map<string, string>();
+  const priorPathOriginal = new Map<string, string>();
   if (existing) {
-    for (const c of existing.chunks) priorHashByPath.set(c.path, c.file_hash);
+    for (const c of existing.chunks) {
+      const key = canonicalFsPath(c.path);
+      priorHashByPath.set(key, c.file_hash);
+      if (!priorPathOriginal.has(key)) priorPathOriginal.set(key, c.path);
+    }
   }
-  const priorPaths = new Set(priorHashByPath.keys());
 
   // Classify every manifest path.
   const manifestAbs = manifest.paths.map((p) => resolve(p));
@@ -162,20 +183,20 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   for (const absPath of manifestAbs) {
     let hash: string;
     try {
-      hash = (await sha256File(absPath)).hash;
+      hash = (await sha256FileWithEnoentRetry(absPath)).hash;
     } catch (err) {
       // H5: distinguish a genuinely-absent file from a transient read error.
-      // Only ENOENT is "missing" — the living-corpus law that deletes its
-      // chunks. Any OTHER failure (Windows file lock, antivirus hold, editor
-      // atomic-save rename window, unmounted share, size-cap/symlink
-      // rejection) is "unreadable": it stays in livePaths so the indexer
-      // re-attempts the read and, on repeat failure, carries its existing
-      // chunks forward + records it in failed_paths — never a silent delete.
-      const klass = (err as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unreadable";
+      // Brief ENOENT is retried (editor atomic-save window). Remaining ENOENT
+      // is "missing" only when the parent directory still exists. Parent-dir
+      // ENOENT (unmounted volume / missing share) is "unreadable": chunks and
+      // intent survive. Any OTHER failure stays "unreadable" as before.
+      const code = (err as NodeJS.ErrnoException).code;
+      const klass =
+        code === "ENOENT" && !(await parentDirMissing(absPath)) ? "missing" : "unreadable";
       classifications.push({ path: absPath, klass, file_hash: null });
       continue;
     }
-    const prior = priorHashByPath.get(absPath);
+    const prior = priorHashByPath.get(canonicalFsPath(absPath));
     if (prior === undefined) {
       classifications.push({ path: absPath, klass: "added", file_hash: hash });
     } else if (prior === hash) {
@@ -186,8 +207,10 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   }
 
   // Paths that were in the corpus but not in the manifest → explicit delete.
-  const manifestSet = new Set(manifestAbs);
-  const explicitlyRemoved = [...priorPaths].filter((p) => !manifestSet.has(p));
+  const manifestAbsSet = new Set(manifestAbs.map(canonicalFsPath));
+  const explicitlyRemoved = [...priorPathOriginal.entries()]
+    .filter(([key]) => !manifestAbsSet.has(key))
+    .map(([, orig]) => orig);
 
   const added = classifications.filter((c) => c.klass === "added").map((c) => c.path);
   const changed = classifications.filter((c) => c.klass === "changed").map((c) => c.path);
@@ -206,11 +229,18 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   // when the caller explicitly opts in — otherwise a refresh honors the
   // declared path set and nothing else.
   const priorFailed = params.retry_failed ? (manifest.failed_paths ?? []) : [];
-  const retryPaths = priorFailed.map((f) => resolve(f.path));
+  const retryPaths: string[] = [];
+  const retrySeen = new Set<string>();
+  for (const f of priorFailed) {
+    const abs = resolve(f.path);
+    const key = canonicalFsPath(abs);
+    if (retrySeen.has(key)) continue;
+    retrySeen.add(key);
+    retryPaths.push(abs);
+  }
   // Avoid double-indexing: a path that's both in manifest.paths AND in
   // failed_paths only needs to appear in the livePaths list once.
-  const manifestAbsSet = new Set(manifestAbs);
-  const retryExtraPaths = retryPaths.filter((p) => !manifestAbsSet.has(p));
+  const retryExtraPaths = retryPaths.filter((p) => !manifestAbsSet.has(canonicalFsPath(p)));
 
   // No-op detection. Nothing to do → don't touch anything, don't bump
   // manifest.updated_at, don't call the indexer at all. A pending retry
@@ -243,15 +273,32 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
     };
   }
 
-  // Live paths = manifest paths that actually exist on disk + retry extras.
+  // Fail closed: every declared path ENOENT (and nothing else to do) must
+  // not rewrite corpus JSON + manifest to empty. Intent survives on disk.
+  const allDeclaredMissing =
+    classifications.length > 0 &&
+    missing.length === classifications.length &&
+    unreadable.length === 0 &&
+    retryExtraPaths.length === 0;
+  if (allDeclaredMissing) {
+    throw new InternError(
+      "SOURCE_PATH_NOT_FOUND",
+      `Refresh of corpus "${params.name}" found every declared path missing (ENOENT). Refusing to rewrite the corpus empty.`,
+      `The manifest still lists ${missing.length} path(s). Check that the source volume is mounted and the files exist. Re-run refresh after restoring them — the path list was not dropped.`,
+      true,
+    );
+  }
+
+  // Live paths = every declared manifest path (including missing, so intent
+  // is not rewritten from the live-only subset) + retry extras. The indexer
+  // drops chunks for genuine file-ENOENT but keeps the path in seenPaths.
   const livePaths = [
-    ...classifications.filter((c) => c.klass !== "missing").map((c) => c.path),
+    ...classifications.map((c) => c.path),
     ...retryExtraPaths,
   ];
 
-  // Use the unlocked variant — we already hold the corpus lock. Calling
-  // indexCorpus here would try to re-acquire and self-deadlock.
-  const indexReport = await indexCorpusUnlocked({
+  // Already hold the corpus lock; indexCorpus re-enters the same key.
+  const indexReport = await indexCorpus({
     name: params.name,
     paths: livePaths,
     model: params.model,
@@ -310,7 +357,7 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
   const freshFailedByPath = new Map(
     indexReport.failed_paths.map((f) => [resolve(f.path), f.reason]),
   );
-  const retriedFailed = retryExtraPaths;
+  const retriedFailed = retryPaths;
   const stillFailed = indexReport.failed_paths.map((f) => ({
     path: resolve(f.path),
     reason: f.reason,

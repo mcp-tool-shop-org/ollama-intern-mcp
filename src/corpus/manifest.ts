@@ -17,8 +17,10 @@ import { homedir } from "node:os";
 import { join, isAbsolute, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InternError } from "../errors.js";
-import { assertValidCorpusName } from "./storage.js";
+import { assertValidCorpusName, rejectWin32NameAlias } from "./storage.js";
 import { atomicWriteFile } from "./atomicWrite.js";
+import { withCorpusLock } from "./lock.js";
+import { canonicalCorpusKey } from "./identity.js";
 
 export const MANIFEST_SCHEMA_VERSION = 2;
 
@@ -119,21 +121,30 @@ export function assertSafePath(p: string): void {
   // Realpath the input so it compares apples-to-apples with allowedRoots()
   // (which also realpaths each entry). Without this, macOS rejects valid
   // paths because /var/folders/... and /private/var/folders/... read as
-  // different strings even though they're the same directory. Fall back to
-  // the normalized string when the file doesn't exist yet (e.g. a manifest
-  // entry for a file the operator hasn't created).
-  let resolved = normalized;
+  // different strings even though they're the same directory.
+  //
+  // When realpath succeeds, ONLY the resolved path is allow-checked — a
+  // symlink whose lexical path sits under homedir but whose target is
+  // /etc/shadow must not pass. The lexical (normalized) path is used
+  // solely for ENOENT (synthetic-amend / not-yet-created files). Any
+  // other realpath failure (EACCES, ENOTDIR) fails closed.
+  let resolved: string | undefined;
   try {
     resolved = realpathSync(normalized);
-  } catch {
-    // Path doesn't exist (yet). Use the normalized form for the check; this
-    // matches the historical behavior pre-v2.5.1 for non-existent paths.
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `Manifest path could not be resolved: ${p} (${code ?? "unknown"})`,
+        "The path must exist and be readable, or be a not-yet-created file (ENOENT) under an allowed root. Fix permissions or the path and retry.",
+        false,
+      );
+    }
   }
+  const candidate = resolved ?? normalized;
   const roots = allowedRoots();
-  const ok = roots.some((root) => {
-    const r = root.endsWith(sep) ? root : root + sep;
-    return resolved === root || resolved.startsWith(r) || normalized === root || normalized.startsWith(r);
-  });
+  const ok = roots.some((root) => pathIsUnderRoot(candidate, root));
   if (!ok) {
     throw new InternError(
       "SCHEMA_INVALID",
@@ -142,6 +153,17 @@ export function assertSafePath(p: string): void {
       false,
     );
   }
+}
+
+function pathIsUnderRoot(candidate: string, root: string): boolean {
+  let c = candidate;
+  let r0 = root;
+  if (process.platform === "win32") {
+    c = c.normalize("NFC").toLowerCase();
+    r0 = r0.normalize("NFC").toLowerCase();
+  }
+  const r = r0.endsWith(sep) ? r0 : r0 + sep;
+  return c === r0 || c.startsWith(r);
 }
 
 export interface ManifestFailedPath {
@@ -229,7 +251,7 @@ function manifestDir(): string {
 }
 
 export function manifestPath(name: string): string {
-  return join(manifestDir(), `${name}.manifest.json`);
+  return join(manifestDir(), `${canonicalCorpusKey(name)}.manifest.json`);
 }
 
 export async function loadManifest(name: string): Promise<CorpusManifest | null> {
@@ -237,7 +259,17 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
   const path = manifestPath(name);
   if (!existsSync(path)) return null;
   const raw = await readFile(path, "utf8");
-  const parsed = JSON.parse(raw) as Partial<CorpusManifest> & { schema_version?: number };
+  let parsed: Partial<CorpusManifest> & { schema_version?: number };
+  try {
+    parsed = JSON.parse(raw) as Partial<CorpusManifest> & { schema_version?: number };
+  } catch {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" is not valid JSON. File: ${path}`,
+      `Re-run ollama_corpus_index({ name: "${name}", paths: [...] }) to rewrite the manifest. The file is corrupt or truncated.`,
+      false,
+    );
+  }
   const found = parsed.schema_version;
   if (found === 1) {
     // v1 → v2 migration: v1 didn't capture the resolved tag. Treat as
@@ -251,12 +283,13 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
     // sentinel that distinguishes "legacy, assumed complete" from a genuinely
     // torn v2 manifest (which has NO completed_at because the two-phase marker
     // cleared it and a crash prevented the restore).
-    return {
+    const migrated: CorpusManifest = {
       ...(parsed as CorpusManifest),
       schema_version: MANIFEST_SCHEMA_VERSION,
       embed_model_resolved: null,
       completed_at: parsed.updated_at ?? parsed.created_at ?? new Date(0).toISOString(),
     };
+    return validateManifestShape(name, path, migrated);
   }
   if (found !== MANIFEST_SCHEMA_VERSION) {
     throw new InternError(
@@ -279,12 +312,77 @@ export async function loadManifest(name: string): Promise<CorpusManifest | null>
       false,
     );
   }
+  return validateManifestShape(name, path, parsed);
+}
+
+function validateManifestShape(
+  name: string,
+  filePath: string,
+  parsed: Partial<CorpusManifest>,
+): CorpusManifest {
+  const hint = `Re-run ollama_corpus_index({ name: "${name}", paths: [...] }) to rewrite the manifest. File: ${filePath}`;
+  if (typeof parsed.name !== "string" || parsed.name.length === 0) {
+    throw new InternError("SCHEMA_INVALID", `Manifest for corpus "${name}" is missing a name. File: ${filePath}`, hint, false);
+  }
+  if (!Array.isArray(parsed.paths) || parsed.paths.some((p) => typeof p !== "string" || p.length === 0)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" has invalid paths[]. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (typeof parsed.embed_model !== "string" || parsed.embed_model.length === 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" is missing embed_model. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (!Number.isFinite(parsed.chunk_chars) || !Number.isFinite(parsed.chunk_overlap)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" has invalid chunk_chars/chunk_overlap. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (typeof parsed.created_at !== "string" || typeof parsed.updated_at !== "string") {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" is missing created_at/updated_at. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (parsed.failed_paths !== undefined) {
+    if (
+      !Array.isArray(parsed.failed_paths) ||
+      parsed.failed_paths.some((f) => !f || typeof f.path !== "string" || typeof f.reason !== "string")
+    ) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `Manifest for corpus "${name}" has invalid failed_paths. File: ${filePath}`,
+        hint,
+        false,
+      );
+    }
+  }
+  for (const p of parsed.paths) {
+    assertSafePath(p);
+  }
   return parsed as CorpusManifest;
 }
 
 export async function saveManifest(manifest: CorpusManifest): Promise<void> {
+  return withCorpusLock(manifest.name, () => saveManifestUnlocked(manifest));
+}
+
+async function saveManifestUnlocked(manifest: CorpusManifest): Promise<void> {
   assertValidCorpusName(manifest.name);
   const path = manifestPath(manifest.name);
+  rejectWin32NameAlias(manifest.name, path);
   // Stamp the writer version so older builds can refuse to downgrade —
   // mirrors saveCorpus in storage.ts. loadManifest reads this back and
   // rejects when it's newer than the running build.
@@ -309,6 +407,10 @@ export async function saveManifest(manifest: CorpusManifest): Promise<void> {
  * mutation's own final saveManifest (with completed_at) restores it on success.
  */
 export async function clearCompletedMarker(name: string): Promise<void> {
+  return withCorpusLock(name, () => clearCompletedMarkerUnlocked(name));
+}
+
+async function clearCompletedMarkerUnlocked(name: string): Promise<void> {
   const prev = await loadManifest(name).catch(() => null);
   if (!prev || prev.completed_at === undefined) return;
   const dirty: CorpusManifest = { ...prev };

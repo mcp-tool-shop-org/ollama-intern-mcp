@@ -40,20 +40,35 @@
  * enum tight; corpus mutation is pack-step-adjacent.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+import { canonicalCorpusKey } from "./identity.js";
+
 const LOCKS = new Map<string, Promise<unknown>>();
+/** Re-entrancy token: nested withCorpusLock(same name) runs fn without waiting. */
+const HELD = new AsyncLocalStorage<string>();
 
 /**
  * Run `fn` while serialized against other calls for the same `name`.
  * Resolves (or rejects) with whatever `fn` returns. Other callers queued
  * on the same name wait until this one finishes.
+ *
+ * The Map key is NFC-normalized and casefolded on win32 so `Notes` and
+ * `notes` share one slot (NTFS is case-insensitive). Nested acquires for
+ * the same key (saveCorpus from inside indexCorpus) are reentrant.
  */
 export async function withCorpusLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  const prior = LOCKS.get(name);
+  const key = canonicalCorpusKey(name);
+  if (HELD.getStore() === key) {
+    return fn();
+  }
+  const prior = LOCKS.get(key);
   // Chain onto the prior lock, swallowing its result so our own fn runs
   // regardless of whether the prior call succeeded or threw. This keeps
   // one failed index from permanently poisoning the lock for that name.
-  const next = (prior ? prior.catch(() => undefined) : Promise.resolve()).then(fn);
-  LOCKS.set(name, next);
+  const next = (prior ? prior.catch(() => undefined) : Promise.resolve()).then(() =>
+    HELD.run(key, fn),
+  );
+  LOCKS.set(key, next);
   try {
     return await next;
   } finally {
@@ -61,8 +76,8 @@ export async function withCorpusLock<T>(name: string, fn: () => Promise<T>): Pro
     // the Map doesn't grow unbounded across many distinct corpus names.
     // A newer waiter may have already replaced us — in that case, leave
     // the newer promise in place.
-    if (LOCKS.get(name) === next) {
-      LOCKS.delete(name);
+    if (LOCKS.get(key) === next) {
+      LOCKS.delete(key);
     }
   }
 }
