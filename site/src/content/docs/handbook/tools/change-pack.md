@@ -18,6 +18,8 @@ description: "Runs the full change REVIEW job: assemble evidence (diff + paths +
 | `corpus_query` | string | no | — | Corpus query (defaults to the head of diff_text or first source path). |
 | `title` | string | no | — | Short human title — used in the artifact header and filename slug. Defaults to the change_summary head. |
 | `artifact_dir` | string | no | — | Directory to write the change.md + change.json artifact pair. Defaults to ~/.ollama-intern/artifacts/change/. |
+| `allowed_roots` | string[] | no | — | Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path. |
+| `confirm_write` | boolean | no | — | Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft. |
 | `per_file_max_chars` | integer | no | — |  |
 | `max_breakpoints` | integer | no | — |  |
 | `max_validation_checks` | integer | no | — |  |
@@ -64,6 +66,18 @@ The JSON Schema below is generated from the same zod schema the server validates
       "description": "Directory to write the change.md + change.json artifact pair. Defaults to ~/.ollama-intern/artifacts/change/.",
       "type": "string",
       "minLength": 1
+    },
+    "allowed_roots": {
+      "description": "Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "confirm_write": {
+      "description": "Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft.",
+      "type": "boolean"
     },
     "per_file_max_chars": {
       "type": "integer",

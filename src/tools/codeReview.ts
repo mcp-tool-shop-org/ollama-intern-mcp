@@ -39,7 +39,8 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { parseModelJsonObject, readObjectArray, readString } from "./briefs/common.js";
-import { allowlistPathsMatch } from "./_helpers.js";
+import { basename } from "node:path";
+import { allowlistPathsMatch, posixNormPath } from "./_helpers.js";
 import type { RunContext } from "../runContext.js";
 
 // ── Closed enums — match the dispatch spec exactly ─────────
@@ -247,8 +248,16 @@ function lineCountsByPath(sources: LoadedSource[]): Map<string, number> {
 function lineCountFor(file: string, counts: Map<string, number>): number | undefined {
   const direct = counts.get(file);
   if (direct !== undefined) return direct;
+  const nf = posixNormPath(file);
   for (const [k, v] of counts) {
     if (pathsMatch(file, k)) return v;
+    // Bare git-diff names ("foo.ts") vs loaded absolute source_paths.
+    // Do not use allowlistPathsMatch here — that helper refuses a
+    // slash-less shorter side so invented `package.json` cannot ride a
+    // nested allowlist entry. Line-cap still needs the basename of a
+    // file the operator actually loaded.
+    const nk = posixNormPath(k);
+    if (!nf.includes("/") && basename(nk) === nf) return v;
   }
   return undefined;
 }

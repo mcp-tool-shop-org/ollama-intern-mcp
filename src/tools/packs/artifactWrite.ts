@@ -108,7 +108,7 @@ export function resolvePackArtifactDir(opts: {
     throw new InternError(
       "SCHEMA_INVALID",
       `artifact_dir is not under INTERN_ARTIFACT_DIR or any allowed_root: ${dir}`,
-      `Intern root: ${internRoot}. Allowed roots: ${normalizedRoots.join(", ")}.`,
+      "Point artifact_dir inside INTERN_ARTIFACT_DIR (or ~/.ollama-intern/artifacts), or under a declared allowed_roots entry.",
       false,
     );
   }

@@ -143,24 +143,31 @@ let tempArtifactDir: string;
 let tempCorpusDir: string;
 let tempSrcDir: string;
 let origCorpusDir: string | undefined;
+let origArtifactDir: string | undefined;
 
 // Module-load snapshot — bulletproof restore even if beforeEach throws
 // before its own snapshot line runs. (T001)
 const MODULE_ORIG_CORPUS_DIR = process.env.INTERN_CORPUS_DIR;
+const MODULE_ORIG_ARTIFACT_DIR = process.env.INTERN_ARTIFACT_DIR;
 
 beforeEach(async () => {
   tempArtifactDir = await mkdtemp(join(tmpdir(), "intern-repopack-art-"));
   tempCorpusDir = await mkdtemp(join(tmpdir(), "intern-repopack-corpus-"));
   tempSrcDir = await mkdtemp(join(tmpdir(), "intern-repopack-src-"));
   origCorpusDir = process.env.INTERN_CORPUS_DIR;
+  origArtifactDir = process.env.INTERN_ARTIFACT_DIR;
   process.env.INTERN_CORPUS_DIR = tempCorpusDir;
+  process.env.INTERN_ARTIFACT_DIR = tempArtifactDir;
 });
 
 afterEach(async () => {
   const toRestore = origCorpusDir ?? MODULE_ORIG_CORPUS_DIR;
+  const toRestoreArt = origArtifactDir ?? MODULE_ORIG_ARTIFACT_DIR;
   try {
     if (toRestore === undefined) delete process.env.INTERN_CORPUS_DIR;
     else process.env.INTERN_CORPUS_DIR = toRestore;
+    if (toRestoreArt === undefined) delete process.env.INTERN_ARTIFACT_DIR;
+    else process.env.INTERN_ARTIFACT_DIR = toRestoreArt;
   } finally {
     await rm(tempArtifactDir, { recursive: true, force: true });
     await rm(tempCorpusDir, { recursive: true, force: true });
