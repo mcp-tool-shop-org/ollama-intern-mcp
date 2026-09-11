@@ -10,6 +10,7 @@
   <a href="https://github.com/mcp-tool-shop-org/ollama-intern-mcp/actions"><img alt="CI" src="https://github.com/mcp-tool-shop-org/ollama-intern-mcp/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/"><img alt="Landing Page" src="https://img.shields.io/badge/landing-page-8b5cf6"></a>
+  <a href="https://www.npmjs.com/package/ollama-intern-mcp"><img alt="npm" src="https://img.shields.io/npm/v/ollama-intern-mcp?color=cb3837&logo=npm"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
   <a href="#ollama-cloud"><img alt="Ollama Cloud: 600B-class, optional" src="https://img.shields.io/badge/Ollama%20Cloud-600B--class%20optional-0ea5e9"></a>
 </p>
@@ -29,6 +30,18 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 **No GPU big enough? [Ollama Cloud](#ollama-cloud) runs all <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> tools on 600B-class models.** Most people can't host a frontier model on their own card — that's the real ceiling on local AI, and it's the one this lifts. Same `/api/*` surface, same job-shaped tools, same envelopes; embeddings stay local; any cloud failure falls back to your local profile automatically. Escalate **one** call (`backend: "cloud"`) or route every generative call (`OLLAMA_CLOUD_PRIMARY=1`) — and every envelope tells you which backend actually served it. Off until you set a key.
 
 ---
+
+## New in v2.10.0
+
+**The cloud-honesty release.** v2.9.0 shipped per-call cloud escalation and this README advertised "escalate one high-stakes review to a 600B model" — but the `backend` input existed on exactly **one** of the 44 tools, and it was `ollama_chat`, which its own description calls a last resort. Every review-shaped job was pinned to a local 8B. Local-first is unchanged: no key still means zero egress and no startup probe, embeddings never leave the box, and every new knob defaults to today's behavior.
+
+- **Per-call escalation now reaches 15 tools, not 1.** `backend: "cloud"` is an optional input on `research`, `summarize_deep`, `code_review`, `code_citation`, `corpus_answer`, `hypothesis_drill`, `multi_file_refactor_propose`, `refactor_plan`, all three briefs, all three packs, and `chat`. Omit it and behavior is byte-identical to v2.9.x. **Packs escalate their synthesis step only** — evidence assembly, triage and artifact writes stay local — and refuse an unservable escalation *before* doing any local work.
+- **`INTERN_CLOUD_STANDBY_TIERS` — declare the policy once.** Name which tiers (`instant|workhorse|deep`) escalate under standby without a per-call directive. Empty by default. A per-call `backend` still outranks it in both directions. `embed` is refused at config load *and* at the routing layer: embeddings always stay local.
+- **`doctor --cloud-check` — prove the key actually works.** The old probe hit `/api/tags`, which returns 200 for an invalid key, so auth could only ever read "unverified". This runs one 8-token generate and returns `ok` / `failed` / `unverified` / `unreachable` — four states kept distinct on purpose, because a 404 on a model id is not a key problem and shouldn't send you hunting one. It also reports each configured cloud id as present or NOT IN CATALOG with a nearest-live-id suggestion, so a retired id is found before you pay for a degraded call.
+- **Fixed: `init` was broken on every npm install.** `hermes.config.example.yaml` never made it into the published tarball, so the binary reported its own "packaging bug" error to anyone who installed from npm. It ships now, and CI installs and runs the packed tarball so it cannot regress.
+- **Retrieval scores are finally comparable.** `CorpusHit.score` carried four incomparable scales under one field — the default hybrid mode topped out at `0.0328` while `corpus_min_evidence_score` was documented "0–1", so a natural floor of `0.1` silently dropped every corpus chunk. Fused scores are rescaled onto 0–1 and each hit carries `score_scale`.
+
+Full detail in [CHANGELOG.md](./CHANGELOG.md).
 
 ## New in v2.9.0
 
