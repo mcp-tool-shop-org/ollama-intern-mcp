@@ -115,7 +115,7 @@ describe("handleCorpusAmend", () => {
     expect(env.result.file_path).toBe(p);
     expect(env.result.chunks_removed).toBe(beforeForPath);
     expect(env.result.chunks_added).toBeGreaterThan(0);
-    expect(env.warnings?.some((w) => /amend/i.test(w))).toBe(true);
+    expect(env.warnings?.some((w) => /amend/i.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
 
     const manifest = await loadManifest("k1");
     expect(manifest!.has_amended_content).toBe(true);

@@ -104,7 +104,7 @@ describe("ollama_artifact_prune", () => {
     // Files still exist.
     const incidentFiles = await readdir(join(tempRoot, "incident"));
     expect(incidentFiles.sort()).toEqual(["a.json", "a.md"]);
-    expect(env.warnings?.some((w) => w.toLowerCase().includes("dry run"))).toBe(true);
+    expect(env.warnings?.some((w) => w.toLowerCase().includes("dry run")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("filters by older_than_days", async () => {

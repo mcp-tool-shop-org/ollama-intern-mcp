@@ -131,7 +131,7 @@ describe("empty query: corpus_search", () => {
     expect(env.result.weak).toBe(true);
     expect(env.result.reason).toBe("empty query");
     expect(env.warnings).toBeDefined();
-    expect(env.warnings!.some((w) => w.includes("empty query"))).toBe(true);
+    expect(env.warnings!.some((w) => w.includes("empty query")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     expect(client.embedCalls).toBe(0);
   });
 
@@ -157,11 +157,11 @@ describe("empty query: corpus_answer", () => {
     );
     expect(env.result.retrieval.retrieved).toBe(0);
     expect(env.result.retrieval.weak).toBe(true);
-    expect(env.result.coverage_notes.some((n) => n.toLowerCase().includes("empty question"))).toBe(
+    expect(env.result.coverage_notes.some((n) => n.toLowerCase().includes("empty question")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(
       true,
     );
     expect(env.warnings).toBeDefined();
-    expect(env.warnings!.some((w) => w.toLowerCase().includes("empty question"))).toBe(true);
+    expect(env.warnings!.some((w) => w.toLowerCase().includes("empty question")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     // Neither embed nor generate may run for an empty question.
     expect(client.embedCalls).toBe(0);
     expect(client.generateCalls).toBe(0);

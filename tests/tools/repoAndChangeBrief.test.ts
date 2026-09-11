@@ -177,8 +177,8 @@ describe("handleRepoBrief — shape + grounding", () => {
     const env = await handleRepoBrief({ source_paths: [p] }, makeCtx(client));
     expect(env.result.key_surfaces[0].evidence_refs).toEqual(["e1"]);
     expect(env.result.risk_areas[0].evidence_refs).toEqual([]);
-    expect(env.result.coverage_notes.some((n) => n.includes("Stripped"))).toBe(true);
-    expect(env.warnings?.some((w) => w.includes("Stripped"))).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes("Stripped")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("Stripped")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("caps key_surfaces / risk_areas / read_next at configured limits", async () => {
@@ -215,7 +215,7 @@ describe("handleRepoBrief — shape + grounding", () => {
     const client = new ProgrammableClient(modelOut);
     const env = await handleRepoBrief({ source_paths: [p] }, makeCtx(client));
     expect(env.result.weak).toBe(true);
-    expect(env.result.coverage_notes.some((n) => n.includes("repo_thesis"))).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes("repo_thesis")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
   });
 
   it("prompt forbids prescriptive fixes in read_next", async () => {
@@ -340,7 +340,7 @@ describe("handleChangeBrief — shape + grounding", () => {
     const env = await handleChangeBrief({ diff_text: diff }, makeCtx(client));
     expect(env.result.affected_surfaces[0].evidence_refs).toEqual(["e1"]);
     expect(env.result.likely_breakpoints[0].evidence_refs).toEqual([]);
-    expect(env.warnings?.some((w) => w.includes("Stripped"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("Stripped")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("caps likely_breakpoints and validation_checks", async () => {
@@ -373,8 +373,8 @@ describe("handleChangeBrief — shape + grounding", () => {
     const client = new ProgrammableClient(modelOut);
     const env = await handleChangeBrief({ diff_text: diff }, makeCtx(client));
     expect(env.result.weak).toBe(true);
-    expect(env.result.coverage_notes.some((n) => n.includes("change_summary"))).toBe(true);
-    expect(env.result.coverage_notes.some((n) => n.includes("affected_surfaces"))).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes("change_summary")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
+    expect(env.result.coverage_notes.some((n) => n.includes("affected_surfaces")), `env.result.coverage_notes = ${JSON.stringify(env.result.coverage_notes)}`).toBe(true);
   });
 
   it("prompt forbids remediation on breakpoints/checks", async () => {

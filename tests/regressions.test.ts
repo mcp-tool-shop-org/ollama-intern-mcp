@@ -325,7 +325,7 @@ describe("regression: Citation stripping for unknown paths", () => {
       const citedPaths = env.result.citations.map((c) => c.path);
       expect(citedPaths.some((p) => p.includes("invented"))).toBe(false);
       // And the warnings array notes the stripping.
-      expect(env.warnings?.some((w) => w.includes("Stripped"))).toBe(true);
+      expect(env.warnings?.some((w) => w.includes("Stripped")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -601,7 +601,7 @@ describe("seed regression — corpus relevance threshold (B)", () => {
       expect(env.result.retrieval.top_score).toBeLessThan(999);
       // Model was NOT invoked — the whole point.
       expect(client.lastGenerate).toBeUndefined();
-      expect(env.warnings?.some((w) => w.includes("min_top_score"))).toBe(true);
+      expect(env.warnings?.some((w) => w.includes("min_top_score")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     } finally {
       if (orig === undefined) delete process.env.INTERN_CORPUS_DIR;
       else process.env.INTERN_CORPUS_DIR = orig;

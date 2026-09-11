@@ -8,28 +8,38 @@ import { defineConfig } from "vitest/config";
  * if you see "Coverage provider not found" run:
  *     npm i -D @vitest/coverage-v8
  *
- * Thresholds are deliberately conservative for the baseline pass; raise
- * them in a follow-up wave once the new helpers / new tests land and the
- * baseline number is known.
+ * ⚠ COVERAGE IS NOT GATED IN CI (measured 2026-09-11, wave 9 / F-67bfe1fa).
+ * Nothing under .github/workflows runs `npm run test:coverage`; the only
+ * reference to it in the whole repo is its own line in package.json. The
+ * thresholds below therefore fail exactly one thing — a developer who runs
+ * `npm run test:coverage` by hand — and gate nothing on a push, a PR or a
+ * release. Treat them as a local smoke floor, not a contract.
  *
- * Report formats:
- *   - text: human-readable summary in CI logs
- *   - html: drillable browseable report in ./coverage/
- *   - lcov: machine-readable for Codecov / Coveralls / GitHub Code Scanning
- *   - json-summary: stable shape for the ci-docs doc-drift workflow to grep
+ * This header used to claim otherwise, in two ways that cost a reader time:
+ *   - a coverage-workflow marker paragraph asserting that a ci-docs job greps
+ *     this file for a magic literal and that the literal must not be removed
+ *     "without updating the ci-docs side in lockstep". That string occurred
+ *     exactly twice in the repo, both inside the comment describing itself.
+ *     Nothing grepped it. Deleted, literal included — so a grep for it now
+ *     correctly returns nothing.
+ *   - "coverage/coverage-summary.json (machine-readable; doc-drift parses)".
+ *     doc-drift.yml parses a TEST_COUNT marker in HANDOFF.md, never coverage.
+ *     Deleted.
  *
- * Run via `npm run test:coverage` (added in package.json by ci-docs/backend-core).
+ * To make the thresholds real: add a coverage leg to the existing ubuntu/20
+ * job in ci.yml (`npm run test:coverage`) and set each threshold to the
+ * measured number minus a few points — the evidence-based-floor discipline
+ * evals/README.md already documents for the retrieval pack. Until someone
+ * does that, the numbers below are unmeasured against CI and the honest thing
+ * is to say so rather than to keep promising a follow-up wave (this comment
+ * promised one for eight waves).
  *
- * ── ci-docs doc-drift marker ────────────────────────────────────
- * COVERAGE-WORKFLOW-MARKER-v1: ci-docs greps this file for the literal
- * string `COVERAGE-WORKFLOW-MARKER` to detect that the coverage block is
- * in place before wiring the doc-drift workflow into the CI run. Do not
- * remove this marker without updating the ci-docs side in lockstep.
- *
- * Expected on-disk artifacts after `npm run test:coverage`:
- *   - coverage/coverage-summary.json  (machine-readable; doc-drift parses)
- *   - coverage/index.html             (human-readable; CI uploads as artifact)
- *   - coverage/lcov.info              (for Codecov / GitHub Code Scanning)
+ * Report formats, produced under ./coverage/ by `npm run test:coverage`:
+ *   - text: human-readable summary in the terminal
+ *   - html: drillable browseable report (coverage/index.html)
+ *   - lcov: machine-readable (coverage/lcov.info), if a service is ever wired
+ *   - json-summary: stable shape (coverage/coverage-summary.json) for a future
+ *     consumer; no consumer exists today
  */
 export default defineConfig({
   test: {

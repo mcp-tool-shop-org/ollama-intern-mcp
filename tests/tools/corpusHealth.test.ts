@@ -120,8 +120,8 @@ describe("handleCorpusHealth", () => {
     const env = await handleCorpusHealth({ name: "incomplete" }, makeCtx());
     const entry = env.result.corpora[0];
     expect(entry.write_complete).toBe(false);
-    expect(entry.warnings.some((w) => /interrupted/i.test(w))).toBe(true);
-    expect(env.warnings?.some((w) => /interrupted/i.test(w))).toBe(true);
+    expect(entry.warnings.some((w) => /interrupted/i.test(w)), `entry.warnings = ${JSON.stringify(entry.warnings)}`).toBe(true);
+    expect(env.warnings?.some((w) => /interrupted/i.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("surfaces within-refresh embed :latest drift", async () => {
@@ -140,7 +140,7 @@ describe("handleCorpusHealth", () => {
       "nomic-embed-text:v1",
       "nomic-embed-text:v2",
     ]);
-    expect(entry.warnings.some((w) => /drift/i.test(w))).toBe(true);
+    expect(entry.warnings.some((w) => /drift/i.test(w)), `entry.warnings = ${JSON.stringify(entry.warnings)}`).toBe(true);
   });
 
   it("reports failed_paths_count on a corpus with unresolved failures", async () => {
@@ -156,7 +156,7 @@ describe("handleCorpusHealth", () => {
     const entry = env.result.corpora.find((c) => c.name === "failed");
     expect(entry).toBeDefined();
     expect(entry!.failed_paths_count).toBe(1);
-    expect(entry!.warnings.some((w) => /failed/i.test(w))).toBe(true);
+    expect(entry!.warnings.some((w) => /failed/i.test(w)), `entry!.warnings = ${JSON.stringify(entry!.warnings)}`).toBe(true);
   });
 
   it("detailed=true adds per-file mtime + chunk_count + stale_days", async () => {

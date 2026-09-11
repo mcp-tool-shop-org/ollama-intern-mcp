@@ -260,7 +260,7 @@ describe("handleCorpusSearch — explain integration", () => {
     for (const h of env.result.hits) {
       expect(h.why_matched).toBeUndefined();
     }
-    expect(env.warnings?.some((w) => /explain/i.test(w))).toBe(true);
+    expect(env.warnings?.some((w) => /explain/i.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
   });
 
   it("does NOT call the LLM when explain is not set", async () => {
@@ -329,7 +329,7 @@ describe("handleCorpusSearch — explain integration", () => {
     for (const h of env.result.hits) {
       expect(h.why_matched).toBeUndefined();
     }
-    expect(env.warnings?.some((w) => /explain/i.test(w))).toBe(true);
+    expect(env.warnings?.some((w) => /explain/i.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     expect(client.explainCalls).toBeGreaterThan(0); // the explain path WAS entered
   });
 });

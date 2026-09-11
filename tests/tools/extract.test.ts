@@ -178,7 +178,7 @@ describe("handleExtract — frame contract", () => {
     );
     if (!("data" in env.result)) throw new Error("expected success shape");
     expect(env.result.frame_alignment).toBeUndefined();
-    expect(env.warnings?.some((w) => w.includes("_frame_alignment"))).toBe(true);
+    expect(env.warnings?.some((w) => w.includes("_frame_alignment")), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(true);
     // The malformed key is dropped from data.
     expect("_frame_alignment" in env.result.data).toBe(false);
   });

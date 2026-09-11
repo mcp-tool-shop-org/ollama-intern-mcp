@@ -162,7 +162,7 @@ describeIfImported()("handleCodeReview — invented paths and line cap (F-05a661
       const overRange = env.result.findings.find((f) => f.description.includes("line past the loaded file"));
       expect(overRange, "out-of-range finding should remain with line zeroed or be dropped").toBeTruthy();
       if (overRange) expect(overRange.line).toBe(0);
-      expect(env.warnings?.some((w) => /stripped/i.test(w) && /invented|not in the diff/i.test(w))).toBe(
+      expect(env.warnings?.some((w) => /stripped/i.test(w) && /invented|not in the diff/i.test(w)), `env.warnings = ${JSON.stringify(env.warnings)}`).toBe(
         true,
       );
     } finally {

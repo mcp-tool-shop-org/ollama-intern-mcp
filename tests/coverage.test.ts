@@ -59,7 +59,7 @@ describe("detectCoverage", () => {
     const r = detectCoverage(output, sources);
     expect(r.omitted_sources).toContain("only.md");
     // With only one source, we skip the "omitted N of M" multi-source note.
-    expect(r.coverage_notes.some((n) => /omitted.*of/i.test(n))).toBe(false);
+    expect(r.coverage_notes.some((n) => /omitted.*of/i.test(n)), `r.coverage_notes = ${JSON.stringify(r.coverage_notes)}`).toBe(false);
   });
 
   it("filename stem alone is enough signal when body is short", () => {
