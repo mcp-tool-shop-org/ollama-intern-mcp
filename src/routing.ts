@@ -66,6 +66,7 @@ export type DegradeReason =
   | "cloud_5xx"
   | "cloud_rate_limited"
   | "cloud_unreachable"
+  | "cloud_rejected"
   | "cloud_auth_failed"
   | "cloud_model_missing"
   | "circuit_open";
@@ -266,6 +267,16 @@ export class CircuitBreaker {
   }
 
   /**
+   * Drop a half-open in-flight flag without re-opening the breaker.
+   * Preflight SCHEMA_INVALID / CONFIG_INVALID never contacted cloud, so a
+   * payload-cap miss during the recovery probe must not force OPEN or re-arm
+   * the cooldown. Leaves CLOSED / HALF_OPEN as they were.
+   */
+  clearProbe(): void {
+    this.halfOpenInFlight = false;
+  }
+
+  /**
    * A deterministic cloud failure (404 model-missing). Does NOT count toward the
    * transient breaker (it's an external config/availability fact, not a cloud
    * outage) and is NOT sticky like auth. Releases any half-open probe (so a 404
@@ -289,7 +300,7 @@ function classifyCloudError(err: unknown): CloudErrorClass {
     // not silently degrade to a different local model.
     if (err.code === "OLLAMA_MODEL_MISSING") return "deterministic";
     // Pre-flight: never contacted cloud (payload cap, bad config). Must not
-    // trip the outage breaker — releaseProbe and rethrow, no recordFailure.
+    // trip the outage breaker — clearProbe and rethrow, no recordFailure.
     if (err.code === "SCHEMA_INVALID" || err.code === "CONFIG_INVALID") return "preflight";
     // Definitive request rejection (e.g. 4xx) is not an outage. Do not count
     // toward consecutiveFailures; only timeouts, 5xx/429, and network errors
@@ -312,7 +323,10 @@ function reasonFromError(err: unknown): DegradeReason {
       const status = Number(m[1]);
       if (status === 429) return "cloud_rate_limited";
       if (status >= 500) return "cloud_5xx";
+      if (status >= 400) return "cloud_rejected";
     }
+    // Definitive non-retryable rejection with no parsed 5xx/429 — not an outage.
+    if (!err.retryable) return "cloud_rejected";
     return "cloud_unreachable";
   }
   return "cloud_unreachable";
@@ -556,7 +570,9 @@ export class RoutingOllamaClient implements OllamaClient {
       if (cls === "preflight") {
         // SCHEMA_INVALID / CONFIG_INVALID never reached cloud. Don't arm the
         // breaker and don't degrade — local would fail the same pre-flight.
-        this.breaker.releaseProbe();
+        // clearProbe (not releaseProbe): a half-open recovery probe that
+        // misses the payload cap must not force OPEN + 20s cooldown.
+        this.breaker.clearProbe();
         throw err;
       }
       if (cls === "non_countable") {

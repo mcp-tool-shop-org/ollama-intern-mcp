@@ -103,7 +103,7 @@ export type LogEvent = CorrelationFields &
         ts: string;
         from: "cloud";
         to: "local";
-        /** cloud_timeout | cloud_5xx | cloud_rate_limited | cloud_unreachable | cloud_auth_failed | cloud_model_missing | circuit_open */
+        /** cloud_timeout | cloud_5xx | cloud_rate_limited | cloud_unreachable | cloud_rejected | cloud_auth_failed | cloud_model_missing | circuit_open */
         reason: DegradeReason;
         tier?: Tier;
         model?: string;
