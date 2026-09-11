@@ -12,11 +12,11 @@ export const config: SiteConfig = {
     'MIT Licensed — built by <a href="https://mcp-tool-shop.github.io/" style="color:var(--color-muted);text-decoration:underline">MCP Tool Shop</a>',
 
   hero: {
-    badge: 'Local-first · cloud-optional · evidence-first · Hermes-ready · MIT',
+    badge: 'Local-first · 600B-class via Ollama Cloud · evidence-first · Hermes-ready · MIT',
     headline: 'The local intern',
     headlineAccent: 'for Claude Code.',
     description:
-      '44 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. Local-first and zero-egress by default, with optional Ollama Cloud routing for 600B-class models when local hardware is the bottleneck. No telemetry. Every call shows its work.',
+      '44 job-shaped tools across four tiers — atoms, briefs, packs, artifacts. Claude picks the tool, the tool picks the tier, the tier writes a file you can open next week. Local-first and zero-egress by default. No GPU big enough for a frontier model? Ollama Cloud runs the same 44 tools on 600B-class models — same surface, same envelopes, embeddings still local, automatic fallback to local. No telemetry. Every call shows its work.',
     primaryCta: { href: '#example', label: 'See a pack run' },
     secondaryCta: { href: 'handbook/', label: 'Read the Handbook' },
     previews: [
@@ -111,8 +111,9 @@ export const config: SiteConfig = {
     {
       kind: 'features',
       id: 'cloud',
-      title: 'Scale up — optional Ollama Cloud',
-      subtitle: 'Off by default, zero egress until you opt in. Local-first stays the promise.',
+      title: 'Ollama Cloud — the VRAM ceiling, lifted',
+      subtitle:
+        'A local 8B is what most machines can hold, and it is the bottleneck nearly everyone hits. Cloud runs the same 44 tools on 600B-class models — and stays off until you set a key.',
       features: [
         {
           title: 'Cloud-primary, local-fallback',

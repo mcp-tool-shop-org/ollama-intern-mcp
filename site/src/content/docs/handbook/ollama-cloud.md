@@ -1,11 +1,11 @@
 ---
-title: Ollama Cloud (optional)
-description: Opt-in cloud-primary routing — run the generative tiers on a 600B-class Ollama Cloud model with automatic local fallback. Off by default, zero egress until you set a key.
+title: Ollama Cloud
+description: Run the same 44 job-shaped tools on 600B-class models when local VRAM is the ceiling — per-call escalation or cloud-primary, always with automatic local fallback. Off by default, zero egress until you set a key.
 sidebar:
   order: 7
 ---
 
-Local 8B models are the hardware bottleneck most people hit. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so you can route the heavy tools to a far stronger model and free up local VRAM — while keeping local as an always-on fallback.
+**The hardware ceiling, lifted.** A local 8B is what most machines can actually hold, and it is the bottleneck nearly everyone hits — not budget, not interest, just VRAM. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so the heavy tools run on a frontier model and your VRAM goes back to whatever else needs it. Local stays the always-on fallback, so you gain a ceiling without losing the floor.
 
 :::caution[Opt-in, off by default]
 With no key set, the package stays **local-first with zero network egress** — anyone who doesn't opt in is unaffected. Setting **both** `OLLAMA_CLOUD_PRIMARY=1` and `OLLAMA_API_KEY` enables **cloud-primary**; setting **only** `OLLAMA_API_KEY` arms **[standby](#cloud-standby--per-call-escalation)** (still local-primary, still zero egress, until a call explicitly escalates). Embeddings **always** stay local.

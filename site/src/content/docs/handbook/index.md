@@ -8,7 +8,9 @@ sidebar:
 
 **Ollama Intern MCP** gives Claude Code a local intern with rules, tiers, a desk, and a filing cabinet. Claude picks the _tool_; the tool picks the _tier_ (Instant / Workhorse / Deep / Embed); the tier writes a file you can open next week.
 
-**Local-first** — zero network egress until you opt in. No telemetry. No "autonomous" anything. Every call shows its work. Optional [Ollama Cloud](./ollama-cloud/) routing puts 600B-class models behind the same tools when local hardware is the bottleneck, with automatic fallback to local.
+**Local-first** — zero network egress until you opt in. No telemetry. No "autonomous" anything. Every call shows its work.
+
+**No GPU big enough? [Ollama Cloud](./ollama-cloud/) runs the same 44 tools on 600B-class models.** A local 8B is what most machines can hold, and it is the ceiling nearly everyone hits. Cloud lifts it without changing a tool call — same surface, same envelopes, embeddings still local, automatic fallback to your local profile. Off until you set a key.
 
 ## The shape
 
@@ -41,7 +43,7 @@ Every local-LLM MCP server leads with token-savings. Ours leads with _what the i
 - [Artifacts & continuity](./artifacts/) — how packs write to disk and how to use what they wrote
 - [Laws & guardrails](./laws/) — evidence-first, no remediation drift, deterministic renderers
 - [Security & threat model](./security/) — what's touched, what's not, what's in the log
-- [Ollama Cloud (optional)](./ollama-cloud/) — opt-in cloud-primary routing with local fallback; off by default, zero egress until you set a key
+- [Ollama Cloud](./ollama-cloud/) — run the same 44 tools on 600B-class models when local VRAM is the ceiling; per-call escalation or cloud-primary, with local fallback. Off by default, zero egress until you set a key
 - [Corpora](./corpora/) — build, refresh, search, answer over a living corpus; manifest v2 + `:latest` drift
 - [Error codes](./error-codes/) — every structured error code, when you'll see it, what to do
 - [Use with Hermes](./with-hermes/) — drive this MCP from Nous Research's Hermes Agent on hermes3:8b (validated 2026-04-19)

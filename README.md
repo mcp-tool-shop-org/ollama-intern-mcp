@@ -11,6 +11,7 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/"><img alt="Landing Page" src="https://img.shields.io/badge/landing-page-8b5cf6"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
+  <a href="#ollama-cloud"><img alt="Ollama Cloud: 600B-class, optional" src="https://img.shields.io/badge/Ollama%20Cloud-600B--class%20optional-0ea5e9"></a>
 </p>
 
 > **The local intern for Claude Code.** <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> job-shaped tools, evidence-first briefs, durable artifacts.
@@ -23,7 +24,9 @@ An MCP server that gives Claude Code a **local intern** with rules, tiers, a des
 
 **Not using Claude?** The [`examples/`](./examples/) directory has a minimal Node.js and Python MCP client you can spawn over stdio. See also [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
 
-**Local-first** — zero network egress until you opt in. No telemetry. No "autonomous" anything. Every call shows its work. Optional [Ollama Cloud](#ollama-cloud-optional) routing puts 600B-class models behind the same tools when local hardware is the bottleneck — with automatic fallback to local.
+**Local-first** — zero network egress until you opt in. No telemetry. No "autonomous" anything. Every call shows its work.
+
+**No GPU big enough? [Ollama Cloud](#ollama-cloud) runs all <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> tools on 600B-class models.** Most people can't host a frontier model on their own card — that's the real ceiling on local AI, and it's the one this lifts. Same `/api/*` surface, same job-shaped tools, same envelopes; embeddings stay local; any cloud failure falls back to your local profile automatically. Escalate **one** call (`backend: "cloud"`) or route every generative call (`OLLAMA_CLOUD_PRIMARY=1`) — and every envelope tells you which backend actually served it. Off until you set a key.
 
 ---
 
@@ -52,7 +55,7 @@ Full detail in [CHANGELOG.md](./CHANGELOG.md).
 
 ## New in v2.7.0
 
-**Optional Ollama Cloud routing — cloud-primary, local-fallback.** Opt in with a key + a flag and the generative tiers route to a 600B-class cloud model; embeddings stay local; a circuit breaker falls back to your local profile on any cloud failure. **Off by default — zero egress unless you set both `OLLAMA_API_KEY` and `OLLAMA_CLOUD_PRIMARY=1`.** Additive minor — pre-v2.7.0 callers (and anyone not opting in) see byte-identical behavior. See [Ollama Cloud (optional)](#ollama-cloud-optional).
+**Optional Ollama Cloud routing — cloud-primary, local-fallback.** Opt in with a key + a flag and the generative tiers route to a 600B-class cloud model; embeddings stay local; a circuit breaker falls back to your local profile on any cloud failure. **Off by default — zero egress unless you set both `OLLAMA_API_KEY` and `OLLAMA_CLOUD_PRIMARY=1`.** Additive minor — pre-v2.7.0 callers (and anyone not opting in) see byte-identical behavior. See [Ollama Cloud](#ollama-cloud).
 
 - **Cloud-primary with a safety net.** A `RoutingOllamaClient` tries cloud first and falls back to the local profile on timeout / 5xx / 429 / network. Bad keys (401/403) surface loudly via a sticky breaker instead of degrading silently forever; a retired/typo'd cloud model id (404) surfaces too.
 - **Never a silent downgrade.** Every envelope gains `backend` (`cloud`|`local`), `degraded`, and `degrade_reason` so you always know when you got the local model instead of the big one. A `backend_fallback` NDJSON event makes the cloud→local fallback rate visible in `ollama_log_tail`.
@@ -452,7 +455,7 @@ Every tool returns the same shape:
 
 `residency` comes from Ollama's `/api/ps`. When `evicted: true` or `size_vram < size`, the model paged to disk and inference dropped 5–10× — surface this to the user so they know to restart Ollama or trim loaded-model count.
 
-In [Ollama Cloud](#ollama-cloud-optional) mode the envelope also carries `backend` (`"cloud"` | `"local"`) and, on a cloud→local fallback, `degraded: true` + `degrade_reason`. These fields are **absent** in the default local-only path, so existing consumers are unaffected. `residency` is `null` for cloud-served calls (the stateless cloud has no local-VRAM residency).
+In [Ollama Cloud](#ollama-cloud) mode the envelope also carries `backend` (`"cloud"` | `"local"`) and, on a cloud→local fallback, `degraded: true` + `degrade_reason`. These fields are **absent** in the default local-only path, so existing consumers are unaffected. `residency` is `null` for cloud-served calls (the stateless cloud has no local-VRAM residency).
 
 Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter by `hardware_profile` to keep dev numbers out of publishable benchmarks.
 
@@ -470,11 +473,13 @@ Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson`. Filter
 
 ---
 
-## Ollama Cloud (optional)
+## Ollama Cloud
 
-Local 8B models are the hardware bottleneck most people hit. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so you can route the heavy tools to a far stronger model and free up local VRAM — while keeping local as an always-on fallback.
+**The hardware ceiling, lifted.** A local 8B is what most machines can actually hold, and it is the bottleneck nearly everyone hits — not budget, not interest, just VRAM. [Ollama Cloud](https://ollama.com/cloud) serves 600B-class models behind the **same** `/api/*` surface, so the heavy tools run on a frontier model and your VRAM goes back to whatever else needs it. Local stays the always-on fallback, so you gain a ceiling without losing the floor.
 
-**This is opt-in and off by default.** With no key set, the package stays local-first with **zero egress** — anyone who doesn't opt in is unaffected. There are two ways to opt in:
+Nothing about the tool surface changes: the same <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> job-shaped tools, the same envelope, the same guardrails. Embeddings never go to cloud (Ollama Cloud serves no embedding models), so corpora stay entirely local either way.
+
+**Opt-in and off by default.** With no key set, the package stays local-first with **zero egress** — anyone who doesn't opt in is unaffected. There are two ways to opt in:
 
 - **Cloud-primary** (below): set *both* `OLLAMA_CLOUD_PRIMARY=1` and `OLLAMA_API_KEY` — the generative tiers route to cloud with local fallback.
 - **Cloud standby** (v2.9): set **only** `OLLAMA_API_KEY` — everything stays local (still zero egress, not even a startup probe) until a single call explicitly asks to escalate with `backend: "cloud"`. See [Cloud standby & per-call escalation](#cloud-standby--per-call-escalation) below.
@@ -576,7 +581,7 @@ No model calls in this tier. All render from stored content.
 
 **Data NOT touched:** anything outside `source_paths` / `allowed_roots`. `..` is rejected before normalize. `artifact_export_to_path` refuses existing files unless `overwrite: true`. Drafts targeting protected paths (`memory/`, `.claude/`, `docs/canon/`, etc.) require explicit `confirm_write: true`, enforced server-side.
 
-**Network egress:** **off by default.** Out of the box the only outbound traffic is to the local Ollama HTTP endpoint — no cloud calls, no update pings, no crash reporting. **Opt-in exception:** if you enable [Ollama Cloud](#ollama-cloud-optional) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`), prompts for the generative tiers are sent to `ollama.com` over HTTPS with a Bearer key. This is explicit, disclosed, and off unless you set both vars; embeddings still never leave the box. See [SECURITY.md](SECURITY.md) §11.
+**Network egress:** **off by default.** Out of the box the only outbound traffic is to the local Ollama HTTP endpoint — no cloud calls, no update pings, no crash reporting. **Opt-in exception:** if you enable [Ollama Cloud](#ollama-cloud) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`), prompts for the generative tiers are sent to `ollama.com` over HTTPS with a Bearer key. This is explicit, disclosed, and off unless you set both vars; embeddings still never leave the box. See [SECURITY.md](SECURITY.md) §11.
 
 **Telemetry:** **none.** Every call is logged as one NDJSON line to `~/.ollama-intern/log.ndjson` on your machine. The server itself phones home to nothing.
 

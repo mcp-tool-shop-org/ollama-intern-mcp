@@ -61,7 +61,7 @@
 
 - [x] `[all]` Logo in README header (2026-05-12) — brand repo `mcp-tool-shop-org/brand/logos/ollama-intern-mcp/readme.png`, 1536×1024
 - [x] `[all]` Translations (polyglot-mcp, 8 languages) (2026-05-12) — zh, es, fr, hi, it, ja, pt-BR via TranslateGemma 12B; language switcher in README header; regenerated as part of release prep, before `npm publish`
-- [ ] `[org]` Landing page (@mcptoolshop/site-theme) — Phase 2 of The Treatment
+- [x] `[org]` Landing page (@mcptoolshop/site-theme) (2026-09-11) — `site/src/pages/index.astro` builds the full site-theme landing page (BaseLayout/Hero/Section/FeatureGrid/DataTable/CodeCardGrid/ApiList from `site-config.ts`), deployed at https://mcp-tool-shop-org.github.io/ollama-intern-mcp/ and badge-linked from README
 - [x] `[all]` GitHub repo metadata: description, homepage, topics (2026-05-12) — description + homepage + 10 topics set on `mcp-tool-shop-org/ollama-intern-mcp`
 
 ---
