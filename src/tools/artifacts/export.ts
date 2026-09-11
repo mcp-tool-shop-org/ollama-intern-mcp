@@ -20,12 +20,16 @@
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, normalize, relative } from "node:path";
 import { InternError } from "../../errors.js";
-import type { PackArtifact } from "./scan.js";
+import { assertPathUnderAllowedDir, type PackArtifact } from "./scan.js";
 
 export interface ExportOptions {
   target_path: string;
   allowed_roots: string[];
   overwrite?: boolean;
+  /** Extra read-only search dirs — same allowlist readArtifactAtPath used for json_path. */
+  extra_artifact_dirs?: string[];
+  /** Scanned JSON path (not the untrusted artifact.json_path block). Sibling .md is derived from this. */
+  source_json_path?: string;
 }
 
 export interface ExportResult {
@@ -159,7 +163,35 @@ export async function exportArtifactMarkdown(
   assertUnderAllowedRoots(normalizedTarget, normalizedRoots);
 
   // Read the artifact's existing markdown — this is a handoff, not a re-render.
-  const sourceMdPath = artifact.artifact.markdown_path;
+  // Prefer the scanned JSON sibling over the untrusted artifact.markdown_path
+  // block (prune already refuses redirects: md_path === jsonPath.replace(/\.json$/, ".md")).
+  const jsonPathForSibling = opts.source_json_path ?? artifact.artifact.json_path;
+  const siblingMd = jsonPathForSibling.replace(/\.json$/i, ".md");
+  const declaredMd = artifact.artifact.markdown_path;
+  if (typeof declaredMd === "string" && declaredMd.length > 0) {
+    const same =
+      process.platform === "win32"
+        ? normalize(declaredMd).toLowerCase() === normalize(siblingMd).toLowerCase()
+        : normalize(declaredMd) === normalize(siblingMd);
+    if (!same) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `artifact.markdown_path does not match the JSON sibling: ${declaredMd}`,
+        `Export reads only the markdown next to the scanned JSON (${siblingMd}). A redirected markdown_path is refused — re-run the pack or repair the artifact pair.`,
+        false,
+      );
+    }
+  }
+  const sourceMdPath = safeNormalize(siblingMd, "markdown_path");
+  if (!sourceMdPath.endsWith(".md")) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `markdown_path must end in .md: ${sourceMdPath}`,
+      "Export reads the artifact markdown sibling of the scanned JSON only.",
+      false,
+    );
+  }
+  assertPathUnderAllowedDir(sourceMdPath, opts.extra_artifact_dirs ?? []);
   let sourceMd: string;
   try {
     sourceMd = await readFile(sourceMdPath, "utf8");

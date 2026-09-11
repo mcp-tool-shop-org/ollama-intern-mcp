@@ -24,7 +24,7 @@
 
 import { z } from "zod";
 import { resolveUniqueArtifactPaths, writeArtifactPair } from "./artifactWrite.js";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
@@ -134,6 +134,77 @@ export function coerceChangeFacts(data: unknown): ChangeFacts {
     scripts_touched: stringArray(obj.scripts_touched),
     config_surfaces: stringArray(obj.config_surfaces),
     runtime_hints: stringArray(obj.runtime_hints),
+  };
+}
+
+function posixNorm(p: string): string {
+  return normalize(p).replace(/\\/g, "/");
+}
+
+function pathsEquivalent(a: string, b: string): boolean {
+  const na = posixNorm(a);
+  const nb = posixNorm(b);
+  if (na === nb) return true;
+  return na.endsWith("/" + nb) || nb.endsWith("/" + na);
+}
+
+const CONFIG_PATH_EXT = /\.(json|ya?ml|toml|ini|cfg|conf|config|env|properties|xml)$/i;
+
+function looksLikePath(s: string): boolean {
+  if (s.includes("/") || s.includes("\\")) return true;
+  return CONFIG_PATH_EXT.test(s);
+}
+
+function parseDiffPaths(diffText: string | undefined): string[] {
+  if (!diffText) return [];
+  const out: string[] = [];
+  const gitRe = /^diff --git a\/(.+?) b\/(.+)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = gitRe.exec(diffText)) !== null) {
+    if (m[1] && m[1] !== "/dev/null") out.push(m[1]);
+    if (m[2] && m[2] !== "/dev/null") out.push(m[2]);
+  }
+  return out;
+}
+
+function pathInAllowlist(candidate: string, allow: string[]): boolean {
+  for (const a of allow) {
+    if (pathsEquivalent(candidate, a)) return true;
+  }
+  return false;
+}
+
+/**
+ * Path-like config_surfaces must appear in source_paths or parsed diff
+ * paths. Free-text setting names (no separator, no config extension) stay.
+ * Invented paths are dropped with a coverage note.
+ */
+function scrubConfigSurfaces(
+  facts: ChangeFacts,
+  sourcePaths: string[],
+  diffText: string | undefined,
+): { facts: ChangeFacts; coverageNote: string | null } {
+  const surfaces = facts.config_surfaces ?? [];
+  if (surfaces.length === 0) return { facts, coverageNote: null };
+  const allow = [...sourcePaths, ...parseDiffPaths(diffText)];
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const entry of surfaces) {
+    if (!looksLikePath(entry)) {
+      kept.push(entry);
+      continue;
+    }
+    if (pathInAllowlist(entry, allow)) {
+      kept.push(entry);
+    } else {
+      dropped.push(entry);
+    }
+  }
+  if (dropped.length === 0) return { facts, coverageNote: null };
+  const listed = dropped.map((p) => `\`${p}\``).join(", ");
+  return {
+    facts: { ...facts, config_surfaces: kept },
+    coverageNote: `Dropped ${dropped.length} config_surfaces path(s) not in source_paths or the supplied diff: ${listed}.`,
   };
 }
 
@@ -538,7 +609,13 @@ async function handleChangePackInner(
     if (extractResult.ok) {
       // Sanitize untrusted model output before render — string-instead-of-
       // array, null entries, mixed types would otherwise crash renderFactsInline.
-      facts = coerceChangeFacts(extractResult.data);
+      const coerced = coerceChangeFacts(extractResult.data);
+      const scrubbed = scrubConfigSurfaces(coerced, input.source_paths ?? [], input.diff_text);
+      facts = scrubbed.facts;
+      if (scrubbed.coverageNote) {
+        extractWarning = scrubbed.coverageNote;
+        brief.coverage_notes = [...brief.coverage_notes, scrubbed.coverageNote];
+      }
     } else {
       extractWarning = "Extract output was unparseable; review facts omitted.";
     }

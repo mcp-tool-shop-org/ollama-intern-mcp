@@ -151,20 +151,96 @@ function liftFrameAlignment(
   return { data: rest, frame_alignment: fa };
 }
 
-function parseFactory(frameSupplied: boolean, warnings: string[]) {
+/**
+ * Minimal JSON-Schema check for extract's advertised round-trip.
+ *
+ * Covers type / required / properties / items — enough to reject
+ * string-where-array and other shape-wrong model JSON before ok:true.
+ * `null` is accepted for any field (the prompt tells the model to
+ * null-fill or omit). Full draft-07 / ajv is out of scope here.
+ */
+function valueConformsToSchema(data: unknown, schema: unknown): boolean {
+  if (schema === null || typeof schema !== "object" || Array.isArray(schema)) {
+    return true;
+  }
+  const s = schema as Record<string, unknown>;
+  if (data === null) return true;
+
+  const rawType = s.type;
+  const types = Array.isArray(rawType)
+    ? rawType.filter((t): t is string => typeof t === "string")
+    : typeof rawType === "string"
+      ? [rawType]
+      : [];
+
+  if (types.includes("object") || (types.length === 0 && s.properties !== undefined)) {
+    if (typeof data !== "object" || Array.isArray(data)) return false;
+    const obj = data as Record<string, unknown>;
+    if (Array.isArray(s.required)) {
+      for (const key of s.required) {
+        if (typeof key !== "string") continue;
+        if (!(key in obj) || obj[key] === undefined) return false;
+      }
+    }
+    const props = s.properties;
+    if (props && typeof props === "object" && !Array.isArray(props)) {
+      const propMap = props as Record<string, unknown>;
+      for (const [key, sub] of Object.entries(propMap)) {
+        if (!(key in obj) || obj[key] === undefined) continue;
+        if (!valueConformsToSchema(obj[key], sub)) return false;
+      }
+      if (s.additionalProperties === false) {
+        for (const key of Object.keys(obj)) {
+          if (!(key in propMap)) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  if (types.includes("array")) {
+    if (!Array.isArray(data)) return false;
+    if ("items" in s) {
+      for (const item of data) {
+        if (!valueConformsToSchema(item, s.items)) return false;
+      }
+    }
+    return true;
+  }
+
+  if (types.includes("string")) return typeof data === "string";
+  if (types.includes("integer")) return typeof data === "number" && Number.isInteger(data);
+  if (types.includes("number")) return typeof data === "number" && Number.isFinite(data);
+  if (types.includes("boolean")) return typeof data === "boolean";
+  return true;
+}
+
+function parseFactory(
+  frameSupplied: boolean,
+  warnings: string[],
+  schema: Record<string, unknown>,
+) {
   return function parse(raw: string): ExtractResult {
     try {
       const obj = parseModelJson(raw);
       if (obj && typeof obj === "object" && !Array.isArray(obj)) {
         const asObj = obj as Record<string, unknown>;
+        let data: Record<string, unknown>;
+        let frame_alignment: FrameAlignment | undefined;
         if (frameSupplied) {
           const lifted = liftFrameAlignment(asObj);
           if (lifted.warning) warnings.push(lifted.warning);
-          const out: ExtractResult = { ok: true, data: lifted.data };
-          if (lifted.frame_alignment) out.frame_alignment = lifted.frame_alignment;
-          return out;
+          data = lifted.data;
+          frame_alignment = lifted.frame_alignment;
+        } else {
+          data = asObj;
         }
-        return { ok: true, data: asObj };
+        if (!valueConformsToSchema(data, schema)) {
+          return { ok: false, error: "unparseable", raw };
+        }
+        const out: ExtractResult = { ok: true, data };
+        if (frame_alignment) out.frame_alignment = frame_alignment;
+        return out;
       }
       return { ok: false, error: "unparseable", raw };
     } catch {
@@ -195,7 +271,7 @@ export async function handleExtract(
   assertExactlyOneInput(input);
   const frameSupplied = input.frame !== undefined;
   const warnings: string[] = [];
-  const parse = parseFactory(frameSupplied, warnings);
+  const parse = parseFactory(frameSupplied, warnings, input.schema);
 
   if (input.items) {
     const env = await runBatch<{ id: string; text: string }, ExtractResult>({
