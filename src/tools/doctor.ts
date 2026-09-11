@@ -20,7 +20,7 @@ import { LOG_STATS_MAX_BYTES, readLogSuffix } from "./logRead.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import { normalizeOllamaHost, HttpOllamaClient } from "../ollama.js";
+import { normalizeOllamaHost } from "../ollama.js";
 import { RoutingOllamaClient } from "../routing.js";
 import type { RunContext } from "../runContext.js";
 
@@ -75,6 +75,26 @@ export interface DoctorResult {
      */
     auth: "failed" | "unverified";
     models: { instant: string; workhorse: string; deep: string };
+    /**
+     * The LIVE cloud roster, sorted and capped at CLOUD_ROSTER_CAP. This
+     * is the in-product answer to "which frontier models can my key
+     * actually reach?" — the question the cloud
+     * positioning invites and that previously required a browser trip to
+     * ollama.com/search?c=cloud. Empty when the roster call failed; an
+     * empty roster is NOT evidence that a configured model is gone.
+     */
+    models_available: string[];
+    /** True when the roster was longer than CLOUD_ROSTER_CAP and `models_available` was trimmed. `models_missing` is always computed against the FULL roster. */
+    models_available_truncated?: boolean;
+    /**
+     * Configured tier models the live roster does not list. Cloud ids are
+     * VOLATILE — they rotate and retire server-side — so a typo'd or
+     * retired INTERN_CLOUD_MODEL used to read as healthy right up to the
+     * first real call, where it burned the cloud_model_missing cooldown.
+     * Always `[]` when the roster came back empty (can't prove absence
+     * from no data).
+     */
+    models_missing: string[];
     circuit_state?: string;
     error?: string;
   };
@@ -143,6 +163,83 @@ async function fetchModelState(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Payload cap for `cloud.models_available`. The cloud roster is a few dozen
+ * ids today; the cap exists so a future catalog explosion can't turn a
+ * status snapshot into a multi-KB dump. Membership checks run against the
+ * FULL roster, never the capped view.
+ */
+const CLOUD_ROSTER_CAP = 200;
+
+/**
+ * Fetch the LIVE Ollama Cloud model roster with an authenticated GET of
+ * /api/tags.
+ *
+ * This replaces a `HttpOllamaClient.probe()` call that hit exactly this
+ * endpoint (for a cloud client, probe's path IS /api/tags) and then threw
+ * the body away to return `{ok}`. The body is the only thing in the product
+ * that can answer "which frontier models can my key actually reach?", and
+ * without it `cloud.models` was a verbatim echo of the configured strings —
+ * validated against nothing.
+ *
+ * Reachability semantics are preserved byte-for-byte: any HTTP response
+ * (even 401) proves the host answered, and only a definitive 401/403 proves
+ * a bad key — /api/tags returns 200 for an invalid key because it lists
+ * public models, so a 200 is 'unverified', never 'ok'.
+ */
+async function fetchCloudRoster(
+  host: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<{ models: string[]; reachable: boolean; authFailed: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${host}/api/tags`, {
+      // Mirrors HttpOllamaClient.headers() for a cloud client.
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      return {
+        models: [],
+        reachable: true,
+        authFailed: res.status === 401 || res.status === 403,
+        error: `HTTP ${res.status}`,
+      };
+    }
+    const body = (await res.json()) as { models?: Array<{ name?: string; model?: string }> };
+    const list = Array.isArray(body.models) ? body.models : [];
+    return {
+      models: list.map((m) => m.name ?? m.model ?? "").filter(Boolean),
+      reachable: true,
+      authFailed: false,
+    };
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "Error";
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      models: [],
+      reachable: false,
+      authFailed: false,
+      error: name === "AbortError" ? `timeout after ${timeoutMs}ms` : msg,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Which env var sets a given cloud tier's model. instant + workhorse share
+ * INTERN_CLOUD_MODEL; deep reads INTERN_CLOUD_DEEP_MODEL and falls back to
+ * INTERN_CLOUD_MODEL when that is unset (profiles.ts). Naming the knob is
+ * the difference between "a model is missing" and "here is what to edit".
+ */
+function cloudTierEnvVar(tier: "instant" | "workhorse" | "deep"): string {
+  if (tier !== "deep") return "INTERN_CLOUD_MODEL";
+  return process.env.INTERN_CLOUD_DEEP_MODEL ? "INTERN_CLOUD_DEEP_MODEL" : "INTERN_CLOUD_MODEL";
 }
 
 /**
@@ -255,35 +352,61 @@ export async function handleDoctor(
   // hard failure. Build a throwaway cloud client so the auth + /api/tags path
   // is exercised exactly as the real routing client would.
   let cloudStatus: DoctorResult["cloud"];
+  // Cloud tier models that the live roster does not list, paired with the
+  // env var that sets each — hoisted so the warning block below can name
+  // them. Empty unless the roster actually came back with entries.
+  const cloudMissing: Array<{ model: string; tiers: string[]; envVar: string }> = [];
   if (ctx.cloud) {
-    const cloudProbeClient = new HttpOllamaClient({
-      baseUrl: ctx.cloud.host,
-      apiKey: ctx.cloud.apiKey,
-      kind: "cloud",
-    });
-    const cp = await cloudProbeClient.probe(5_000);
-    const reason = cp.reason ?? "";
-    // Any HTTP response (even 401) means the host answered → reachable.
-    const reachable = cp.ok || /^HTTP \d{3}/.test(reason);
-    // Only a definitive 401/403 proves a BAD key. /api/tags returns 200 even
-    // for an invalid key (it lists public models), so a 200 is 'unverified',
-    // never 'ok' — don't overclaim what the probe can't prove.
-    const auth: "failed" | "unverified" = /HTTP 40[13]/.test(reason) ? "failed" : "unverified";
+    // The roster call IS the reachability probe — same endpoint, same Bearer
+    // header, same 401/403 semantics — except it keeps the body.
+    const cr = await fetchCloudRoster(ctx.cloud.host, ctx.cloud.apiKey, 5_000);
+    const reason = cr.error ?? "";
+    const auth: "failed" | "unverified" = cr.authFailed ? "failed" : "unverified";
+
+    // Validate the CONFIGURED tier models against the LIVE roster — the
+    // cloud mirror of `missing` / `suggested_pulls` on the local side.
+    // Absence is only provable from a non-empty roster: an outage or a
+    // 401 must not be reported as "your models are gone".
+    const cloudTiers: Array<["instant" | "workhorse" | "deep", string]> = [
+      ["instant", ctx.cloud.tiers.instant],
+      ["workhorse", ctx.cloud.tiers.workhorse],
+      ["deep", ctx.cloud.tiers.deep],
+    ];
+    if (cr.models.length > 0) {
+      // Dedupe by model id — instant/workhorse/deep commonly share one id,
+      // and one rotated id must not read as three separate failures.
+      const byModel = new Map<string, { model: string; tiers: string[]; envVar: string }>();
+      for (const [tier, model] of cloudTiers) {
+        if (isPresent(model, cr.models)) continue;
+        const entry = byModel.get(model);
+        if (entry) {
+          entry.tiers.push(tier);
+          continue;
+        }
+        byModel.set(model, { model, tiers: [tier], envVar: cloudTierEnvVar(tier) });
+      }
+      cloudMissing.push(...byModel.values());
+    }
+
+    const rosterSorted = [...cr.models].sort();
     cloudStatus = {
       enabled: true,
       mode: ctx.cloud.standby ? "standby" : "primary",
       host: ctx.cloud.host,
-      reachable,
+      reachable: cr.reachable,
       auth,
       models: {
         instant: ctx.cloud.tiers.instant,
         workhorse: ctx.cloud.tiers.workhorse,
         deep: ctx.cloud.tiers.deep,
       },
+      models_available: rosterSorted.slice(0, CLOUD_ROSTER_CAP),
+      ...(rosterSorted.length > CLOUD_ROSTER_CAP ? { models_available_truncated: true } : {}),
+      models_missing: cloudMissing.map((m) => m.model),
       ...(ctx.client instanceof RoutingOllamaClient
         ? { circuit_state: ctx.client.breaker.currentState }
         : {}),
-      ...(cp.ok ? {} : { error: reason || "unreachable" }),
+      ...(cr.error ? { error: reason || "unreachable" } : {}),
     };
   }
 
@@ -364,6 +487,18 @@ export async function handleDoctor(
       `${missing.length} required model(s) not pulled: ${missing.join(", ")}. Run: ${suggested_pulls.join(" && ")}`,
     );
   }
+  // The cloud half of the same check. Deliberately does NOT flip `healthy`:
+  // a rotated cloud id degrades to local (degrade_reason:
+  // cloud_model_missing) and is not a broken box — the same reasoning this
+  // file already applies to a cloud outage.
+  if (cloudMissing.length > 0) {
+    const detail = cloudMissing
+      .map((m) => `${m.model} (${m.tiers.join("+")} tier — set ${m.envVar})`)
+      .join("; ");
+    warnings.push(
+      `Ollama Cloud does not list ${cloudMissing.length} configured tier model(s): ${detail}. Cloud ids rotate and retire server-side; pick a current one from cloud.models_available. Calls on those tiers degrade to local (degrade_reason: cloud_model_missing) instead of failing.`,
+    );
+  }
 
   const envelope = buildEnvelope<DoctorResult>({
     result,
@@ -386,4 +521,10 @@ export const __doctorInternals = {
   resolveAllowedRoots,
   defaultLogPath,
   defaultArtifactRoot,
+  // F4 seam: the cloud roster fetch + its env-var attribution, so the
+  // 401 / timeout / truncation branches are testable without standing up
+  // a RunContext and a whole cloud config.
+  fetchCloudRoster,
+  cloudTierEnvVar,
+  CLOUD_ROSTER_CAP,
 };

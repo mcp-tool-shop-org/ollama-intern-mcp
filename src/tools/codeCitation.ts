@@ -26,6 +26,7 @@ import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { parseModelJsonObject, readArray, readObjectArray } from "./briefs/common.js";
 import { timestamp } from "../observability.js";
 import type { RunContext } from "../runContext.js";
+import { modelClassBackendField } from "./_helpers.js";
 
 export const codeCitationSchema = z.object({
   question: z
@@ -58,6 +59,11 @@ export const codeCitationSchema = z.object({
         "orchestration that requires explicit model identity (e.g., " +
         "research-os reviewer profiles).",
     ),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type CodeCitationInput = z.infer<typeof codeCitationSchema>;
@@ -157,6 +163,7 @@ export async function handleCodeCitation(
     tool: "ollama_code_citation",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: true,
     modelOverride: input.model,
     build: (_tier, model) => ({

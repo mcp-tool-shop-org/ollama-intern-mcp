@@ -25,6 +25,7 @@ import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 import type { IncidentPackArtifact } from "./packs/incidentPack.js";
 import type { EvidenceItem } from "./briefs/evidence.js";
+import { modelClassBackendField } from "./_helpers.js";
 
 export const hypothesisDrillSchema = z.object({
   artifact_slug: z
@@ -40,6 +41,11 @@ export const hypothesisDrillSchema = z.object({
     .array(z.string().min(1))
     .optional()
     .describe("Extra read-only search dirs (same semantics as artifact_list / artifact_read)."),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type HypothesisDrillInput = z.infer<typeof hypothesisDrillSchema>;
@@ -172,6 +178,7 @@ export async function handleHypothesisDrill(
     tool: "ollama_hypothesis_drill",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: true,
     build: (_tier, model) => ({
       model,

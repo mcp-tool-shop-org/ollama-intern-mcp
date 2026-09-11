@@ -30,7 +30,13 @@ import {
   readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
-import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "./_helpers.js";
+import {
+  normalizeCorpusQuery,
+  MAX_CORPUS_QUERY_CHARS,
+  CORPUS_QUERY_CAP_NOTE,
+  modelClassBackendField,
+  modelClassWeakNote,
+} from "./_helpers.js";
 
 export const incidentBriefSchema = z.object({
   log_text: z.string().min(1).optional().describe("Raw log blob to reason over. Combine with source_paths and/or corpus for a richer brief."),
@@ -61,6 +67,11 @@ export const incidentBriefSchema = z.object({
     .max(1)
     .optional()
     .describe("Minimum retrieval score (0–1) for a corpus chunk to enter evidence. Hits below the floor are dropped before the model sees them, with a counted note in coverage_notes. Use this when corpus retrieval may surface off-topic chunks. Absent → no relevance filter."),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type IncidentBriefInput = z.infer<typeof incidentBriefSchema>;
@@ -255,6 +266,7 @@ export async function synthesizeIncidentBrief(
     tool: "ollama_incident_brief",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: true,
     build: (_tier, model) => ({
       model,
@@ -340,6 +352,16 @@ export async function synthesizeIncidentBrief(
       };
     },
   });
+
+  // F3 (v2.9.2): every weak-path note above diagnoses thin EVIDENCE. On a
+  // locally-synthesized brief that diagnosis is plausible-but-unverified —
+  // a thin brief from adequate evidence is exactly what a small model
+  // produces at repo scale. Name the other remedy alongside the evidence
+  // one, and only when the caller has not already taken it.
+  const modelClassNote = modelClassWeakNote(envelope, envelope.result.weak);
+  if (modelClassNote) {
+    envelope.result.coverage_notes = [...envelope.result.coverage_notes, modelClassNote];
+  }
 
   if (parseWarnings.length > 0) {
     envelope.warnings = [...(envelope.warnings ?? []), ...parseWarnings];

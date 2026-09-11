@@ -62,6 +62,8 @@ import {
   allowlistPathsMatch,
   MAX_CORPUS_QUERY_CHARS,
   CORPUS_QUERY_CAP_NOTE,
+  packSynthesisBackendField,
+  assertCloudEscalationConfigured,
 } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
@@ -103,6 +105,13 @@ export const repoPackSchema = z.object({
   max_key_surfaces: z.number().int().min(1).max(20).optional().describe("Cap on key_surfaces (default 8)."),
   max_risk_areas: z.number().int().min(1).max(10).optional().describe("Cap on risk_areas (default 5)."),
   max_read_next: z.number().int().min(1).max(15).optional().describe("Cap on read_next (default 8)."),
+  // F2c (v2.9.2): per-STEP cloud escalation. A pack is a mixed-cost
+  // pipeline — see packSynthesisBackendField for why this reaches the
+  // synthesis step alone. Forwarded into briefInput below, nowhere else.
+  backend: packSynthesisBackendField({
+    synthesisStep: "the brief synthesis step (ollama_repo_brief, Deep tier)",
+    localSteps: "evidence assembly, the targeted extract (Workhorse structured fill) and the artifact write",
+  }),
 });
 
 export type RepoPackInput = z.infer<typeof repoPackSchema>;
@@ -576,6 +585,10 @@ async function handleRepoPackInner(
   input: RepoPackInput,
   ctx: RunContext,
 ): Promise<Envelope<RepoPackResult>> {
+  // F2c: refuse an unservable escalation BEFORE the first step runs —
+  // a pack does local work ahead of its synthesis step, and the runner's
+  // own gate would only fire after the caller had already paid for it.
+  assertCloudEscalationConfigured({ tool: "ollama_repo_pack", backend: input.backend, cloudConfigured: ctx.cloud !== undefined });
   const packStartedAt = Date.now();
   const steps: StepEntry[] = [];
   let tokensIn = 0;
@@ -616,6 +629,10 @@ async function handleRepoPackInner(
     max_key_surfaces: input.max_key_surfaces,
     max_risk_areas: input.max_risk_areas,
     max_read_next: input.max_read_next,
+    // F2c: the ONLY step a pack-level backend directive reaches. The
+    // triage/extract steps and the artifact write are not escalated —
+    // they resolve their own backend from the mode default.
+    backend: input.backend,
   };
   const briefStart = Date.now();
   const briefEnv = await synthesizeRepoBrief(briefInput, ctx, assembled);

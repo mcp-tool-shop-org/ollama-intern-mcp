@@ -40,7 +40,7 @@ import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { parseModelJsonObject, readObjectArray, readString } from "./briefs/common.js";
 import { basename } from "node:path";
-import { allowlistPathsMatch, posixNormPath } from "./_helpers.js";
+import { allowlistPathsMatch, posixNormPath, modelClassBackendField } from "./_helpers.js";
 import type { RunContext } from "../runContext.js";
 
 // ── Closed enums — match the dispatch spec exactly ─────────
@@ -99,6 +99,11 @@ export const codeReviewSchema = z.object({
     .describe(
       "Which tier to run on. 'workhorse' is the default; 'deep' is recommended for security-critical or high-stakes reviews; 'instant' for fast smoke passes on tiny diffs.",
     ),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type CodeReviewInput = z.infer<typeof codeReviewSchema>;
@@ -450,6 +455,7 @@ export async function handleCodeReview(
     tool: "ollama_code_review",
     tier,
     ctx,
+    backend: input.backend,
     // Workhorse uses Qwen 3 in some profiles, which thinks by default.
     // Reviews benefit from extended reasoning, so leave think=true for
     // workhorse + deep. Instant runs on hermes3:8b which ignores `think`.

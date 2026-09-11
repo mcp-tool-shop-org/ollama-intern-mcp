@@ -6,6 +6,7 @@
  * briefs module, which is already evidence-focused.
  */
 
+import { z } from "zod";
 import { posix } from "node:path";
 import { InternError } from "../errors.js";
 
@@ -123,4 +124,142 @@ export function allowlistPathsMatch(a: string, b: string): boolean {
   if (!shorter.includes("/")) return false;
   if (!longer.endsWith("/" + shorter)) return false;
   return posixIsAbsolute(longer);
+}
+
+// ── Per-call backend escalation (F2c, v2.9.2) ───────────────
+
+/**
+ * The per-call backend directive's describe text, stated ONCE.
+ *
+ * Lifted verbatim from ollama_chat, which shipped the field first (v2.9)
+ * and was for one release the ONLY tool of 44 that exposed it — the tool
+ * whose own header calls itself a last resort. Every tool that can escalate
+ * now shares this exact string: an egress contract stated a dozen ways
+ * drifts on the first edit, and a caller must read identical refusal
+ * semantics on whichever tool they happen to open first.
+ */
+export const BACKEND_DIRECTIVE_NOTE =
+  "Optional per-call backend directive (v2.9). 'cloud' escalates THIS " +
+  "call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, " +
+  "OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with " +
+  "CLOUD_NOT_CONFIGURED when no cloud is configured (never silently " +
+  "runs local while claiming escalation). 'local' pins the call to " +
+  "the local backend (zero egress) even under cloud-primary. Omit " +
+  "for the mode default. Escalated calls disclose egress loudly and " +
+  "carry backend provenance on the envelope.";
+
+/**
+ * One extra sentence for tools whose OUTPUT QUALITY is model-class
+ * sensitive — the discovery path the surface lacked.
+ *
+ * The category prefix in a tool's description (FLAGSHIP / PACK / REFACTOR)
+ * says what KIND of job it is and nothing about whether the model running
+ * it is the binding constraint. `ollama_summarize_fast` and
+ * `ollama_multi_file_refactor_propose` read identically on that axis while
+ * being on opposite ends of it. Carrying this note is itself the signal:
+ * the tools that omit it are the ones where a local 8B is genuinely
+ * adequate, and saying so by omission is as useful as saying so in prose.
+ */
+export const MODEL_CLASS_ESCALATION_NOTE =
+  " Synthesis quality on this tool scales sharply with model class — on a " +
+  "repo-scale job the local 8B is often the binding constraint, not the " +
+  "evidence. Tools where a local model is genuinely adequate " +
+  "(ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every " +
+  "no-LLM tool) deliberately do NOT offer this field.";
+
+/**
+ * The shared `backend` schema fragment. Optional and absent-by-default:
+ * omitting it is byte-identical to the pre-escalation behavior, and
+ * local-first stays the trust property (cloudMayServe still refuses
+ * without an explicit directive).
+ */
+export const backendField = z
+  .enum(["cloud", "local"])
+  .optional()
+  .describe(BACKEND_DIRECTIVE_NOTE);
+
+/** `backendField` plus the model-class signal, for sensitive tools. */
+export const modelClassBackendField = z
+  .enum(["cloud", "local"])
+  .optional()
+  .describe(BACKEND_DIRECTIVE_NOTE + MODEL_CLASS_ESCALATION_NOTE);
+
+/**
+ * Pack variant — a pack is a MIXED-COST pipeline, so its directive must say
+ * which step it reaches.
+ *
+ * repo_pack is assemble_evidence (no model) → brief (deep synthesis, worth
+ * a frontier model) → extract (workhorse structured fill, an 8B does it
+ * fine) → artifact_write (no model). Applying one directive to the whole
+ * pipeline would bill a flagship for the structured fill; applying it to
+ * the synthesis step alone is the honest cost/benefit shape.
+ */
+export function packSynthesisBackendField(opts: {
+  /** The escalated step, named as the caller sees it in `steps[]`. */
+  synthesisStep: string;
+  /** The steps that stay on the mode default, listed plainly. */
+  localSteps: string;
+}) {
+  return z
+    .enum(["cloud", "local"])
+    .optional()
+    .describe(
+      BACKEND_DIRECTIVE_NOTE +
+        MODEL_CLASS_ESCALATION_NOTE +
+        ` SCOPE: this directive reaches ${opts.synthesisStep} ONLY — ${opts.localSteps} run on the mode default regardless. A pack is a mixed-cost pipeline; escalating all of it would bill a flagship for work a local model does fine.`,
+    );
+}
+
+/**
+ * The model-class coverage note, for a tool that came back `weak: true`.
+ *
+ * Every weak-path note in the product today diagnoses thin EVIDENCE ("the
+ * evidence may not support an orientation brief yet"), which is a
+ * plausible-but-unverified reading: a thin synthesis from adequate evidence
+ * is exactly what a small local model produces on a repo-scale brief. This
+ * names the other remedy alongside the evidence one.
+ *
+ * Returns null when the call was already served by cloud — a weak cloud
+ * result must never suggest a path the caller already took — and null when
+ * the result is not weak. The phrasing covers the no-cloud-configured case
+ * too, so the advice never points at a knob that would refuse without
+ * saying how to arm it.
+ */
+export function modelClassWeakNote(
+  env: { backend?: "cloud" | "local"; model: string },
+  weak: boolean,
+): string | null {
+  if (!weak || env.backend === "cloud") return null;
+  return (
+    `Model class: this was synthesized by the local model ${env.model || "(unknown)"}. ` +
+    `If the evidence looks adequate, the thinness may be model class rather than coverage — ` +
+    `re-run with backend:"cloud" to put the synthesis on an Ollama Cloud flagship ` +
+    `(requires OLLAMA_API_KEY; escalated calls disclose egress on the envelope).`
+  );
+}
+
+/**
+ * Fail-fast mirror of the runner's CLOUD_NOT_CONFIGURED refusal, for
+ * MULTI-STEP tools.
+ *
+ * An atom hits the runner's gate on its only model call, so the refusal is
+ * already the first thing that happens. A pack is not: incident_pack runs a
+ * triage call and change_pack a whole evidence assembly BEFORE the escalated
+ * synthesis step, so without this the caller pays for two local steps and
+ * then gets told cloud was never configured. Same code, same hint, same
+ * non-retryable flag as runner.ts — an escalation that cannot be served
+ * refuses loudly and never degrades into a silent local run.
+ */
+export function assertCloudEscalationConfigured(opts: {
+  tool: string;
+  backend?: "cloud" | "local";
+  cloudConfigured: boolean;
+}): void {
+  if (opts.backend !== "cloud" || opts.cloudConfigured) return;
+  throw new InternError(
+    "CLOUD_NOT_CONFIGURED",
+    `Tool ${opts.tool} requested backend:'cloud' but no Ollama Cloud is configured.`,
+    "Set OLLAMA_API_KEY (create a key at https://ollama.com/settings/keys) to arm cloud standby — calls stay local unless they request backend:'cloud'. Optionally set OLLAMA_CLOUD_PRIMARY=1 for cloud-primary routing. This call was refused, not silently served by the local model.",
+    false,
+  );
 }

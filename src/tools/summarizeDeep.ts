@@ -21,6 +21,7 @@ import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { parseModelJson } from "./briefs/common.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { modelClassBackendField } from "./_helpers.js";
 
 /**
  * Base object shape — what McpServer.tool() registers for Claude.
@@ -61,6 +62,11 @@ export const summarizeDeepSchema = z.object({
         "orchestration that requires explicit model identity (e.g., " +
         "research-os reviewer profiles).",
     ),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type SummarizeDeepInput = z.infer<typeof summarizeDeepSchema>;
@@ -172,6 +178,7 @@ export async function handleSummarizeDeep(
     tool: "ollama_summarize_deep",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: false,
     modelOverride: input.model,
     build: (_tier, model) => ({

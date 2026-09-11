@@ -59,6 +59,8 @@ import {
   allowlistPathsMatch,
   MAX_CORPUS_QUERY_CHARS,
   CORPUS_QUERY_CAP_NOTE,
+  packSynthesisBackendField,
+  assertCloudEscalationConfigured,
 } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
@@ -98,6 +100,13 @@ export const changePackSchema = z.object({
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_breakpoints: z.number().int().min(1).max(12).optional().describe("Cap on likely_breakpoints (default 6)."),
   max_validation_checks: z.number().int().min(1).max(15).optional().describe("Cap on validation_checks (default 8)."),
+  // F2c (v2.9.2): per-STEP cloud escalation. A pack is a mixed-cost
+  // pipeline — see packSynthesisBackendField for why this reaches the
+  // synthesis step alone. Forwarded into briefInput below, nowhere else.
+  backend: packSynthesisBackendField({
+    synthesisStep: "the brief synthesis step (ollama_change_brief, Deep tier)",
+    localSteps: "evidence assembly, the triage pass, the targeted extract (Workhorse structured fill) and the artifact write",
+  }),
 });
 
 export type ChangePackInput = z.infer<typeof changePackSchema>;
@@ -510,6 +519,10 @@ async function handleChangePackInner(
   input: ChangePackInput,
   ctx: RunContext,
 ): Promise<Envelope<ChangePackResult>> {
+  // F2c: refuse an unservable escalation BEFORE the first step runs —
+  // a pack does local work ahead of its synthesis step, and the runner's
+  // own gate would only fire after the caller had already paid for it.
+  assertCloudEscalationConfigured({ tool: "ollama_change_pack", backend: input.backend, cloudConfigured: ctx.cloud !== undefined });
   const packStartedAt = Date.now();
   const steps: StepEntry[] = [];
   let tokensIn = 0;
@@ -582,6 +595,10 @@ async function handleChangePackInner(
     per_file_max_chars: input.per_file_max_chars,
     max_breakpoints: input.max_breakpoints,
     max_validation_checks: input.max_validation_checks,
+    // F2c: the ONLY step a pack-level backend directive reaches. The
+    // triage/extract steps and the artifact write are not escalated —
+    // they resolve their own backend from the mode default.
+    backend: input.backend,
   };
   const briefStart = Date.now();
   const briefEnv = await synthesizeChangeBrief(briefInput, ctx, assembled);

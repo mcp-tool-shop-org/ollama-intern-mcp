@@ -18,7 +18,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
-import { sanitizePromptField } from "./_helpers.js";
+import { sanitizePromptField, modelClassBackendField } from "./_helpers.js";
 import {
   parseCitations,
   validateCitations,
@@ -58,6 +58,11 @@ export const researchSchema = z.object({
         "orchestration that requires explicit model identity (e.g., " +
         "research-os reviewer profiles).",
     ),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type ResearchInput = z.infer<typeof researchSchema>;
@@ -162,6 +167,7 @@ export async function handleResearch(
     tool: "ollama_research",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: true,
     modelOverride: input.model,
     build: (_tier, model) => ({

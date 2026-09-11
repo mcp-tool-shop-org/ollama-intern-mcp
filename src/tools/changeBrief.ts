@@ -33,7 +33,13 @@ import {
   readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
-import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "./_helpers.js";
+import {
+  normalizeCorpusQuery,
+  MAX_CORPUS_QUERY_CHARS,
+  CORPUS_QUERY_CAP_NOTE,
+  modelClassBackendField,
+  modelClassWeakNote,
+} from "./_helpers.js";
 
 export const changeBriefSchema = z.object({
   diff_text: z.string().min(1).optional().describe("Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers into numbered evidence items."),
@@ -65,6 +71,11 @@ export const changeBriefSchema = z.object({
     .max(1)
     .optional()
     .describe("Minimum retrieval score (0–1) for a corpus chunk to enter evidence. Hits below the floor are dropped before the model sees them, with a counted note in coverage_notes. Absent → no relevance filter."),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type ChangeBriefInput = z.infer<typeof changeBriefSchema>;
@@ -231,6 +242,7 @@ export async function synthesizeChangeBrief(
     tool: "ollama_change_brief",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: true,
     build: (_tier, model) => ({
       model,
@@ -307,6 +319,16 @@ export async function synthesizeChangeBrief(
       };
     },
   });
+
+  // F3 (v2.9.2): every weak-path note above diagnoses thin EVIDENCE. On a
+  // locally-synthesized brief that diagnosis is plausible-but-unverified —
+  // a thin brief from adequate evidence is exactly what a small model
+  // produces at repo scale. Name the other remedy alongside the evidence
+  // one, and only when the caller has not already taken it.
+  const modelClassNote = modelClassWeakNote(envelope, envelope.result.weak);
+  if (modelClassNote) {
+    envelope.result.coverage_notes = [...envelope.result.coverage_notes, modelClassNote];
+  }
 
   if (parseWarnings.length > 0) {
     envelope.warnings = [...(envelope.warnings ?? []), ...parseWarnings];
