@@ -1,6 +1,6 @@
 # Belt-and-braces deny list. The authoritative allowlist is `files` in package.json
-# (dist/, README, LICENSE, SECURITY). This file ensures a stray untracked file
-# at the repo root can't leak into the tarball.
+# (dist/, README, LICENSE, SECURITY, hermes.config.example.yaml). This file
+# ensures a stray untracked file at the repo root can't leak into the tarball.
 
 # Source and test trees
 src/
@@ -19,7 +19,14 @@ SHIP_GATE.md
 SCORECARD.md
 CHANGELOG.md
 
-# Translated READMEs (only canonical README.md ships)
+# Translated READMEs — NOTE: these lines are INERT and are kept only as a
+# record of intent. npm-packlist force-includes anything matching README*
+# regardless of `files` or this file, so all seven translations ship anyway.
+# Measured 2026-09-11 on npm 10.9.8: `npm pack --dry-run --ignore-scripts`
+# listed README.{es,fr,hi,it,ja,pt-BR,zh}.md (~420 kB of a 484 kB unpacked
+# tarball) with these lines present AND with `files` omitting them. The only
+# way to actually drop them is to move the files out of the package root
+# (e.g. docs/i18n/) — a docs-domain change, not an ignore-file one.
 README.es.md
 README.fr.md
 README.hi.md
@@ -44,8 +51,15 @@ vitest.config.*
 *.test.*
 *.spec.*
 
-# Example configs (not needed at runtime)
-hermes.config.example.yaml
+# hermes.config.example.yaml is SHIPPED on purpose (package.json `files`).
+# It used to be denied here as "not needed at runtime", which was wrong: the
+# advertised `init` verb copies it out of the package root
+# (src/index.ts resolves <bin-dir>/../hermes.config.example.yaml), so with the
+# file absent every npm install answered `init` with its own "This is a
+# packaging bug" error. `files` wins over .npmignore, but a deny line that
+# contradicts the allowlist is a trap for the next reader, so it is gone
+# rather than merely overridden. The tarball install-and-run smoke in
+# ci.yml's lockfile-sync job is what keeps this honest.
 
 # Editor / OS cruft
 .vscode/

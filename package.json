@@ -12,7 +12,8 @@
     "dist/**/*",
     "README.md",
     "LICENSE",
-    "SECURITY.md"
+    "SECURITY.md",
+    "hermes.config.example.yaml"
   ],
   "scripts": {
     "build": "tsc",
