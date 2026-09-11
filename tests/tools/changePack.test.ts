@@ -107,7 +107,7 @@ const BRIEF_OUT = JSON.stringify({
 
 const EXTRACT_OUT = JSON.stringify({
   scripts_touched: ["auth:migrate"],
-  config_surfaces: ["auth.config.ts"],
+  config_surfaces: ["signed-token default", "config/prod.yaml"],
   runtime_hints: ["Node 20+"],
 });
 
@@ -411,8 +411,29 @@ describe("handleChangePack — markdown layout", () => {
     );
     const md = await readFile(env.result.artifact.markdown_path, "utf8");
     expect(md).toContain("**Scripts touched:** `auth:migrate`");
-    expect(md).toContain("**Config surfaces:** `auth.config.ts`");
+    expect(md).toContain("**Config surfaces:** `signed-token default`");
+    expect(md).not.toMatch(/\*\*Config surfaces:\*\*[^\n]*config\/prod\.yaml/);
+    expect(md).not.toMatch(/\*\*Config surfaces:\*\*[^\n]*auth\.config\.ts/);
     expect(md).toContain("**Runtime hints:** Node 20+");
+  });
+
+  it("drops a path-like invented config_surface and records a coverage_note (F-c476028c)", async () => {
+    const client = new PipelineMock(TRIAGE_OUT, BRIEF_OUT, EXTRACT_OUT);
+    const env = await handleChangePack(
+      { diff_text: SIMPLE_DIFF, artifact_dir: tempArtifactDir },
+      makeCtx(client),
+    );
+    const md = await readFile(env.result.artifact.markdown_path, "utf8");
+    const configLine = md.split("\n").find((l) => l.includes("**Config surfaces:**")) ?? "";
+    expect(configLine).toContain("`signed-token default`");
+    expect(configLine).not.toContain("config/prod.yaml");
+    expect(configLine).not.toContain("auth.config.ts");
+    const coverage = md.slice(md.indexOf("## Coverage notes"), md.indexOf("## Step trace"));
+    expect(coverage).toMatch(/Dropped \d+ config_surfaces path/);
+    expect(coverage).toContain("`config/prod.yaml`");
+    const obj = JSON.parse(await readFile(env.result.artifact.json_path, "utf8"));
+    expect(obj.extracted_facts.config_surfaces).toEqual(["signed-token default"]);
+    expect(obj.extracted_facts.config_surfaces).not.toContain("config/prod.yaml");
   });
 
   it("Release note draft renders as blockquote with DRAFT caveat", async () => {
