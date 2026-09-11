@@ -25,9 +25,9 @@ import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
 import { chunkDocument, clampChunkGeometry, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
-import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, clearCompletedMarker, type CorpusManifest, assertSafePath } from "./manifest.js";
+import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, clearCompletedMarker, type CorpusManifest, type ManifestFailedPath, assertSafePath } from "./manifest.js";
 import { withCorpusLock } from "./lock.js";
-import { InternError } from "../errors.js";
+import { InternError, toErrorShape } from "../errors.js";
 import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import { canonicalFsPath, parentDirMissing } from "./identity.js";
 
@@ -74,10 +74,30 @@ export interface IndexParams {
   onProgress?: (done: number, total: number, currentPath: string) => void;
 }
 
-/** One entry per path that could not be read/hashed during indexing. */
+/**
+ * One entry per path that could not be read/hashed during indexing.
+ *
+ * Carries the full error shape, not just the message (F-db7db83d): the
+ * `hint` is where the remedy lives (SOURCE_FILE_TOO_LARGE → "Split the
+ * file or raise the cap"; SYMLINK_NOT_ALLOWED → "Pass the real file path";
+ * outside-roots → "Set INTERN_CORPUS_ALLOWED_ROOTS to add more"), and
+ * `retryable` is what tells a caller whether "re-run with
+ * retry_failed:true" is sound advice or a loop that re-fails identically.
+ * Optional so manifests written before these fields still load.
+ */
 export interface IndexFailedPath {
   path: string;
   reason: string;
+  /** InternError code, or "INTERNAL" for a non-InternError throw. */
+  code?: string;
+  /** The actionable remedy the error carried. */
+  hint?: string;
+  /** False when a retry re-fails identically (size cap, symlink, outside roots). */
+  retryable?: boolean;
+  /** True on entries carried forward from a prior run's manifest. */
+  carried?: boolean;
+  /** True when this run never considered the path (see `carried`). */
+  not_retried_this_run?: boolean;
 }
 
 export interface IndexReport {
@@ -116,6 +136,15 @@ export interface IndexReport {
    * array on the happy path.
    */
   failed_paths: IndexFailedPath[];
+  /**
+   * Entries the PRIOR manifest recorded as failed that this run did not
+   * consider at all — the path is absent from the declared path set and
+   * the caller did not opt into the retry queue. They are re-persisted to
+   * the manifest (marked `carried`) instead of being erased, and reported
+   * here so a run that quietly dropped a declared input says so out loud
+   * (F-99621564). Empty on the happy path.
+   */
+  carried_failed_paths: IndexFailedPath[];
 }
 
 /**
@@ -256,6 +285,39 @@ async function openPinnedRead(realPath: string, lexicalPath: string) {
 }
 
 /**
+ * Record a per-path failure WITHOUT flattening the error to its message.
+ *
+ * This module raises exemplary code/message/hint InternErrors and then kept
+ * one of the three fields, so every consumer — IndexReport,
+ * RefreshReport.still_failed, corpus_health — could only print a bare
+ * sentence, and none could tell a size-cap or symlink rejection (permanent)
+ * from a file-lock (transient) when advising a retry (F-db7db83d).
+ */
+function toFailedPath(path: string, err: unknown): IndexFailedPath {
+  const shape = toErrorShape(err);
+  return {
+    path,
+    reason: shape.message,
+    code: shape.code,
+    hint: shape.hint,
+    retryable: shape.retryable,
+  };
+}
+
+/** Drop undefined optionals so the persisted manifest stays minimal. */
+function toManifestFailedPath(f: IndexFailedPath): ManifestFailedPath {
+  return {
+    path: f.path,
+    reason: f.reason,
+    ...(f.code !== undefined ? { code: f.code } : {}),
+    ...(f.hint !== undefined ? { hint: f.hint } : {}),
+    ...(f.retryable !== undefined ? { retryable: f.retryable } : {}),
+    ...(f.carried ? { carried: true } : {}),
+    ...(f.not_retried_this_run ? { not_retried_this_run: true } : {}),
+  };
+}
+
+/**
  * Internal: indexCorpus body. Not exported — refresh/index take the lock
  * and call through indexCorpus (reentrant).
  */
@@ -358,10 +420,11 @@ async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
     try {
       assertSafePath(absPath);
     } catch (err) {
-      failedPaths.push({
-        path: absPath,
-        reason: (err as Error).message ?? String(err),
-      });
+      // NOTE: this path is rejected BEFORE seenPaths.set, so it never
+      // reaches manifest.paths and is only ever re-attempted under
+      // refresh({retry_failed: true}). The manifest write below carries a
+      // prior run's entry forward for exactly this reason (F-99621564).
+      failedPaths.push(toFailedPath(absPath, err));
       continue;
     }
     const pathKey = canonicalFsPath(absPath);
@@ -377,11 +440,10 @@ async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
       // Stage C humanization: capture per-file failure and continue so one
       // bad file in a batch of 1000 does not halt the whole pass. Caller
       // sees failed_paths in the report. Always persist the resolved
-      // absolute path (same identity as seenPaths / manifest.paths).
-      failedPaths.push({
-        path: absPath,
-        reason: (err as Error).message ?? String(err),
-      });
+      // absolute path (same identity as seenPaths / manifest.paths), and
+      // the error's code/hint/retryable alongside the message so the
+      // remedy survives to the operator (F-db7db83d).
+      failedPaths.push(toFailedPath(absPath, err));
       // H5: a TRANSIENT read failure (Windows file lock, antivirus hold,
       // editor atomic-save rename window, size-cap/symlink rejection) must
       // not delete already-indexed content. Carry this path's prior chunks
@@ -569,9 +631,43 @@ async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
   // Preserve the prior resolved tag when nothing was embedded this run.
   // Writing null over a previously-known value would lose the freshness anchor.
   const resolvedForManifest = embedModelResolved ?? prevManifest?.embed_model_resolved ?? null;
+  // Carry forward prior failures this run never LOOKED at (F-99621564).
+  //
+  // Rewriting failed_paths from this run alone is correct for paths inside
+  // manifest.paths — those are re-attempted every run, so their absence
+  // here really does mean "resolved". It is wrong for a path assertSafePath
+  // rejected: that one is pushed to failedPaths and `continue`d BEFORE
+  // seenPaths.set, so it never enters manifest.paths and only a
+  // refresh({retry_failed: true}) ever re-attempts it. A plain refresh
+  // therefore wrote failed_paths: [] and permanently erased the record,
+  // flipping corpus_health.failed_paths_count and corpus_list's
+  // failed_path_count to a clean report for a file that had never been
+  // indexed and never would be. The most likely first-use trigger is
+  // mundane: indexing E:/AI/notes.md while allowedRoots() is the home dir.
+  //
+  // A carried entry is marked so an operator can tell a stale backlog from
+  // a fresh failure, and clears the moment a later run reads the path
+  // successfully. Deliberately NOT recorded in seenPaths: validateManifestShape
+  // runs assertSafePath over paths[] at load, so an out-of-roots entry in
+  // manifest.paths would make the whole manifest unloadable.
+  const failedKeysThisRun = new Set(failedPaths.map((f) => canonicalFsPath(f.path)));
+  const carriedFailedPaths: IndexFailedPath[] = [];
+  const carriedKeys = new Set<string>();
+  for (const prior of prevManifest?.failed_paths ?? []) {
+    const key = canonicalFsPath(resolve(prior.path));
+    // Considered this run and read cleanly → genuinely resolved, drop it.
+    if (seenPaths.has(key)) continue;
+    // Failed again this run → the fresh entry is authoritative.
+    if (failedKeysThisRun.has(key)) continue;
+    if (carriedKeys.has(key)) continue;
+    carriedKeys.add(key);
+    carriedFailedPaths.push({ ...prior, carried: true, not_retried_this_run: true });
+  }
+
   // Persist failed_paths into the manifest so ollama_corpus_refresh with
-  // retry_failed:true can scan them on the next run. An empty list clears
-  // any stale failures from prior runs.
+  // retry_failed:true can scan them on the next run. This run's failures
+  // replace the prior list; carried entries (above) are appended so a
+  // backlog nothing re-attempted is not erased.
   const manifest: CorpusManifest = {
     schema_version: MANIFEST_SCHEMA_VERSION,
     name: params.name,
@@ -582,7 +678,7 @@ async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
     chunk_overlap: opts.chunk_overlap,
     created_at: prevManifest?.created_at ?? now,
     updated_at: now,
-    failed_paths: failedPaths.map((f) => ({ path: f.path, reason: f.reason })),
+    failed_paths: [...failedPaths, ...carriedFailedPaths].map(toManifestFailedPath),
     // A clean index/refresh re-establishes the "snapshot of disk" invariant
     // — clear the amend-breadcrumb so list/health stop warning. Callers who
     // re-amend after the reindex get the flag back on their next amend call.
@@ -611,6 +707,7 @@ async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
     embed_model_resolved: embedModelResolved,
     ...(withinRefreshDrift ? { embed_model_resolved_drift_within_refresh: withinRefreshDrift } : {}),
     failed_paths: failedPaths,
+    carried_failed_paths: carriedFailedPaths,
   };
 }
 

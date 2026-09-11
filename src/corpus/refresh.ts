@@ -87,6 +87,16 @@ export interface RefreshReport {
   retried_failed: string[];
   /** Paths that failed again this run (subset of retried_failed + fresh failures on the normal path set). */
   still_failed: { path: string; reason: string }[];
+  /**
+   * Prior-run failures this refresh did not re-attempt — paths that never
+   * entered manifest.paths (assertSafePath rejected them before they could)
+   * and that `retry_failed` did not pull into the live set. They are
+   * preserved in the manifest rather than erased, and named here so a
+   * refresh that reports `still_failed: []` cannot read as "all clear"
+   * while a declared input remains unindexed (F-99621564). Empty on the
+   * happy path and on a no-op refresh (which rewrites nothing).
+   */
+  carried_failed_paths: { path: string; reason: string }[];
 }
 
 export interface RefreshParams {
@@ -270,6 +280,9 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
       no_op: true,
       retried_failed: [],
       still_failed: [],
+      // A no-op never calls the indexer, so the manifest (and any failed
+      // backlog on it) is left exactly as found — nothing to carry.
+      carried_failed_paths: [],
     };
   }
 
@@ -362,6 +375,13 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
     path: resolve(f.path),
     reason: f.reason,
   }));
+  // Backlog the indexer preserved rather than re-attempted. Kept OUT of
+  // still_failed, whose contract is "subset of retried_failed that failed
+  // again" — these were never retried.
+  const carriedFailed = indexReport.carried_failed_paths.map((f) => ({
+    path: resolve(f.path),
+    reason: f.reason,
+  }));
   // Silence the "unused" warning in some editors — the map is intentionally
   // kept for future callers who want per-path reason lookups.
   void freshFailedByPath;
@@ -381,6 +401,7 @@ async function refreshCorpusUnlocked(params: RefreshParams): Promise<RefreshRepo
     no_op: false,
     retried_failed: retriedFailed,
     still_failed: stillFailed,
+    carried_failed_paths: carriedFailed,
     ...(drift ? { embed_model_resolved_drift: drift } : {}),
     ...(indexReport.embed_model_resolved_drift_within_refresh
       ? { embed_model_resolved_drift_within_refresh: indexReport.embed_model_resolved_drift_within_refresh }

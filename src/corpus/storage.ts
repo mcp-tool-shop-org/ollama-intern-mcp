@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { InternError } from "../errors.js";
+import { InternError, toErrorShape } from "../errors.js";
 import { loadManifest } from "./manifest.js";
 import { atomicWriteFile } from "./atomicWrite.js";
 import { withCorpusLock } from "./lock.js";
@@ -324,11 +324,51 @@ export interface CorpusSummary {
   write_complete?: boolean;
 }
 
-export async function listCorpora(): Promise<CorpusSummary[]> {
+/**
+ * A corpus file that is present on disk but could NOT be loaded. Carries
+ * the structured error so a caller can name the corpus and its remedy
+ * instead of silently reporting one fewer corpus.
+ */
+export interface CorpusSkip {
+  /** Corpus name, from the filename stem — the payload itself is unreadable. */
+  name: string;
+  /** InternError code (SCHEMA_INVALID, …) or "INTERNAL" for anything else. */
+  code: string;
+  message: string;
+  /** The error's own remedy, plus the concrete re-index command. */
+  hint: string;
+}
+
+/** What `listCorporaDetailed` returns: the loadable corpora AND the failures. */
+export interface CorpusListing {
+  summaries: CorpusSummary[];
+  /** Empty on the happy path. See {@link CorpusSkip}. */
+  skipped: CorpusSkip[];
+}
+
+/**
+ * List every corpus in the corpus dir, reporting BOTH the ones that loaded
+ * and the ones that did not (F-be077540).
+ *
+ * A corpus whose payload JSON can't be parsed used to be dropped from the
+ * array with the reason written only to the server's stderr — which an MCP
+ * client never sees — so a directory in which every corpus failed to load
+ * returned `[]`, byte-identical to "you have never indexed anything". The
+ * causes are not exotic: a schema_version other than 2 (loadManifest has a
+ * v1→v2 migration, loadCorpus has none), a schema_version_written_by newer
+ * than the running build (a downgrade — exactly when the operator most
+ * needs telling), and every SCHEMA_INVALID validateCorpusShape raises.
+ *
+ * This is the same inconsistency wave 4 closed for the manifest half (an
+ * invalid manifest surfaces as write_complete:false rather than being
+ * swallowed as a missing legacy marker), now applied to the payload half.
+ */
+export async function listCorporaDetailed(): Promise<CorpusListing> {
   const dir = corpusDir();
-  if (!existsSync(dir)) return [];
+  if (!existsSync(dir)) return { summaries: [], skipped: [] };
   const entries = await readdir(dir);
   const summaries: CorpusSummary[] = [];
+  const skipped: CorpusSkip[] = [];
   for (const entry of entries) {
     // Skip the manifest sibling files — listCorpora is the "primary file
     // per corpus" view, and we derive manifest info by loading alongside.
@@ -380,18 +420,33 @@ export async function listCorpora(): Promise<CorpusSummary[]> {
         ...(writeComplete === undefined ? {} : { write_complete: writeComplete }),
       });
     } catch (err) {
-      const reason =
-        err instanceof InternError
-          ? `${err.code}: ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : String(err);
+      // Return channel, not just stderr: the caller decides how loudly to
+      // render this, and CAN now tell "no corpora" from "N corpora, all
+      // unreadable". The hint the error already carries is preserved and
+      // the concrete rewrite command appended to it.
+      const shape = toErrorShape(err);
+      const hint = `${shape.hint} Re-index to rewrite it: ollama_corpus_index({ name: "${name}", paths: [...] }).`;
+      skipped.push({ name, code: shape.code, message: shape.message, hint });
       // eslint-disable-next-line no-console
-      console.error(`[corpus:list] skip name=${name} reason=${reason}`);
+      console.error(
+        `[corpus:list] skip name=${name} reason=${shape.code}: ${shape.message} ${hint}`,
+      );
     }
   }
   summaries.sort((a, b) => a.name.localeCompare(b.name));
-  return summaries;
+  skipped.sort((a, b) => a.name.localeCompare(b.name));
+  return { summaries, skipped };
+}
+
+/**
+ * Summaries only — the historical shape, kept so existing call sites keep
+ * compiling. Anything that renders a corpus inventory to a human should
+ * call `listCorporaDetailed` instead and surface `skipped`; dropping it on
+ * the floor here is the behavior that hid unreadable corpora in the first
+ * place.
+ */
+export async function listCorpora(): Promise<CorpusSummary[]> {
+  return (await listCorporaDetailed()).summaries;
 }
 
 /**

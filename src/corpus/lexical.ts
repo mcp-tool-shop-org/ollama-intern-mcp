@@ -20,7 +20,11 @@
  * Determinism guarantees:
  *   - Sort by score desc, then (path asc, chunk_index asc) as tie-break.
  *   - Zero-score chunks are omitted.
- *   - Tokenizer is pure: same input → same tokens, independent of locale.
+ *   - Tokenizer is pure: same input → same tokens on every machine,
+ *     independent of the host locale (it never consults one). That is a
+ *     determinism guarantee, NOT a coverage one — the tokenizer is
+ *     ASCII-only, so non-ASCII scripts are not searchable on this rail.
+ *     See `tokenize` for exactly what that costs.
  *   - Stopword set is a fixed list in this file (no env lookup).
  */
 
@@ -60,6 +64,26 @@ export function isStopword(term: string): boolean {
  * Generic tokenizer for body/title/heading text.
  * Lowercases, splits on non-alphanumeric, drops stopwords and empties.
  * No stemming, no fuzzy matching — those are explicit slice-3+ decisions.
+ *
+ * ASCII-ONLY, and the limitation is load-bearing (F-90e1bb67): the splitter
+ * is /[^a-z0-9]+/, so every character outside ASCII a–z / 0–9 acts as a
+ * SEPARATOR rather than as part of a term. Consequences worth knowing
+ * before pointing this at a non-English corpus:
+ *
+ *   - CJK, Cyrillic, Greek, Hebrew, Arabic text tokenizes to nothing, so
+ *     such a corpus is unsearchable on the keyword rail and contributes
+ *     nothing to hybrid fusion — with no error, just zero signal.
+ *   - Accented Latin splits at the accent: "café" → ["caf"], "naïve" →
+ *     ["na", "ve"]. Indexing and querying are affected identically, so the
+ *     halves still match each other — but they will not match the
+ *     unaccented spelling.
+ *   - Applied at BOTH index and query time, which is what keeps the IDF
+ *     statistics consistent.
+ *
+ * A query made entirely of such characters (or entirely of stopwords)
+ * yields zero terms; `searcher.hasNoLexicalTerms` detects that case so the
+ * tool layer can say why retrieval was empty instead of reporting "no
+ * matches".
  */
 export function tokenize(text: string): string[] {
   if (!text) return [];

@@ -11,6 +11,15 @@
  * chunks. Boost, never filter — chunks without a match keep their
  * fused score and stay in the result so a near-miss query never
  * collapses to empty.
+ *
+ * Scale note (F-35003a1d): RRF needs no calibration to FUSE, but the
+ * number it produces is tiny and non-obvious — a doc ranked #1 in every
+ * list earns only sum(weights) / (k + 1), i.e. 2/61 ≈ 0.0328 for the
+ * default two weight-1.0 lists. That reads to an operator (and to any
+ * caller applying an absolute floor) as "3% relevant". `rrfMaxScore` and
+ * `maxFactBoost` expose the theoretical ceilings so the searcher can
+ * rescale the fused score onto 0–1 using the same constants the fuser
+ * used, instead of a magic number copied at the call site.
  */
 
 export interface Ranked {
@@ -27,13 +36,23 @@ export interface FusionList {
 }
 
 /**
+ * RRF smoothing constant — the canonical value from Cormack et al. 2009.
+ * Exported so anything that needs the theoretical score ceiling derives it
+ * from the SAME k the fuser used (a second hard-coded 60 elsewhere would
+ * silently mis-normalize the day this is tuned).
+ */
+export const RRF_K = 60;
+
+/**
  * Reciprocal Rank Fusion. Score for doc d =
  *   sum over input lists i: weight_i / (K + rank_i(d))
- * where K is a smoothing constant (default 60 — the canonical value from
- * Cormack et al. 2009). A doc that appears in only one list is still
- * scored; a doc absent from every list never appears in the output.
+ * where K is a smoothing constant (default `RRF_K` = 60 — the canonical
+ * value from Cormack et al. 2009). A doc that appears in only one list is
+ * still scored; a doc absent from every list never appears in the output.
+ *
+ * The output is NOT on a 0–1 scale: see `rrfMaxScore` for the ceiling.
  */
-export function rrfFuse(lists: FusionList[], k: number = 60): Map<string, number> {
+export function rrfFuse(lists: FusionList[], k: number = RRF_K): Map<string, number> {
   const scores = new Map<string, number>();
   for (const { ranked, weight = 1 } of lists) {
     for (const r of ranked) {
@@ -41,6 +60,23 @@ export function rrfFuse(lists: FusionList[], k: number = 60): Map<string, number
     }
   }
   return scores;
+}
+
+/**
+ * Theoretical maximum `rrfFuse` score for `lists`: what a doc earns by
+ * ranking #1 in every one of them, i.e. sum(weight_i) / (k + 1). With the
+ * searcher's default pair of weight-1.0 lists at k = 60 that is
+ * 2 / 61 ≈ 0.0328.
+ *
+ * Dividing a fused score by this puts it back on 0–1 without touching the
+ * ordering (it is a single positive constant applied to every doc in the
+ * run). Returns 0 for an empty list set — callers must not divide by it
+ * blindly.
+ */
+export function rrfMaxScore(lists: FusionList[], k: number = RRF_K): number {
+  let totalWeight = 0;
+  for (const { weight = 1 } of lists) totalWeight += weight;
+  return totalWeight / (k + 1);
 }
 
 /**
@@ -105,6 +141,21 @@ export function applyFactBoost(
     boosted.push({ chunkId: s.chunkId, score: s.score * mult });
   }
   return boosted;
+}
+
+/**
+ * Largest multiplier `applyFactBoost` can apply to a single score: an exact
+ * substring match in a chunk at or below the short-chunk floor. With the
+ * defaults that is 2.5 × 1.15 = 2.875.
+ *
+ * Each factor is floored at 1.0 because a non-matching / long chunk keeps
+ * its score unchanged (multiplier 1), so a sub-1.0 configured multiplier
+ * would make 1.0 — not itself — the maximum. Fact mode divides by
+ * `rrfMaxScore(lists) * maxFactBoost()` to land back on 0–1.
+ */
+export function maxFactBoost(opts: FactBoostOptions = {}): number {
+  const cfg = { ...DEFAULT_FACT_BOOST, ...opts };
+  return Math.max(cfg.exactSubstringMultiplier, 1) * Math.max(cfg.shortChunkMaxMultiplier, 1);
 }
 
 function shortChunkMultiplier(
