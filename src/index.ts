@@ -778,6 +778,45 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => {
     void shutdown("SIGINT");
   });
+
+  // Unhandled promise / exception: log a breadcrumb so log_tail shows
+  // why the session died or wobbled. Do not rethrow. SIGTERM/SIGINT
+  // remain the only process.exit(0) path; uncaughtException exits 1
+  // AFTER the breadcrumb because Node's default is already fatal.
+  process.on("unhandledRejection", (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern: unhandledRejection — ${message}. MCP session stays up. Filter log_tail for rule=unhandled_rejection. If this repeats, restart the server and file a bug with the stack.`,
+    );
+    void ctx.logger.log({
+      kind: "guardrail",
+      ts: timestamp(),
+      tool: "runtime",
+      rule: "unhandled_rejection",
+      action: "logged",
+      detail: { message },
+    });
+  });
+  process.on("uncaughtException", (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.error(
+      `ollama-intern: uncaughtException — ${message}. Logging breadcrumb then exiting; restart the MCP server.`,
+    );
+    void ctx.logger
+      .log({
+        kind: "guardrail",
+        ts: timestamp(),
+        tool: "runtime",
+        rule: "uncaught_exception",
+        action: "logged_then_exit",
+        detail: { message },
+      })
+      .finally(() => {
+        process.exit(1);
+      });
+  });
 }
 
 /**
