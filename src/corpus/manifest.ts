@@ -169,6 +169,39 @@ function pathIsUnderRoot(candidate: string, root: string): boolean {
 export interface ManifestFailedPath {
   path: string;
   reason: string;
+  /**
+   * Structured error code from the InternError that rejected this path
+   * (SOURCE_FILE_TOO_LARGE, SYMLINK_NOT_ALLOWED, SOURCE_PATH_NOT_FOUND,
+   * …), or "INTERNAL" when the throw was not an InternError. Optional so
+   * manifests written before this field still validate.
+   */
+  code?: string;
+  /**
+   * The remedy the thrown error carried ("Split the file or raise the
+   * cap", "Set INTERN_CORPUS_ALLOWED_ROOTS to add more"). Flattening the
+   * error to its message alone discarded exactly the sentence that tells
+   * the operator what to do (F-db7db83d).
+   */
+  hint?: string;
+  /**
+   * False when re-running will fail identically (size cap, symlink,
+   * outside-roots); true for TOCTOU / file-lock style failures. Callers
+   * use it to suppress "retry with retry_failed:true" advice that is
+   * permanently wrong for this entry.
+   */
+  retryable?: boolean;
+  /**
+   * True when this entry was carried forward from a PRIOR run rather than
+   * produced by the run that wrote this manifest (F-99621564).
+   */
+  carried?: boolean;
+  /**
+   * True when the run that wrote this manifest never looked at the path —
+   * it is absent from `paths` (rejected before it could be recorded there)
+   * and the run did not opt into the retry queue. The backlog is stale,
+   * not resolved.
+   */
+  not_retried_this_run?: boolean;
 }
 
 export interface CorpusManifest {
@@ -219,8 +252,17 @@ export interface CorpusManifest {
    * Paths that failed to read during the most recent index/refresh run.
    * Empty array on the happy path. When non-empty, corpus_refresh with
    * retry_failed:true will scan these in addition to the normal manifest
-   * paths. Replaced (not appended) on every index run so the manifest
-   * always reflects the latest state.
+   * paths.
+   *
+   * Rewritten (not appended) on every index run — with ONE exception
+   * (F-99621564): a prior entry whose path the run never considered is
+   * carried forward with `carried: true` / `not_retried_this_run: true`.
+   * A path rejected by assertSafePath never reaches `paths`, so it is only
+   * ever re-attempted under refresh({retry_failed: true}); without the
+   * carry, a plain refresh erased the record and corpus_health /
+   * corpus_list flipped to a clean report for a file that has never been
+   * indexed. A carried entry clears the moment a later run actually reads
+   * the path successfully.
    */
   failed_paths?: ManifestFailedPath[];
   /**
