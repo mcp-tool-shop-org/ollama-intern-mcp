@@ -23,8 +23,8 @@
  */
 
 import { z } from "zod";
-import { resolveUniqueArtifactPaths, writeArtifactPair } from "./artifactWrite.js";
-import { join, normalize } from "node:path";
+import { resolveUniqueArtifactPaths, writeArtifactPair, resolvePackArtifactDir, assertPackArtifactWriteAllowed } from "./artifactWrite.js";
+import { join } from "node:path";
 import { homedir } from "node:os";
 
 import type { Envelope } from "../../envelope.js";
@@ -53,7 +53,7 @@ import {
 } from "../changeBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
 import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
-import { normalizeCorpusQuery } from "../_helpers.js";
+import { normalizeCorpusQuery, allowlistPathsMatch } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -69,6 +69,14 @@ export const changePackSchema = z.object({
   corpus_query: z.string().min(1).optional().describe("Corpus query (defaults to the head of diff_text or first source path)."),
   title: z.string().min(1).max(120).optional().describe("Short human title — used in the artifact header and filename slug. Defaults to the change_summary head."),
   artifact_dir: z.string().min(1).optional().describe("Directory to write the change.md + change.json artifact pair. Defaults to ~/.ollama-intern/artifacts/change/."),
+  allowed_roots: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path."),
+  confirm_write: z
+    .boolean()
+    .optional()
+    .describe("Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional(),
   max_breakpoints: z.number().int().min(1).max(12).optional(),
   max_validation_checks: z.number().int().min(1).max(15).optional(),
@@ -137,15 +145,8 @@ export function coerceChangeFacts(data: unknown): ChangeFacts {
   };
 }
 
-function posixNorm(p: string): string {
-  return normalize(p).replace(/\\/g, "/");
-}
-
 function pathsEquivalent(a: string, b: string): boolean {
-  const na = posixNorm(a);
-  const nb = posixNorm(b);
-  if (na === nb) return true;
-  return na.endsWith("/" + nb) || nb.endsWith("/" + na);
+  return allowlistPathsMatch(a, b);
 }
 
 const CONFIG_PATH_EXT = /\.(json|ya?ml|toml|ini|cfg|conf|config|env|properties|xml)$/i;
@@ -636,7 +637,12 @@ async function handleChangePackInner(
 
   // Step 5 — artifact write.
   await ctx.logger.log(packStepEvent({ pack: "change", step: "artifact_write", step_index: 5, total_steps: TOTAL_STEPS }));
-  const artifactDir = input.artifact_dir ?? defaultArtifactDir();
+  const artifactDir = resolvePackArtifactDir({
+    artifact_dir: input.artifact_dir,
+    allowed_roots: input.allowed_roots,
+    defaultDir: defaultArtifactDir(),
+  });
+  assertPackArtifactWriteAllowed([artifactDir], input.confirm_write);
   const when = new Date();
   const summaryHead = brief.change_summary.split(/[.\n]/)[0]?.trim();
   const baseSlug = buildSlug({ title: input.title, summaryHead, when });
@@ -645,6 +651,7 @@ async function handleChangePackInner(
   // the same minute-resolution slug. Uniquify (-2, -3, …) BEFORE building the
   // artifact object that embeds slug + paths.
   const { slug, mdPath, jsonPath } = await resolveUniqueArtifactPaths(artifactDir, baseSlug);
+  assertPackArtifactWriteAllowed([mdPath, jsonPath], input.confirm_write);
 
   const writeStart = Date.now();
   const title = input.title ?? (summaryHead && summaryHead.length > 0 ? summaryHead : "change");

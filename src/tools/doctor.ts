@@ -12,10 +12,10 @@
  */
 
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readLogSuffix } from "./logRead.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
@@ -141,7 +141,7 @@ async function fetchModelState(
 }
 
 /**
- * Read the last N lines of the NDJSON log and return the last 10 events that
+ * Read a bounded suffix of the NDJSON log and return the last 10 events that
  * look like errors — envelope calls whose result shape carries an error flag,
  * guardrail denials, or known error kinds. Silent on any read failure; a
  * missing log file isn't a doctor problem, just a quiet operator.
@@ -153,12 +153,13 @@ async function readRecentErrors(
   if (!existsSync(logPath)) return [];
   let body: string;
   try {
-    body = await readFile(logPath, "utf8");
+    body = await readLogSuffix(logPath);
   } catch {
     return [];
   }
   const lines = body.split("\n").filter((l) => l.length > 0);
-  // Walk from the end so we cap reads on big logs, but parse best-effort.
+  // Walk from the end so we cap collected errors; the read itself is a
+  // bounded suffix (see readLogSuffix), not a whole-file slurp.
   const errors: Array<{ ts: string; code: string; tool: string }> = [];
   for (let i = lines.length - 1; i >= 0 && errors.length < cap; i--) {
     let parsed: unknown;

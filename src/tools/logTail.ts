@@ -2,17 +2,16 @@
  * ollama_log_tail — structured tail of the NDJSON observability log (no-LLM).
  *
  * Reads the last N lines of ~/.ollama-intern/log.ndjson (override via
- * INTERN_LOG_PATH), parses each line as JSON, applies optional filters, and
- * returns a stable array of structured events. Truncated final lines are
- * skipped silently (the log is append-only and a concurrent writer can
- * leave a partial line at the tail).
+ * INTERN_LOG_PATH) from a bounded suffix of the file, parses each line as
+ * JSON, applies optional filters, and returns a stable array of structured
+ * events. Truncated final lines are skipped silently (the log is append-only
+ * and a concurrent writer can leave a partial line at the tail).
  *
  * Missing log file is a soft-empty case: the tool returns 0 events without
  * an error — there's nothing wrong with "no activity yet."
  */
 
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +20,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { readLogSuffix } from "./logRead.js";
 
 export const logTailSchema = z.object({
   limit: z
@@ -103,8 +103,28 @@ export async function handleLogTail(
 
   let body: string;
   try {
-    body = await readFile(logPath, "utf8");
+    body = await readLogSuffix(logPath);
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      const result: LogTailResult = {
+        events: [],
+        total_returned: 0,
+        log_path: logPath,
+        log_present: false,
+      };
+      const envelope = buildEnvelope<LogTailResult>({
+        result,
+        tier: "instant",
+        model: "",
+        hardwareProfile: ctx.hardwareProfile,
+        tokensIn: 0,
+        tokensOut: 0,
+        startedAt,
+        residency: null,
+      });
+      await ctx.logger.log(callEvent("ollama_log_tail", envelope));
+      return envelope;
+    }
     throw new InternError(
       "LOG_READ_FAILED",
       `Cannot read log at ${logPath}: ${(err as Error).message}`,

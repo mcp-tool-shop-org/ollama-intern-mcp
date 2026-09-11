@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import { resolveUniqueArtifactPaths, writeArtifactPair } from "./artifactWrite.js";
+import { resolveUniqueArtifactPaths, writeArtifactPair, resolvePackArtifactDir, assertPackArtifactWriteAllowed } from "./artifactWrite.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -66,6 +66,14 @@ export const incidentPackSchema = z.object({
   corpus_query: z.string().min(1).optional().describe("Corpus query (defaults to the log head)."),
   title: z.string().min(1).max(120).optional().describe("Short human title — used in the artifact header and filename slug."),
   artifact_dir: z.string().min(1).optional().describe("Directory to write the incident.md + incident.json artifact pair. Defaults to ~/.ollama-intern/artifacts/incident/."),
+  allowed_roots: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path."),
+  confirm_write: z
+    .boolean()
+    .optional()
+    .describe("Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional(),
   max_hypotheses: z.number().int().min(1).max(10).optional(),
 });
@@ -404,7 +412,12 @@ async function handleIncidentPackInner(
 
   // Step 4 — artifact write. Deterministic markdown + JSON.
   await ctx.logger.log(packStepEvent({ pack: "incident", step: "artifact_write", step_index: 4, total_steps: TOTAL_STEPS }));
-  const artifactDir = input.artifact_dir ?? defaultArtifactDir();
+  const artifactDir = resolvePackArtifactDir({
+    artifact_dir: input.artifact_dir,
+    allowed_roots: input.allowed_roots,
+    defaultDir: defaultArtifactDir(),
+  });
+  assertPackArtifactWriteAllowed([artifactDir], input.confirm_write);
   const when = new Date();
   const firstHypothesis = brief.root_cause_hypotheses[0]?.hypothesis;
   const baseSlug = buildSlug({ title: input.title, hypothesis: firstHypothesis, when });
@@ -413,6 +426,7 @@ async function handleIncidentPackInner(
   // the same minute-resolution slug. Uniquify (-2, -3, …) BEFORE building the
   // artifact object that embeds slug + paths.
   const { slug, mdPath, jsonPath } = await resolveUniqueArtifactPaths(artifactDir, baseSlug);
+  assertPackArtifactWriteAllowed([mdPath, jsonPath], input.confirm_write);
 
   const writeStart = Date.now();
   const title = input.title ?? firstHypothesis ?? "incident";
