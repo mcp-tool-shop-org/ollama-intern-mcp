@@ -324,6 +324,21 @@ function validateManifestShape(
   if (typeof parsed.name !== "string" || parsed.name.length === 0) {
     throw new InternError("SCHEMA_INVALID", `Manifest for corpus "${name}" is missing a name. File: ${filePath}`, hint, false);
   }
+  if (canonicalCorpusKey(parsed.name) !== canonicalCorpusKey(name)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Manifest for corpus "${name}" has name "${parsed.name}". File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  // Win32: a non-canonical lookup spelling that aliases the stored name
+  // (NOTES vs Notes) is rejected with the same save-time helper. Canonical-key
+  // lookups (the on-disk filename stem) stay allowed so listCorpora can load
+  // mixed-case corpora (F-0e98b29b).
+  if (process.platform === "win32" && parsed.name !== name && name !== canonicalCorpusKey(parsed.name)) {
+    rejectWin32NameAlias(name, filePath);
+  }
   if (!Array.isArray(parsed.paths) || parsed.paths.some((p) => typeof p !== "string" || p.length === 0)) {
     throw new InternError(
       "SCHEMA_INVALID",
@@ -376,12 +391,13 @@ function validateManifestShape(
 }
 
 export async function saveManifest(manifest: CorpusManifest): Promise<void> {
-  return withCorpusLock(manifest.name, () => saveManifestUnlocked(manifest));
+  return withCorpusLock(manifest.name, () => saveManifestUnlocked(manifest, manifest.name));
 }
 
-async function saveManifestUnlocked(manifest: CorpusManifest): Promise<void> {
+async function saveManifestUnlocked(manifest: CorpusManifest, lookupName: string): Promise<void> {
+  assertValidCorpusName(lookupName);
   assertValidCorpusName(manifest.name);
-  const path = manifestPath(manifest.name);
+  const path = manifestPath(lookupName);
   rejectWin32NameAlias(manifest.name, path);
   // Stamp the writer version so older builds can refuse to downgrade —
   // mirrors saveCorpus in storage.ts. loadManifest reads this back and
@@ -415,5 +431,9 @@ async function clearCompletedMarkerUnlocked(name: string): Promise<void> {
   if (!prev || prev.completed_at === undefined) return;
   const dirty: CorpusManifest = { ...prev };
   delete dirty.completed_at;
-  await saveManifest(dirty);
+  // Persist under the lookup name's lock/path, not dirty.name — otherwise a
+  // mismatched stored name would take a different lock and write a different
+  // manifest (F-0e98b29b). Stored spelling is kept so rejectWin32NameAlias
+  // does not fire on a case-folded lookup.
+  await saveManifestUnlocked(dirty, name);
 }
