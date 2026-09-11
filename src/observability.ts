@@ -12,6 +12,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Envelope, Residency } from "./envelope.js";
+import type { DegradeReason } from "./routing.js";
 import type { Tier } from "./tiers.js";
 import { getRunContext } from "./runContext.js";
 
@@ -102,8 +103,8 @@ export type LogEvent = CorrelationFields &
         ts: string;
         from: "cloud";
         to: "local";
-        /** cloud_timeout | cloud_5xx | cloud_rate_limited | cloud_unreachable | cloud_auth_failed | circuit_open */
-        reason: string;
+        /** cloud_timeout | cloud_5xx | cloud_rate_limited | cloud_unreachable | cloud_auth_failed | cloud_model_missing | circuit_open */
+        reason: DegradeReason;
         tier?: Tier;
         model?: string;
       }

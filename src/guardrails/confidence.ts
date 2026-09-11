@@ -88,7 +88,12 @@ export function applyConfidenceThreshold(
   opts: { threshold?: number; allow_none?: boolean } = {},
 ): ClassifyGuarded {
   const threshold = opts.threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
-  const belowThreshold = raw.confidence < threshold;
+  // Fail-closed: NaN, ±Infinity, and out-of-range values (e.g. 70 meaning 70%)
+  // must not keep the weak label. Only a finite confidence in [0, 1] is compared
+  // against the threshold; anything else is treated as below_threshold.
+  const confidence = raw.confidence;
+  const inRange = Number.isFinite(confidence) && confidence >= 0 && confidence <= 1;
+  const belowThreshold = !inRange || confidence < threshold;
   // Default fail-closed: callers that want the weak-label propagation
   // must opt in via `allow_none: false`. Previous default was fail-open
   // (returned the weak label silently), inconsistent with every other

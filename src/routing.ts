@@ -280,7 +280,7 @@ export class CircuitBreaker {
 
 // ── Error classification ─────────────────────────────────────────────────────
 
-type CloudErrorClass = "auth" | "deterministic" | "transient";
+type CloudErrorClass = "auth" | "deterministic" | "transient" | "preflight" | "non_countable";
 
 function classifyCloudError(err: unknown): CloudErrorClass {
   if (err instanceof InternError) {
@@ -288,9 +288,15 @@ function classifyCloudError(err: unknown): CloudErrorClass {
     // 404 model-missing (incl. a retired/typo'd cloud model id) must surface,
     // not silently degrade to a different local model.
     if (err.code === "OLLAMA_MODEL_MISSING") return "deterministic";
-    // OLLAMA_TIMEOUT, OLLAMA_UNREACHABLE (5xx-exhausted / network / other 4xx)
-    // → transient. OLLAMA_UNREACHABLE conflates "network down" (the common,
-    // fall-back-worthy case) with a rare 400; we bias to falling back to local.
+    // Pre-flight: never contacted cloud (payload cap, bad config). Must not
+    // trip the outage breaker — releaseProbe and rethrow, no recordFailure.
+    if (err.code === "SCHEMA_INVALID" || err.code === "CONFIG_INVALID") return "preflight";
+    // Definitive request rejection (e.g. 4xx) is not an outage. Do not count
+    // toward consecutiveFailures; only timeouts, 5xx/429, and network errors
+    // increment the breaker.
+    if (!err.retryable) return "non_countable";
+    // OLLAMA_TIMEOUT, retryable OLLAMA_UNREACHABLE (5xx-exhausted / network)
+    // → transient.
     return "transient";
   }
   // AbortError (our own cloud-attempt timeout) and raw network errors.
@@ -546,6 +552,16 @@ export class RoutingOllamaClient implements OllamaClient {
       if (cls === "auth") {
         this.breaker.recordAuthFailure();
         return this.serveLocal(req, signal, tier, "cloud_auth_failed", call);
+      }
+      if (cls === "preflight") {
+        // SCHEMA_INVALID / CONFIG_INVALID never reached cloud. Don't arm the
+        // breaker and don't degrade — local would fail the same pre-flight.
+        this.breaker.releaseProbe();
+        throw err;
+      }
+      if (cls === "non_countable") {
+        this.breaker.releaseProbe();
+        return this.serveLocal(req, signal, tier, reasonFromError(err), call);
       }
       this.breaker.recordFailure();
       return this.serveLocal(req, signal, tier, reasonFromError(err), call);

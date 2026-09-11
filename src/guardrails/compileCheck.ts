@@ -11,7 +11,7 @@
 
 import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, devNull } from "node:os";
 import { join } from "node:path";
 
 export type SupportedLanguage = "typescript" | "javascript" | "python" | "rust" | "go";
@@ -48,7 +48,7 @@ export async function compileCheck(
     case "python":
       return runChecker(code, ".py", "python", ["-m", "py_compile"]);
     case "rust":
-      return runChecker(code, ".rs", "rustc", ["--edition", "2021", "--emit=metadata", "-o", "/dev/null"]);
+      return runChecker(code, ".rs", "rustc", ["--edition", "2021", "--emit=metadata", "-o", devNull]);
     case "go":
       return runChecker(code, ".go", "gofmt", ["-e"]);
     default:

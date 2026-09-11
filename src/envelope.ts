@@ -8,6 +8,7 @@
  */
 
 import type { Tier } from "./tiers.js";
+import type { DegradeReason } from "./routing.js";
 import { getRunContext } from "./runContext.js";
 
 export interface Residency {
@@ -45,10 +46,11 @@ export interface Envelope<T> {
   degraded?: boolean;
   /**
    * Why the call degraded to local: cloud_timeout | cloud_5xx |
-   * cloud_rate_limited | cloud_unreachable | cloud_auth_failed | circuit_open.
+   * cloud_rate_limited | cloud_unreachable | cloud_auth_failed |
+   * cloud_model_missing | circuit_open.
    * Present only when `degraded` is true.
    */
-  degrade_reason?: string;
+  degrade_reason?: DegradeReason;
   /**
    * The model the CALLER asked for via input.model override. Present only
    * when override was supplied. Calibration-aware callers compare
@@ -108,7 +110,7 @@ export interface EnvelopeBuilderInput<T> {
   /** True when cloud was wanted but local served. Omit in local-only path. */
   degraded?: boolean;
   /** Reason for the cloud→local degrade. Omit unless `degraded` is true. */
-  degradeReason?: string;
+  degradeReason?: DegradeReason;
   /**
    * The model the caller asked for via the per-call `model` override.
    * Propagates to `model_requested` on the output envelope. Omit when
