@@ -239,7 +239,7 @@ export function scoreLexical(
   index: LexicalIndex,
   opts: ScoreLexicalOptions = {},
 ): LexicalScore[] {
-  const queryTerms = opts.queryTokens ?? tokenize(query);
+  const queryTerms = [...new Set(opts.queryTokens ?? tokenize(query))];
   if (queryTerms.length === 0 || index.chunkCount === 0) return [];
 
   const weights: Record<FieldName, number> = {
