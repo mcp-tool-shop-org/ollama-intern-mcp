@@ -10,7 +10,8 @@
  *
  * What it does:
  *   1. Reads the source of truth — package.json (version), src/index.ts (tool
- *      count from the registry), and `npm test --silent` (test pass count).
+ *      count from the registry), and a test pass count (--test-count /
+ *      SYNC_DOCS_TEST_COUNT, or `npm test --silent` in write mode only).
  *   2. Rewrites tagged HTML-comment spans in markdown:
  *           <!-- VERSION:start -->2.4.0<!-- VERSION:end -->
  *           <!-- TOOL_COUNT:start -->41<!-- TOOL_COUNT:end -->
@@ -22,9 +23,13 @@
  *   3. Is idempotent — second run is a no-op when nothing drifted.
  *   4. Prints a clean diff summary at the end.
  *
- * Run:    node scripts/sync-doc-versions.mjs        # writes changes
- *         node scripts/sync-doc-versions.mjs --check # exits 1 if drift; no write
- *         npm run sync-docs
+ * Run:    node scripts/sync-doc-versions.mjs        # writes changes (runs the suite once)
+ *         node scripts/sync-doc-versions.mjs --check --test-count=N
+ *         SYNC_DOCS_TEST_COUNT=N npm run sync-docs:check
+ *
+ * --check never spawns `npm test`. CI must pass the count from the verify
+ * cell that already ran the suite (fail-closed: no partial count on
+ * failure). Write mode (no --check) still runs the suite once to measure.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -62,35 +67,66 @@ function readToolCount() {
   return matches.length;
 }
 
+function parseCountValue(raw, label) {
+  if (raw == null || !/^\d+$/.test(String(raw).trim())) {
+    throw new Error(
+      `${label} requires a non-negative integer, got ${JSON.stringify(raw)}`
+    );
+  }
+  return Number(String(raw).trim());
+}
+
+function providedTestCount() {
+  const env = process.env.SYNC_DOCS_TEST_COUNT;
+  if (env != null && String(env).trim() !== "") {
+    return parseCountValue(env, "SYNC_DOCS_TEST_COUNT");
+  }
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--test-count") {
+      return parseCountValue(argv[i + 1], "--test-count");
+    }
+    if (a.startsWith("--test-count=")) {
+      return parseCountValue(a.slice("--test-count=".length), "--test-count");
+    }
+  }
+  return null;
+}
+
 function readTestCount() {
-  // Try CHANGELOG first (cheap), fall back to running the suite (slow but
-  // truthful). CHANGELOG won't always have a test number embedded, so this
-  // is best-effort. The actual count is what `npm test` says.
+  const provided = providedTestCount();
+  if (provided != null) return provided;
+  if (CHECK_ONLY) {
+    throw new Error(
+      "--check will not spawn `npm test` (that would duplicate ci.yml verify). " +
+        "Pass --test-count=N or SYNC_DOCS_TEST_COUNT from the verify cell's fail-closed pass count. " +
+        "For a local rewrite that measures the suite, run `npm run sync-docs` (write mode)."
+    );
+  }
+  return readTestCountFromSuite();
+}
+
+function readTestCountFromSuite() {
+  let out;
   try {
-    const out = execSync("npm test --silent", {
+    out = execSync("npm test --silent", {
       cwd: REPO,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       // vitest can take 30-60s; cap at 5 min.
       timeout: 5 * 60 * 1000,
     });
-    return parseVitestPassCount(out);
   } catch (e) {
-    // vitest exits non-zero on any failure but still writes the summary line
-    // to its captured stdout — use the failed-process stdout if present.
-    const out = (e.stdout ?? "").toString() + (e.stderr ?? "").toString();
-    if (out.length === 0) {
-      throw new Error(
-        `npm test produced no output. Original error: ${e.message}`
-      );
-    }
-    const n = parseVitestPassCount(out);
-    if (n == null) throw e;
-    console.warn(
-      `[warn] tests are failing; using parsed pass-count ${n} from partial run`
+    throw new Error(
+      `npm test failed; refusing to use a partial pass count (fail-closed). ${e.message}`
     );
-    return n;
   }
+  const n = parseVitestPassCount(out);
+  if (n == null) {
+    throw new Error("Could not parse passing-test count from vitest output.");
+  }
+  return n;
 }
 
 function parseVitestPassCount(text) {
