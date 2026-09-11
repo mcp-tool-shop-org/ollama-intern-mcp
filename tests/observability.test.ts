@@ -32,6 +32,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -406,5 +407,25 @@ describe("SIGTERM shutdown breadcrumb (F-005 #6 — source-shape pin)", () => {
     // log_tail callers filter on.
     expect(src).toContain("graceful_shutdown");
     expect(src).toContain("signal_received");
+    expect(src).toMatch(/process\.on\(\s*["']unhandledRejection["']/);
+    expect(src).toMatch(/process\.on\(\s*["']uncaughtException["']/);
+    expect(src).toContain("unhandled_rejection");
+    expect(src).toContain("uncaught_exception");
+  });
+});
+
+describe("NdjsonLogger rotation (F-882e1f6d)", () => {
+  it("renames the live file to .1 and writes a log_rotated breadcrumb when over the cap", async () => {
+    const logPath = join(tempDir, "rotate.ndjson");
+    await writeFile(logPath, "x".repeat(200), "utf8");
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logger = new NdjsonLogger(logPath, 100);
+    await logger.log(callEvent("ollama_classify", sampleEnvelope()));
+
+    expect(existsSync(`${logPath}.1`)).toBe(true);
+    const live = await readFile(logPath, "utf8");
+    expect(live).toContain("log_rotated");
+    expect(live).toContain("ollama_classify");
+    expect(stderrSpy.mock.calls.some((c) => String(c[0]).includes("rotated observability log"))).toBe(true);
   });
 });

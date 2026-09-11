@@ -48,6 +48,11 @@ describe("release.yml — GHCR push is gated on the npm verify job (H8-res)", ()
       docker,
       "docker job must `needs: npm` (a broken tree must never reach GHCR :latest)",
     ).toMatch(/^\s*needs:\s*(?:npm\b|\[[^\]]*\bnpm\b[^\]]*\])/m);
+
+    expect(npm, "npm job must set timeout-minutes (hung verify/publish must not hold OIDC forever)").toMatch(
+      /^\s*timeout-minutes:\s*\d+/m,
+    );
+    expect(docker, "docker job must set timeout-minutes").toMatch(/^\s*timeout-minutes:\s*\d+/m);
   });
 });
 

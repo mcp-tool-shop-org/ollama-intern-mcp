@@ -8,7 +8,7 @@
  * the system degraded correctly under pressure, not just that a call was slow.
  */
 
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Envelope, Residency } from "./envelope.js";
@@ -46,6 +46,13 @@ export type CorrelationOp =
 
 const DEFAULT_LOG_DIR = join(homedir(), ".ollama-intern");
 const DEFAULT_LOG_PATH = process.env.INTERN_LOG_PATH || join(DEFAULT_LOG_DIR, "log.ndjson");
+
+/**
+ * Writer rotate ceiling. Matches tools/logRead.ts LOG_STATS_MAX_BYTES so
+ * log_stats stays usable: once the live file would exceed this, we keep
+ * one previous generation at `<path>.1` and start a fresh file.
+ */
+export const LOG_ROTATE_BYTES = 64 * 1024 * 1024;
 
 /**
  * Phase 7 / FT-001 — correlation fields that may appear on ANY LogEvent
@@ -205,7 +212,10 @@ export class NdjsonLogger implements Logger {
    */
   private warnedOnFailure = false;
 
-  constructor(private path: string = DEFAULT_LOG_PATH) {}
+  constructor(
+    private path: string = DEFAULT_LOG_PATH,
+    private rotateBytes: number = LOG_ROTATE_BYTES,
+  ) {}
 
   private ready(): Promise<void> {
     if (!this.readyPromise) {
@@ -219,6 +229,27 @@ export class NdjsonLogger implements Logger {
     return this.readyPromise;
   }
 
+  /**
+   * If the live log is over LOG_ROTATE_BYTES, keep one generation at
+   * `<path>.1` and let the next appendFile create a fresh file.
+   * Returns true when a rotation happened. Failures return false so
+   * the caller can still append (tool calls never break on rotate).
+   */
+  private async rotateIfNeeded(): Promise<boolean> {
+    let size: number;
+    try {
+      size = (await stat(this.path)).size;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw err;
+    }
+    if (size <= this.rotateBytes) return false;
+    const rotated = `${this.path}.1`;
+    await rm(rotated, { force: true });
+    await rename(this.path, rotated);
+    return true;
+  }
+
   async log(event: LogEvent): Promise<void> {
     // Auto-stamp run_id from the active ALS context before serializing.
     // Tools using runTool inherit this transparently — they emit the
@@ -226,6 +257,34 @@ export class NdjsonLogger implements Logger {
     const enriched = withCorrelation(event);
     try {
       await this.ready();
+      let rotated = false;
+      try {
+        rotated = await this.rotateIfNeeded();
+      } catch {
+        // Rotation is best-effort. A full disk or a locked .1 file must
+        // not drop the current event or break the tool call.
+        rotated = false;
+      }
+      if (rotated) {
+        const notice: LogEvent = {
+          kind: "guardrail",
+          ts: timestamp(),
+          tool: "observability",
+          rule: "log_rotated",
+          action: "rotate",
+          detail: {
+            path: this.path,
+            previous: `${this.path}.1`,
+            cap_bytes: this.rotateBytes,
+            hint: "Previous generation kept as <path>.1. log_stats reads the new live file. Truncate .1 if you need the disk back.",
+          },
+        };
+        await appendFile(this.path, JSON.stringify(notice) + "\n", "utf8");
+        // eslint-disable-next-line no-console
+        console.error(
+          `ollama-intern: rotated observability log ${this.path} (exceeded ${this.rotateBytes} bytes). Previous generation: ${this.path}.1. log_stats can read the new file; truncate the .1 if disk is tight.`,
+        );
+      }
       await appendFile(this.path, JSON.stringify(enriched) + "\n", "utf8");
     } catch (err) {
       // observability failures must never break tool calls, but the

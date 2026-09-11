@@ -338,19 +338,34 @@ export async function listCorpora(): Promise<CorpusSummary[]> {
     if (!NAME_RX.test(name)) continue;
     try {
       const full = join(dir, entry);
-      const [corpus, st, manifest] = await Promise.all([
-        loadCorpus(name),
-        stat(full),
-        loadManifest(name).catch(() => null),
-      ]);
+      const [corpus, st] = await Promise.all([loadCorpus(name), stat(full)]);
       if (!corpus) continue;
+      let manifest: Awaited<ReturnType<typeof loadManifest>> = null;
+      let manifestInvalid = false;
+      try {
+        manifest = await loadManifest(name);
+      } catch (err) {
+        // SCHEMA_INVALID is a rejected sibling, not a missing legacy
+        // marker. Swallowing it as null made corpus_list look unmarked.
+        if (err instanceof InternError && err.code === "SCHEMA_INVALID") {
+          manifestInvalid = true;
+          // eslint-disable-next-line no-console
+          console.error(
+            `[corpus:list] invalid manifest name=${name} reason=${err.code}: ${err.message}. Re-index with ollama_corpus_index({ name: "${name}", paths: [...] }) to rewrite the sibling. Listed write_complete:false so this is not confused with a legacy unmarked manifest.`,
+          );
+        } else {
+          throw err;
+        }
+      }
       const failedCount = manifest?.failed_paths?.length ?? 0;
       // `completed_at` is only present on manifests written after the
       // Stage B+C atomic-marker landed. Undefined on legacy manifests —
       // emit `write_complete: undefined` there so callers can distinguish
-      // "unknown" from "known-incomplete".
-      const writeComplete =
-        manifest == null
+      // "unknown" from "known-incomplete". A SCHEMA_INVALID sibling is
+      // known-incomplete (false), not unknown.
+      const writeComplete = manifestInvalid
+        ? false
+        : manifest == null
           ? undefined
           : typeof manifest.completed_at === "string" && manifest.completed_at.length > 0;
       summaries.push({
