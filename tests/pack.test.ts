@@ -36,8 +36,13 @@ import { describe, it, expect, beforeAll } from "vitest";
  * +prompt +aggregation), the standby/per-call-directive routing additions,
  * and their registration/description strings. Measured 589_690 on a clean
  * build (`npm pack --dry-run`, 2026-07-06).
+ *
+ * v2.9.1 Stage C (health-amend-b): bumped 590_000 → 650_000 for log rotate,
+ * unhandledRejection breadcrumb, doctor log_bytes, and listCorpora invalid-
+ * manifest handling. Measured 649_444 on a clean build (`npm pack --dry-run
+ * --ignore-scripts`, 2026-09-11).
  */
-export const BASELINE_PACKED_BYTES = 590_000;
+export const BASELINE_PACKED_BYTES = 650_000;
 export const BASELINE_TOLERANCE = 0.10;
 
 type PackEntry = { path: string; size: number; mode: number };
