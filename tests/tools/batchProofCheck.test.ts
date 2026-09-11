@@ -243,6 +243,57 @@ describe("assertSafeFilePath — shell-injection guard", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// F-5370f1bc: leading-dash files[] must not be forwarded as flags.
+// Hyphens inside a path (foo-bar.ts) stay legal; an operand that
+// *starts* with '-' ('--config=evil.eslintrc.js', '-c') is either
+// rejected or placed after a '--' terminator. Mutate specFor to drop
+// the terminator (and skip the reject) and these cases go RED.
+// ═══════════════════════════════════════════════════════════════
+
+describe("ollama_batch_proof_check — leading-dash files[] / argv -- terminator", () => {
+  const DASH_OPERANDS = ["--config=evil.eslintrc.js", "-c", "-foo.ts"] as const;
+  const FILE_CHECKS = ["eslint", "pytest", "ruff"] as const;
+
+  async function spawnOrThrow(
+    check: (typeof FILE_CHECKS)[number],
+    file: string,
+  ): Promise<{ threw: InternError | null; args: string[] | undefined }> {
+    let spawnedArgs: string[] | undefined;
+    __setSpawner(async (_cmd, args) => {
+      spawnedArgs = args;
+      return fakeOk();
+    });
+    try {
+      await handleBatchProofCheck({ checks: [check], files: [file] }, makeCtx());
+      return { threw: null, args: spawnedArgs };
+    } catch (e) {
+      if (e instanceof InternError) return { threw: e, args: spawnedArgs };
+      throw e;
+    }
+  }
+
+  function assertDashOperandSafe(file: string, args: string[] | undefined, threw: InternError | null): void {
+    if (threw) {
+      expect(threw.code).toBe("SCHEMA_INVALID");
+      expect(args).toBeUndefined();
+      return;
+    }
+    expect(args, `spawn argv for ${file}`).toBeDefined();
+    const dd = args!.lastIndexOf("--");
+    expect(dd, `argv must '--'-terminate before ${file}: ${JSON.stringify(args)}`).toBeGreaterThanOrEqual(0);
+    expect(args!.slice(dd + 1)).toContain(file);
+    expect(args!.indexOf(file)).toBeGreaterThan(dd);
+  }
+
+  it.each(DASH_OPERANDS)("rejects or '--'-terminates %j before eslint/pytest/ruff see it as a flag", async (file) => {
+    for (const check of FILE_CHECKS) {
+      const { threw, args } = await spawnOrThrow(check, file);
+      assertDashOperandSafe(file, args, threw);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // H7: SECURITY.md #8 claims batch_proof_check validates cwd against
 // allowed_roots. The check did not exist — a caller could pass an
 // attacker-controlled cwd and eslint/pytest would execute config from

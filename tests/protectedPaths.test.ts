@@ -5,6 +5,7 @@ import {
   PROTECTED_PATHS,
   PROTECTED_PATHS_VERSION,
 } from "../src/protectedPaths.js";
+import { checkWriteConfirm } from "../src/guardrails/writeConfirm.js";
 
 describe("normalizePath", () => {
   it("replaces backslashes with forward slashes", () => {
@@ -132,5 +133,65 @@ describe("normalizePath / matchesProtectedPath — Windows case-insensitive guar
     expect(matchesProtectedPath(".CLAUDE/rules.md").protected).toBe(true);
     expect(matchesProtectedPath("docs/CANON/x.md").protected).toBe(true);
     expect(matchesProtectedPath("subdir/.Claude/x.md").protected).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// F-a488b136: Win32 trailing-dot / trailing-space aliases.
+//
+// CreateFile strips trailing dots and spaces from each path component
+// unless a \\?\ prefix is used. Without the same strip in normalizePath,
+// 'SECURITY.md.', 'SECURITY.md ', 'memory./x.md', and '.git./config'
+// miss matchesProtectedPath while the OS still writes the protected file.
+// Mutate normalizePath to drop the strip and these cases go RED.
+// ═══════════════════════════════════════════════════════════════
+
+describe("normalizePath / matchesProtectedPath / checkWriteConfirm — Win32 trailing-dot/space aliases", () => {
+  let originalPlatform: NodeJS.Platform;
+
+  beforeEach(() => {
+    originalPlatform = process.platform;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    vi.unstubAllGlobals();
+  });
+
+  function stubPlatform(p: NodeJS.Platform): void {
+    Object.defineProperty(process, "platform", { value: p, configurable: true });
+  }
+
+  function expectProtectedAndBlocked(path: string): void {
+    expect(matchesProtectedPath(path).protected, `matchesProtectedPath(${JSON.stringify(path)})`).toBe(true);
+    expect(
+      checkWriteConfirm({ target_path: path, confirm_write: false }).blocked,
+      `checkWriteConfirm(${JSON.stringify(path)})`,
+    ).toBe(true);
+  }
+
+  it("[win32] named aliases SECURITY.md. / SECURITY.md  / memory./x.md / .git./config are protected+blocked", () => {
+    stubPlatform("win32");
+    expectProtectedAndBlocked("SECURITY.md.");
+    expectProtectedAndBlocked("SECURITY.md ");
+    expectProtectedAndBlocked("memory./x.md");
+    expectProtectedAndBlocked(".git./config");
+  });
+
+  it("[win32] trailing-dot and trailing-space aliases of every exact-file and directory rule", () => {
+    stubPlatform("win32");
+    expect(PROTECTED_PATHS.length).toBeGreaterThan(0);
+    for (const rule of PROTECTED_PATHS) {
+      if (rule.pattern.endsWith("/")) {
+        const dir = rule.pattern.slice(0, -1);
+        for (const alias of [`${dir}./x.md`, `${dir} /x.md`, `sub/${dir}./x.md`]) {
+          expectProtectedAndBlocked(alias);
+        }
+      } else {
+        for (const alias of [`${rule.pattern}.`, `${rule.pattern} `, `sub/${rule.pattern}.`, `sub/${rule.pattern} `]) {
+          expectProtectedAndBlocked(alias);
+        }
+      }
+    }
   });
 });
