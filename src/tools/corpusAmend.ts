@@ -29,6 +29,7 @@ import { embedWithTimeout } from "../guardrails/embedTimeout.js";
 import { loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "../corpus/storage.js";
 import { loadManifest, saveManifest, clearCompletedMarker, assertSafePath } from "../corpus/manifest.js";
 import { withCorpusLock } from "../corpus/lock.js";
+import { canonicalFsPath } from "../corpus/identity.js";
 import { mintChunkId } from "../corpus/indexer.js";
 import { chunkDocument, type ChunkOptions } from "../corpus/chunker.js";
 import { InternError } from "../errors.js";
@@ -37,6 +38,16 @@ import type { RunContext } from "../runContext.js";
 // 5 MB cap matches sha256File's read ceiling in spirit — a multi-MB amend
 // via MCP is already an abuse of the shape. Keeps JSON payloads bounded.
 const MAX_AMEND_BYTES = 5_000_000;
+
+/**
+ * Same casefold as the corpus lock/reuse key (NFC + path.normalize, then
+ * locale-independent toLowerCase on win32/darwin). Amend compares and stores
+ * against this key so mixed-casing paths on NTFS/APFS do not duplicate chunks.
+ */
+function foldAmendPath(p: string): string {
+  const n = canonicalFsPath(p);
+  return process.platform === "darwin" ? n.toLowerCase() : n;
+}
 
 export const corpusAmendSchema = z
   .object({
@@ -166,11 +177,28 @@ export async function handleCorpusAmend(
     }
 
     // Remove any existing chunks for this file_path. Re-amending the same
-    // file should replace, not accumulate.
+    // file should replace, not accumulate. Compare on the folded identity
+    // so win32/darwin mixed casing (C:\Proj\notes.md vs c:\proj\notes.md)
+    // does not leave a second set of chunks.
+    const foldedAbs = foldAmendPath(absPath);
+    let canonicalPath = absPath;
+    for (const p of manifest.paths) {
+      if (foldAmendPath(p) === foldedAbs) {
+        canonicalPath = p;
+        break;
+      }
+    }
+    for (const c of corpus.chunks) {
+      if (foldAmendPath(c.path) === foldedAbs) {
+        canonicalPath = c.path;
+        break;
+      }
+    }
+
     const keptChunks: CorpusChunk[] = [];
     let removed = 0;
     for (const c of corpus.chunks) {
-      if (c.path === absPath) {
+      if (foldAmendPath(c.path) === foldedAbs) {
         removed += 1;
       } else {
         keptChunks.push(c);
@@ -216,8 +244,8 @@ export async function handleCorpusAmend(
       for (let i = 0; i < fresh.length; i++) {
         const ck = fresh[i];
         newChunks.push({
-          id: mintChunkId(corpus.name, absPath, fileHash, ck.index),
-          path: absPath,
+          id: mintChunkId(corpus.name, canonicalPath, fileHash, ck.index),
+          path: canonicalPath,
           file_hash: fileHash,
           file_mtime: fileMtime,
           chunk_index: ck.index,
@@ -234,8 +262,11 @@ export async function handleCorpusAmend(
     const mergedChunks = [...keptChunks, ...newChunks];
     // Recompute stats + titles to reflect the amended set.
     const livingTitles: Record<string, string | null> = { ...corpus.titles };
-    if (newChunks.length > 0) livingTitles[absPath] = title;
-    else delete livingTitles[absPath];
+    if (newChunks.length > 0) livingTitles[canonicalPath] = title;
+    else delete livingTitles[canonicalPath];
+    for (const p of Object.keys(livingTitles)) {
+      if (foldAmendPath(p) === foldedAbs && p !== canonicalPath) delete livingTitles[p];
+    }
     // Drop titles for paths that vanished entirely.
     const remainingPaths = new Set(mergedChunks.map((c) => c.path));
     for (const p of Object.keys(livingTitles)) {
@@ -268,8 +299,19 @@ export async function handleCorpusAmend(
     //     clean index/refresh rebuilds the corpus from disk.
     //   - embed_model_resolved updated to whatever Ollama just reported
     //     (if anything embedded); otherwise preserved.
-    const pathSet = new Set(manifest.paths);
-    pathSet.add(absPath);
+    const pathSet = new Set<string>();
+    let foldedDeclared = false;
+    for (const p of manifest.paths) {
+      if (foldAmendPath(p) === foldedAbs) {
+        if (!foldedDeclared) {
+          pathSet.add(canonicalPath);
+          foldedDeclared = true;
+        }
+      } else {
+        pathSet.add(p);
+      }
+    }
+    if (!foldedDeclared) pathSet.add(canonicalPath);
     // If the file was fully deleted from the corpus (zero chunks added,
     // and it existed before), don't remove it from manifest.paths — the
     // manifest tracks DECLARED intent; the empty amend is effectively
@@ -283,7 +325,7 @@ export async function handleCorpusAmend(
       has_amended_content: true,
       amended_paths: [
         ...priorAmended,
-        { path: absPath, amended_at: amendedAt, chunks_before: removed, chunks_after: newChunks.length },
+        { path: canonicalPath, amended_at: amendedAt, chunks_before: removed, chunks_after: newChunks.length },
       ],
       embed_model_resolved: embedModelResolved ?? manifest.embed_model_resolved ?? null,
       updated_at: amendedAt,
@@ -296,7 +338,7 @@ export async function handleCorpusAmend(
 
     return {
       corpus: corpus.name,
-      file_path: absPath,
+      file_path: canonicalPath,
       chunks_removed: removed,
       chunks_added: newChunks.length,
       embed_model_resolved: embedModelResolved,

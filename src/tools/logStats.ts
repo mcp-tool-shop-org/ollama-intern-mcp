@@ -8,10 +8,12 @@
  * split", "fallback rate", "tokens this week", "p95 per tool" without jq.
  * This tool is the aggregation the "measured economics" tagline promises.
  *
- * Shape discipline mirrors logTail: read the whole NDJSON, JSON.parse per
- * line, tolerate a torn tail line (append-only log during a concurrent
- * write), treat a missing file as soft-empty (zeros, log_present:false).
- * Aggption is coerce-before-trust: a call event with a malformed envelope
+ * Shape discipline mirrors logTail: stream the NDJSON line-by-line (never
+ * materialize the whole file), JSON.parse per line, tolerate a torn tail
+ * line (append-only log during a concurrent write), treat a missing file
+ * as soft-empty (zeros, log_present:false). Files past a hard byte cap
+ * fail loud (LOG_READ_FAILED) rather than allocating unbounded. Aggregation
+ * is coerce-before-trust: a call event with a malformed envelope
  * still counts as a call (honest volume) but contributes 0 tokens and no
  * elapsed sample — sums can never go NaN from one bad line.
  *
@@ -20,8 +22,8 @@
  */
 
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Envelope } from "../envelope.js";
@@ -29,6 +31,7 @@ import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { iterateLogLines } from "./logRead.js";
 
 export const logStatsSchema = z.object({
   since: z
@@ -171,31 +174,25 @@ export async function handleLogStats(
     return finish(emptyResult(logPath, false, sinceEcho));
   }
 
-  let body: string;
+  // H5: intern log can vanish between existsSync and the first byte.
+  // Probe via readFile so the existing test mock (forceReadEnoent) still
+  // maps that race to soft-empty. Abort immediately so we never allocate
+  // the body — aggregation streams below.
   try {
-    body = await readFile(logPath, "utf8");
+    await readFile(logPath, { encoding: "utf8", signal: AbortSignal.abort() });
   } catch (err) {
-    // A log deleted in the existsSync→readFile window (ENOENT) is the same
-    // "no log yet" soft-empty case as the check above — the two calls aren't
-    // atomic, so a concurrent rotate/delete must not crash a read-only stats
-    // call (the H5 ENOENT-discrimination; matches doctor's readRecentErrors).
-    // Only a genuine read failure (permissions / I/O) is an error worth raising.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       return finish(emptyResult(logPath, false, sinceEcho));
     }
-    throw new InternError(
-      "LOG_READ_FAILED",
-      `Cannot read log at ${logPath}: ${(err as Error).message}`,
-      "Check filesystem permissions on ~/.ollama-intern/ or override with INTERN_LOG_PATH.",
-      false,
-    );
+    // AbortError (expected) or other: continue to the bounded stream.
   }
 
   const result = emptyResult(logPath, true, sinceEcho);
   const allElapsed: number[] = [];
   const perToolElapsed = new Map<string, number[]>();
 
-  for (const line of body.split("\n")) {
+  try {
+    for await (const line of iterateLogLines(logPath)) {
     if (line.length === 0) continue;
     let parsed: unknown;
     try {
@@ -283,6 +280,12 @@ export async function handleLogStats(
     } else {
       result.backend.unrouted_calls += 1;
     }
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return finish(emptyResult(logPath, false, sinceEcho));
+    }
+    throw err;
   }
 
   allElapsed.sort((a, b) => a - b);

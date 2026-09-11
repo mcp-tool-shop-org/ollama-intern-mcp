@@ -39,6 +39,7 @@ import { TEMPERATURE_BY_SHAPE } from "../tiers.js";
 import { runTool } from "./runner.js";
 import { loadSources, formatSourcesBlock, type LoadedSource } from "../sources.js";
 import { parseModelJsonObject, readObjectArray, readString } from "./briefs/common.js";
+import { allowlistPathsMatch } from "./_helpers.js";
 import type { RunContext } from "../runContext.js";
 
 // ── Closed enums — match the dispatch spec exactly ─────────
@@ -198,15 +199,8 @@ function coerceFinding(entry: Record<string, unknown>): CodeReviewFinding | null
   return out;
 }
 
-function posixPath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/^\.\//, "");
-}
-
 function pathsMatch(cited: string, allowed: string): boolean {
-  const a = posixPath(cited);
-  const b = posixPath(allowed);
-  if (a === b) return true;
-  return a.endsWith("/" + b) || b.endsWith("/" + a);
+  return allowlistPathsMatch(cited, allowed);
 }
 
 /** Collect `diff --git a/... b/...` (and +++ / ---) paths plus optional source_paths. */
