@@ -76,9 +76,10 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Check CHANGELOG entry exists for current version
         shell: bash
+        env:
+          VERSION: ${{ steps.pkg.outputs.version }}
         run: |
-          VERSION="${{ steps.pkg.outputs.version }}"
-          if ! grep -E "^## \[?${VERSION}\]?" CHANGELOG.md > /dev/null; then
+          if ! grep -F -- "## [$VERSION]" CHANGELOG.md > /dev/null; then
             echo "::error file=CHANGELOG.md::No CHANGELOG entry found for version ${VERSION}. Expected a heading like '## [${VERSION}] — YYYY-MM-DD'."
             echo ""
             echo "Most recent CHANGELOG headings:"
