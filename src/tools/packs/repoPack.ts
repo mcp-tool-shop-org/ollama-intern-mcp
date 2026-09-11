@@ -29,8 +29,9 @@
 
 import { z } from "zod";
 import { resolveUniqueArtifactPaths, writeArtifactPair } from "./artifactWrite.js";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { homedir } from "node:os";
+import { stat } from "node:fs/promises";
 
 import type { Envelope } from "../../envelope.js";
 import { buildEnvelope } from "../../envelope.js";
@@ -137,6 +138,8 @@ export interface OnboardingFacts {
   config_files?: string[];
   exposed_surfaces?: string[];
   runtime_hints?: string[];
+  /** Paths the model named that were stripped (not in source_paths, not on disk). */
+  unverified_paths?: string[];
 }
 
 /**
@@ -201,6 +204,89 @@ export function coerceOnboardingFacts(data: unknown): OnboardingFacts {
     exposed_surfaces: stringArray(obj.exposed_surfaces),
     runtime_hints: stringArray(obj.runtime_hints),
   };
+}
+
+function posixNorm(p: string): string {
+  return normalize(p).replace(/\\/g, "/");
+}
+
+function pathsEquivalent(a: string, b: string): boolean {
+  const na = posixNorm(a);
+  const nb = posixNorm(b);
+  if (na === nb) return true;
+  return na.endsWith("/" + nb) || nb.endsWith("/" + na);
+}
+
+function isUnderRoot(child: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+async function onboardingPathVerified(candidate: string, sourcePaths: string[]): Promise<boolean> {
+  for (const sp of sourcePaths) {
+    if (pathsEquivalent(candidate, sp)) return true;
+  }
+  const roots = [...new Set(sourcePaths.map((sp) => dirname(resolve(sp))))];
+  const probes: string[] = isAbsolute(candidate)
+    ? [resolve(candidate)]
+    : roots.map((r) => resolve(r, candidate));
+  for (const probe of probes) {
+    if (!roots.some((r) => isUnderRoot(probe, r))) continue;
+    try {
+      const st = await stat(probe);
+      if (st.isFile()) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
+/**
+ * Drop entrypoint.file / config_files strings that are not a loaded
+ * source_paths entry and do not exist on disk under those roots.
+ * Invented paths go to unverified_paths + a coverage note.
+ */
+async function scrubOnboardingPaths(
+  facts: OnboardingFacts,
+  sourcePaths: string[],
+): Promise<{ facts: OnboardingFacts; coverageNote: string | null }> {
+  const stripped: string[] = [];
+  const entrypoints: Array<{ file?: string; purpose?: string }> = [];
+  for (const e of facts.entrypoints ?? []) {
+    if (typeof e.file === "string" && e.file.length > 0) {
+      if (await onboardingPathVerified(e.file, sourcePaths)) {
+        entrypoints.push(e);
+      } else {
+        stripped.push(e.file);
+        if (e.purpose) entrypoints.push({ purpose: e.purpose });
+      }
+    } else {
+      entrypoints.push(e);
+    }
+  }
+  const config_files: string[] = [];
+  for (const f of facts.config_files ?? []) {
+    if (await onboardingPathVerified(f, sourcePaths)) {
+      config_files.push(f);
+    } else {
+      stripped.push(f);
+    }
+  }
+  const next: OnboardingFacts = {
+    ...facts,
+    entrypoints,
+    config_files,
+  };
+  if (stripped.length > 0) {
+    next.unverified_paths = stripped;
+    const listed = stripped.map((p) => `\`${p}\``).join(", ");
+    return {
+      facts: next,
+      coverageNote: `Dropped ${stripped.length} invented onboarding path(s) not in source_paths and not present on disk: ${listed}.`,
+    };
+  }
+  return { facts: next, coverageNote: null };
 }
 
 // ── Result shape ────────────────────────────────────────────
@@ -555,7 +641,13 @@ async function handleRepoPackInner(
     if (extractResult.ok) {
       // Sanitize untrusted model output before render — string-instead-of-
       // array, null entries, mixed types would otherwise crash renderFactsBlock.
-      facts = coerceOnboardingFacts(extractResult.data);
+      const coerced = coerceOnboardingFacts(extractResult.data);
+      const scrubbed = await scrubOnboardingPaths(coerced, input.source_paths);
+      facts = scrubbed.facts;
+      if (scrubbed.coverageNote) {
+        extractWarning = scrubbed.coverageNote;
+        brief.coverage_notes = [...brief.coverage_notes, scrubbed.coverageNote];
+      }
     } else {
       extractWarning = "Extract output was unparseable; onboarding facts omitted.";
     }
