@@ -196,30 +196,31 @@ async function runToolInner<T>(input: RunToolInput<T>): Promise<Envelope<T>> {
   // per-call escalation (cloudMayServe). Standby calls without a directive
   // are pure local — their budgets must NOT be inflated by cloud timeouts
   // (a standby key would otherwise triple every local tier ceiling).
-  const cloudForBudget = cloudMayServe(ctx.cloud, input.backend) ? ctx.cloud : undefined;
-  const effectiveTimeouts: Record<Tier, number> =
+  // The cloud addend is decided PER TIER, not once for the whole record.
+  // Under standby with an escalation policy (INTERN_CLOUD_STANDBY_TIERS),
+  // cloud may serve some tiers and not others, so a single all-or-nothing
+  // flag either starves an escalated tier (outer signal aborts mid-cloud,
+  // and the escalation silently stops working) or inflates every local tier
+  // ceiling by a cloud timeout. Cloud-primary and an explicit
+  // `backend: "cloud"` still return true for every tier, so those paths are
+  // byte-identical to the previous nested-ternary form.
+  const cloudAddendFor = (tier: Tier): number =>
+    cloudMayServe(ctx.cloud, input.backend, tier) ? (ctx.cloud?.timeouts[tier] ?? 0) : 0;
+  const baseTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? cloudForBudget
-        ? {
-            instant: cloudForBudget.timeouts.instant + input.tierBudgetMsOverride,
-            workhorse: cloudForBudget.timeouts.workhorse + input.tierBudgetMsOverride,
-            deep: cloudForBudget.timeouts.deep + input.tierBudgetMsOverride,
-            embed: cloudForBudget.timeouts.embed + input.tierBudgetMsOverride,
-          }
-        : {
-            instant: input.tierBudgetMsOverride,
-            workhorse: input.tierBudgetMsOverride,
-            deep: input.tierBudgetMsOverride,
-            embed: input.tierBudgetMsOverride,
-          }
-      : cloudForBudget
-        ? {
-            instant: cloudForBudget.timeouts.instant + ctx.timeouts.instant,
-            workhorse: cloudForBudget.timeouts.workhorse + ctx.timeouts.workhorse,
-            deep: cloudForBudget.timeouts.deep + ctx.timeouts.deep,
-            embed: cloudForBudget.timeouts.embed + ctx.timeouts.embed,
-          }
-        : ctx.timeouts;
+      ? {
+          instant: input.tierBudgetMsOverride,
+          workhorse: input.tierBudgetMsOverride,
+          deep: input.tierBudgetMsOverride,
+          embed: input.tierBudgetMsOverride,
+        }
+      : ctx.timeouts;
+  const effectiveTimeouts: Record<Tier, number> = {
+    instant: baseTimeouts.instant + cloudAddendFor("instant"),
+    workhorse: baseTimeouts.workhorse + cloudAddendFor("workhorse"),
+    deep: baseTimeouts.deep + cloudAddendFor("deep"),
+    embed: baseTimeouts.embed + cloudAddendFor("embed"),
+  };
 
   const { value, actualTier, fallbackFrom } = await runWithTimeoutAndFallback({
     tool: input.tool,

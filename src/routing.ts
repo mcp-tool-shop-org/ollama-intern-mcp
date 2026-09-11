@@ -398,7 +398,17 @@ export class RoutingOllamaClient implements OllamaClient {
     this.logger = opts.logger;
     this.standby = opts.standby ?? false;
     this.cloudHost = opts.cloudHost;
-    this.standbyEscalateTiers = new Set(opts.standbyEscalateTiers ?? []);
+    // `embed` can NEVER be in the escalation policy. loadCloudConfig already
+    // rejects it by name with a pointed hint, but that only guards the env
+    // path — a programmatic construction (a test double, a future caller)
+    // would otherwise escalate embeddings. Ollama Cloud serves no embedding
+    // models, so such a call cannot even succeed: it would ship the chunk
+    // text off the machine and then fail. "Embeddings always stay local" is
+    // the promise the whole corpus subsystem rests on, so it is enforced
+    // here too rather than trusted to the config layer alone.
+    this.standbyEscalateTiers = new Set(
+      (opts.standbyEscalateTiers ?? []).filter((t) => t !== "embed"),
+    );
   }
 
   generate(req: GenerateRequest, signal?: AbortSignal, tier?: Tier): Promise<GenerateResponse> {

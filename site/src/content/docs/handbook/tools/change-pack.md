@@ -23,6 +23,7 @@ description: "Runs the full change REVIEW job: assemble evidence (diff + paths +
 | `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
 | `max_breakpoints` | integer | no | — | Cap on likely_breakpoints (default 6). |
 | `max_validation_checks` | integer | no | — | Cap on validation_checks (default 8). |
+| `backend` | `"cloud"` \\| `"local"` | no | — | Optional per-call backend directive (v2.9). 'cloud' escalates THIS call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with CLOUD_NOT_CONFIGURED when no cloud is configured (never silently runs local while claiming escalation). 'local' pins the call to the local backend (zero egress) even under cloud-primary. Omit for the mode default. Escalated calls disclose egress loudly and carry backend provenance on the envelope. Synthesis quality on this tool scales sharply with model class — on a repo-scale job the local 8B is often the binding constraint, not the evidence. Tools where a local model is genuinely adequate (ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every no-LLM tool) deliberately do NOT offer this field. SCOPE: this directive reaches the brief synthesis step (ollama_change_brief, Deep tier) ONLY — evidence assembly, the triage pass, the targeted extract (Workhorse structured fill) and the artifact write run on the mode default regardless. A pack is a mixed-cost pipeline; escalating all of it would bill a flagship for work a local model does fine. |
 
 ## Full input schema
 
@@ -97,6 +98,14 @@ The JSON Schema below is generated from the same zod schema the server validates
       "type": "integer",
       "minimum": 1,
       "maximum": 15
+    },
+    "backend": {
+      "description": "Optional per-call backend directive (v2.9). 'cloud' escalates THIS call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with CLOUD_NOT_CONFIGURED when no cloud is configured (never silently runs local while claiming escalation). 'local' pins the call to the local backend (zero egress) even under cloud-primary. Omit for the mode default. Escalated calls disclose egress loudly and carry backend provenance on the envelope. Synthesis quality on this tool scales sharply with model class — on a repo-scale job the local 8B is often the binding constraint, not the evidence. Tools where a local model is genuinely adequate (ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every no-LLM tool) deliberately do NOT offer this field. SCOPE: this directive reaches the brief synthesis step (ollama_change_brief, Deep tier) ONLY — evidence assembly, the triage pass, the targeted extract (Workhorse structured fill) and the artifact write run on the mode default regardless. A pack is a mixed-cost pipeline; escalating all of it would bill a flagship for work a local model does fine.",
+      "type": "string",
+      "enum": [
+        "cloud",
+        "local"
+      ]
     }
   }
 }

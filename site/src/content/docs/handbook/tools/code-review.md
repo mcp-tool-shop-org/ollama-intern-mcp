@@ -16,6 +16,7 @@ description: "Given a unified diff (and optional source_paths for context), retu
 | `severity_floor` | `"critical"` \\| `"high"` \\| `"medium"` \\| `"low"` | no | `"low"` | Drop findings below this severity from the result. Default 'low' (returns everything). |
 | `max_findings` | integer | no | `50` | Cap on returned findings after filtering. Default 50, max 200. The cap protects against a chatty model on a small diff burying real signal. |
 | `tier` | `"instant"` \\| `"workhorse"` \\| `"deep"` | no | `"workhorse"` | Which tier to run on. 'workhorse' is the default; 'deep' is recommended for security-critical or high-stakes reviews; 'instant' for fast smoke passes on tiny diffs. |
+| `backend` | `"cloud"` \\| `"local"` | no | — | Optional per-call backend directive (v2.9). 'cloud' escalates THIS call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with CLOUD_NOT_CONFIGURED when no cloud is configured (never silently runs local while claiming escalation). 'local' pins the call to the local backend (zero egress) even under cloud-primary. Omit for the mode default. Escalated calls disclose egress loudly and carry backend provenance on the envelope. Synthesis quality on this tool scales sharply with model class — on a repo-scale job the local 8B is often the binding constraint, not the evidence. Tools where a local model is genuinely adequate (ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every no-LLM tool) deliberately do NOT offer this field. |
 
 ## Full input schema
 
@@ -67,6 +68,14 @@ The JSON Schema below is generated from the same zod schema the server validates
         "instant",
         "workhorse",
         "deep"
+      ]
+    },
+    "backend": {
+      "description": "Optional per-call backend directive (v2.9). 'cloud' escalates THIS call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with CLOUD_NOT_CONFIGURED when no cloud is configured (never silently runs local while claiming escalation). 'local' pins the call to the local backend (zero egress) even under cloud-primary. Omit for the mode default. Escalated calls disclose egress loudly and carry backend provenance on the envelope. Synthesis quality on this tool scales sharply with model class — on a repo-scale job the local 8B is often the binding constraint, not the evidence. Tools where a local model is genuinely adequate (ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every no-LLM tool) deliberately do NOT offer this field.",
+      "type": "string",
+      "enum": [
+        "cloud",
+        "local"
       ]
     }
   },

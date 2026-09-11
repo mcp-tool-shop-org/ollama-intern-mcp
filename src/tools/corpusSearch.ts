@@ -317,7 +317,7 @@ export async function handleCorpusSearch(
     // runToolInner's effectiveTimeouts).
     // F2: explain sub-calls carry no per-call backend directive, so under
     // cloud STANDBY they run local — keep the budget local-sized too.
-    const explainBudgetMs = cloudMayServe(ctx.cloud)
+    const explainBudgetMs = cloudMayServe(ctx.cloud, undefined, "instant")
       ? ctx.cloud!.timeouts.instant + ctx.timeouts.instant
       : ctx.timeouts.instant;
     const explainController = new AbortController();

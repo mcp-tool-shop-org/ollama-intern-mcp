@@ -107,7 +107,7 @@ export async function handleChat(
   // fallback the RoutingOllamaClient runs inside one chat() call (mirrors
   // runToolInner's effectiveTimeouts) — sum cloud+local. Standby-without-
   // directive and local-only: just the local workhorse budget.
-  const budgetMs = cloudMayServe(ctx.cloud, input.backend)
+  const budgetMs = cloudMayServe(ctx.cloud, input.backend, "workhorse")
     ? ctx.cloud!.timeouts.workhorse + ctx.timeouts.workhorse
     : ctx.timeouts.workhorse;
   const { value: resp } = await runWithTimeoutAndFallback<ChatResponse>({

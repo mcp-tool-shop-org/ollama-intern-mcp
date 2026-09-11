@@ -692,7 +692,7 @@ export class HttpOllamaClient implements OllamaClient {
           throw new InternError(
             "OLLAMA_MODEL_MISSING",
             `Model not found (404): ${text}`,
-            "The pinned CLOUD model was not found (404) — Ollama Cloud may have retired the id (cloud model ids rotate server-side). Set INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL to a current id from https://ollama.com/search?c=cloud (cloud models are served remotely, not downloaded to your machine). The server falls back to local meanwhile (degrade_reason: cloud_model_missing).",
+            "The pinned CLOUD model was not found (404) — Ollama Cloud may have retired the id (cloud model ids rotate server-side). Set INTERN_CLOUD_MODEL / INTERN_CLOUD_DEEP_MODEL to a current id from https://ollama.com/search?c=cloud, or run `ollama-intern-mcp doctor --cloud-check` to have the server check the live catalog for you and name the nearest live id (cloud models are served remotely, not downloaded to your machine). The server falls back to local meanwhile (degrade_reason: cloud_model_missing).",
             false,
           );
         }

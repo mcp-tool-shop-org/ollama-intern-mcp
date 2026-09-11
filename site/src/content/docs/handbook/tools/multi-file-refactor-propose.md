@@ -14,6 +14,7 @@ description: "Coordinated multi-file refactor PLAN — NO WRITES."
 | `files` | any | yes | — | Source file paths the refactor touches. Server reads them — Claude does not preload. Min 1, max 20. |
 | `change_description` | string | yes | — | What the refactor should accomplish, in 20-2000 chars. Be specific — vague descriptions produce vague plans (likely weak=true). |
 | `per_file_max_chars` | integer | no | — | Chars to read per file (default 60_000). |
+| `backend` | `"cloud"` \\| `"local"` | no | — | Optional per-call backend directive (v2.9). 'cloud' escalates THIS call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with CLOUD_NOT_CONFIGURED when no cloud is configured (never silently runs local while claiming escalation). 'local' pins the call to the local backend (zero egress) even under cloud-primary. Omit for the mode default. Escalated calls disclose egress loudly and carry backend provenance on the envelope. Synthesis quality on this tool scales sharply with model class — on a repo-scale job the local 8B is often the binding constraint, not the evidence. Tools where a local model is genuinely adequate (ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every no-LLM tool) deliberately do NOT offer this field. |
 
 ## Full input schema
 
@@ -38,6 +39,14 @@ The JSON Schema below is generated from the same zod schema the server validates
       "type": "integer",
       "minimum": 1000,
       "maximum": 200000
+    },
+    "backend": {
+      "description": "Optional per-call backend directive (v2.9). 'cloud' escalates THIS call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with CLOUD_NOT_CONFIGURED when no cloud is configured (never silently runs local while claiming escalation). 'local' pins the call to the local backend (zero egress) even under cloud-primary. Omit for the mode default. Escalated calls disclose egress loudly and carry backend provenance on the envelope. Synthesis quality on this tool scales sharply with model class — on a repo-scale job the local 8B is often the binding constraint, not the evidence. Tools where a local model is genuinely adequate (ollama_summarize_fast, ollama_classify, ollama_triage_logs, and every no-LLM tool) deliberately do NOT offer this field.",
+      "type": "string",
+      "enum": [
+        "cloud",
+        "local"
+      ]
     }
   },
   "required": [

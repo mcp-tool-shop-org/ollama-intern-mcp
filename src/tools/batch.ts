@@ -178,30 +178,27 @@ async function runBatchInner<I extends BatchItem, R>(
   // F2: batch carries no per-call backend directive, so under cloud STANDBY
   // every item is pure local — budgets must not be inflated by cloud
   // timeouts (cloudMayServe without a backend arg is false in standby).
-  const cloudForBudget = cloudMayServe(ctx.cloud) ? ctx.cloud : undefined;
-  const effectiveTimeouts: Record<Tier, number> =
+  // Per-tier cloud addend (mirrors runToolInner). batch carries no per-call
+  // backend directive, but under standby an escalation policy can still make
+  // cloud serve SOME tiers — so deciding once for the whole record would
+  // either starve an escalated tier's budget or inflate every local one.
+  const cloudAddendFor = (tier: Tier): number =>
+    cloudMayServe(ctx.cloud, undefined, tier) ? (ctx.cloud?.timeouts[tier] ?? 0) : 0;
+  const baseTimeouts: Record<Tier, number> =
     input.tierBudgetMsOverride !== undefined
-      ? cloudForBudget
-        ? {
-            instant: cloudForBudget.timeouts.instant + input.tierBudgetMsOverride,
-            workhorse: cloudForBudget.timeouts.workhorse + input.tierBudgetMsOverride,
-            deep: cloudForBudget.timeouts.deep + input.tierBudgetMsOverride,
-            embed: cloudForBudget.timeouts.embed + input.tierBudgetMsOverride,
-          }
-        : {
-            instant: input.tierBudgetMsOverride,
-            workhorse: input.tierBudgetMsOverride,
-            deep: input.tierBudgetMsOverride,
-            embed: input.tierBudgetMsOverride,
-          }
-      : cloudForBudget
-        ? {
-            instant: cloudForBudget.timeouts.instant + ctx.timeouts.instant,
-            workhorse: cloudForBudget.timeouts.workhorse + ctx.timeouts.workhorse,
-            deep: cloudForBudget.timeouts.deep + ctx.timeouts.deep,
-            embed: cloudForBudget.timeouts.embed + ctx.timeouts.embed,
-          }
-        : ctx.timeouts;
+      ? {
+          instant: input.tierBudgetMsOverride,
+          workhorse: input.tierBudgetMsOverride,
+          deep: input.tierBudgetMsOverride,
+          embed: input.tierBudgetMsOverride,
+        }
+      : ctx.timeouts;
+  const effectiveTimeouts: Record<Tier, number> = {
+    instant: baseTimeouts.instant + cloudAddendFor("instant"),
+    workhorse: baseTimeouts.workhorse + cloudAddendFor("workhorse"),
+    deep: baseTimeouts.deep + cloudAddendFor("deep"),
+    embed: baseTimeouts.embed + cloudAddendFor("embed"),
+  };
 
   // Backend routing aggregates across the batch (cloud-primary mode). A batch
   // may serve some items from cloud and some from local fallback; we surface

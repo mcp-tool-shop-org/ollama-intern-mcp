@@ -68,6 +68,7 @@ function makeRouting(opts: {
   standby?: boolean;
   cloudGen?: (req: GenerateRequest, signal?: AbortSignal) => Promise<unknown>;
   breaker?: CircuitBreaker;
+  standbyEscalateTiers?: Tier[];
 }): Harness {
   const cloud = createFakeOllama({
     generateImpl: opts.cloudGen
@@ -89,6 +90,7 @@ function makeRouting(opts: {
     logger,
     standby: opts.standby ?? false,
     cloudHost: "https://ollama.com",
+    standbyEscalateTiers: opts.standbyEscalateTiers ?? [],
   });
   return { routing, cloud, local, logger };
 }
@@ -316,5 +318,53 @@ describe("served-model echo (F2b — evidence channel for the verify-claims serv
     });
     const resp = await routing.generate({ model: "hermes3:8b", prompt: "x" }, undefined, "deep");
     expect(getRoutingInfo(resp)?.model).toBe("deepseek-v4-pro");
+  });
+});
+
+describe("standby escalation POLICY (F-ef444c5d — INTERN_CLOUD_STANDBY_TIERS)", () => {
+  // Standby used to be reachable only through a per-call directive, and only
+  // ollama_chat exposed one — so the README's "escalate one high-stakes
+  // review to a 600B model" was unreachable for every review-shaped tool.
+  // The policy lets an operator declare, once, which TIERS escalate while
+  // everything else stays local. The per-call directive still outranks it in
+  // both directions.
+
+  it("empty policy leaves standby byte-identical to today: a deep call stays local", async () => {
+    const { routing } = makeRouting({ standby: true, standbyEscalateTiers: [] });
+    const resp = await routing.generate({ model: "hermes3:8b", prompt: "x" }, undefined, "deep");
+    expect(getRoutingInfo(resp)?.backend).toBe("local");
+  });
+
+  it("a policy tier escalates without any per-call directive; other tiers stay local", async () => {
+    const { routing } = makeRouting({ standby: true, standbyEscalateTiers: ["deep"] });
+    const deep = await routing.generate({ model: "hermes3:8b", prompt: "x" }, undefined, "deep");
+    expect(getRoutingInfo(deep)?.backend).toBe("cloud");
+    const instant = await routing.generate({ model: "hermes3:8b", prompt: "x" }, undefined, "instant");
+    expect(getRoutingInfo(instant)?.backend).toBe("local");
+  });
+
+  it("an explicit backend:'local' directive opts a policy tier OUT", async () => {
+    const { routing } = makeRouting({ standby: true, standbyEscalateTiers: ["deep"] });
+    const req = setRouteDirective({ model: "hermes3:8b", prompt: "x" }, { backend: "local" });
+    const resp = await routing.generate(req, undefined, "deep");
+    expect(getRoutingInfo(resp)?.backend).toBe("local");
+  });
+
+  it("an explicit backend:'cloud' directive escalates a NON-policy tier", async () => {
+    const { routing } = makeRouting({ standby: true, standbyEscalateTiers: ["deep"] });
+    const resp = await routing.generate(escalated(), undefined, "instant");
+    expect(getRoutingInfo(resp)?.backend).toBe("cloud");
+  });
+
+  it("embed never escalates, even if a policy somehow names it", async () => {
+    // loadCloudConfig rejects `embed` by name, so this is belt-and-braces at
+    // the routing layer: embeddings ALWAYS stay local, which is the one
+    // promise the corpus subsystem is built on.
+    const { routing } = makeRouting({
+      standby: true,
+      standbyEscalateTiers: ["embed" as Tier],
+    });
+    const resp = await routing.generate({ model: "nomic-embed-text", prompt: "x" }, undefined, "embed");
+    expect(getRoutingInfo(resp)?.backend).toBe("local");
   });
 });

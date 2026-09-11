@@ -376,6 +376,46 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
       "ollama_code_map",
     ]);
     const DESTRUCTIVE = new Set(["ollama_artifact_prune"]);
+
+    // Wave-11 cloud-honesty slice: per-call escalation used to reach exactly
+    // ONE of 44 tools (ollama_chat, which its own description calls a last
+    // resort), while README sold "escalate one high-stakes review to a 600B
+    // model". These sets pin the surface that made that claim true. A tool
+    // dropping `backend` silently re-strands the user who cannot host a big
+    // model locally — exactly the person the cloud positioning is for.
+    const BACKEND_ESCALATABLE = new Set([
+      "ollama_chat",
+      "ollama_research",
+      "ollama_summarize_deep",
+      "ollama_code_review",
+      "ollama_code_citation",
+      "ollama_corpus_answer",
+      "ollama_hypothesis_drill",
+      "ollama_multi_file_refactor_propose",
+      "ollama_refactor_plan",
+      "ollama_incident_brief",
+      "ollama_repo_brief",
+      "ollama_change_brief",
+      "ollama_incident_pack",
+      "ollama_repo_pack",
+      "ollama_change_pack",
+    ]);
+    // Deliberately NOT escalatable, each for a stated reason:
+    //  - summarize_fast / classify / triage_logs: an 8B is genuinely adequate;
+    //    the omission IS the model-class signal.
+    //  - embed / embed_search: embeddings ALWAYS stay local.
+    //  - verify_claims: hardcodes cloud internally (cloud-required tool).
+    //  - draft: style:"doc" re-runs the model up to 3x behind the
+    //    banned-phrase guard, so escalating it ships a silent 3x egress
+    //    multiplier — refused until a per-call size estimate exists.
+    const BACKEND_WITHHELD = new Set([
+      "ollama_summarize_fast",
+      "ollama_classify",
+      "ollama_triage_logs",
+      "ollama_embed",
+      "ollama_embed_search",
+      "ollama_draft",
+    ]);
     for (const t of tools!) {
       const ann = (
         t as { annotations?: { title?: unknown; readOnlyHint?: unknown; destructiveHint?: unknown } }
@@ -387,6 +427,13 @@ describeOrSkip("MCP end-to-end golden — stdio round-trip", () => {
       expect(ann!.destructiveHint, `${t.name} destructiveHint misclassified`).toBe(
         DESTRUCTIVE.has(t.name),
       );
+      const props = (t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+      if (BACKEND_ESCALATABLE.has(t.name)) {
+        expect(props.backend, `${t.name} must expose a per-call backend field`).toBeDefined();
+      }
+      if (BACKEND_WITHHELD.has(t.name)) {
+        expect(props.backend, `${t.name} must NOT expose backend`).toBeUndefined();
+      }
     }
   }, 30_000);
 
