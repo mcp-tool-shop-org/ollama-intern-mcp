@@ -26,6 +26,8 @@ import {
   type OllamaClient,
 } from "./ollama.js";
 import { RoutingOllamaClient } from "./routing.js";
+import { runCloudCheck, formatCloudCheck, shouldGate } from "./cloudCheck.js";
+import type { CloudCheckResult } from "./cloudCheck.js";
 import { LOG_EVENT_KINDS, NdjsonLogger, timestamp } from "./observability.js";
 import { formatBytes } from "./format.js";
 import { InternError, toErrorShape } from "./errors.js";
@@ -635,6 +637,9 @@ async function main(): Promise<void> {
           logger,
           standby: cloud.standby,
           cloudHost: cloud.host,
+          // F-ef444c5d — the declared standby escalation policy. Empty by
+          // default, which keeps a key-alone install at zero egress.
+          standbyEscalateTiers: cloud.standbyEscalateTiers,
         })
       : local;
 
@@ -652,10 +657,28 @@ async function main(): Promise<void> {
     console.error(
       `ollama-intern: cloud-primary ON — ${cloud.tiers.instant} (deep: ${cloud.tiers.deep}) via ${cloud.host}; local fallback profile=${profile.name}. Embeddings stay local.`,
     );
+    // A knob that silently does nothing is the FT-002 anti-pattern. Under
+    // cloud-primary every tier already serves from cloud, so the standby
+    // policy is inert — say so rather than letting the operator believe
+    // they narrowed their egress.
+    if (cloud.standbyEscalateTiers.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `ollama-intern: INTERN_CLOUD_STANDBY_TIERS=${cloud.standbyEscalateTiers.join(",")} has NO EFFECT under cloud-primary — every tier already routes to cloud. Unset OLLAMA_CLOUD_PRIMARY to run standby with that escalation policy.`,
+      );
+    }
   } else if (cloud) {
+    // F-ef444c5d — the startup line must name WHICH tiers leave the box.
+    // "Zero egress until a call requests it" is only true with an empty
+    // policy; with one set, this line is where the operator is told what
+    // they turned on, before anything is sent.
+    const policy =
+      cloud.standbyEscalateTiers.length > 0
+        ? `Escalation policy INTERN_CLOUD_STANDBY_TIERS=${cloud.standbyEscalateTiers.join(",")} — calls on ${cloud.standbyEscalateTiers.length === 1 ? "that tier" : "those tiers"} GO TO CLOUD by default (a per-call backend:'local' still pins one local); every other tier stays local.`
+        : `Zero egress until a call requests it.`;
     // eslint-disable-next-line no-console
     console.error(
-      `ollama-intern: cloud STANDBY — local-primary (profile=${profile.name}); per-call backend:'cloud' escalation available → ${cloud.host} (${cloud.tiers.instant}; deep: ${cloud.tiers.deep}). Zero egress until a call requests it. Embeddings stay local.`,
+      `ollama-intern: cloud STANDBY — local-primary (profile=${profile.name}); per-call backend:'cloud' escalation available → ${cloud.host} (${cloud.tiers.instant}; deep: ${cloud.tiers.deep}). ${policy} Embeddings stay local.`,
     );
   }
 
@@ -921,7 +944,14 @@ function printHelp(): void {
     `                   --json emits the structured DoctorResult plus warnings[]`,
     `                   and cloud_config_error (pipeable to jq);`,
     `                   --fail-unhealthy exits 1 when unhealthy (CI gate — a bad`,
-    `                   cloud key counts as unhealthy; a cloud outage does not).`,
+    `                   cloud key counts as unhealthy; a cloud outage does not);`,
+    `                   --cloud-check PROVES the cloud key with one 8-token`,
+    `                   generate + a model-catalog read. Explicit egress: it runs`,
+    `                   only when you type the flag, discloses before it sends,`,
+    `                   and logs a cloud_egress receipt. Without it, auth can`,
+    `                   only ever read 'unverified' — /api/tags returns 200 for`,
+    `                   an invalid key. Also flags configured cloud model ids`,
+    `                   that are no longer in the backend's catalog.`,
     `  init             Scaffold hermes.config.yaml in the current directory.`,
     `                   --claude prints a paste-ready Claude Code .mcp.json fragment`,
     `                   (nothing written) with the optional cloud lines + standby note.`,
@@ -957,6 +987,14 @@ function printHelp(): void {
     `  INTERN_CLOUD_TIMEOUT_WORKHORSE_MS  Cloud workhorse-tier budget (default: 120000).`,
     `  INTERN_CLOUD_TIMEOUT_DEEP_MS       Cloud deep-tier budget (default: 300000).`,
     `  INTERN_CLOUD_NUM_CTX   Cloud context window (default: 32768).`,
+    `  INTERN_CLOUD_STANDBY_TIERS  STANDBY escalation policy — comma list of`,
+    `                         instant|workhorse|deep whose calls go to cloud`,
+    `                         WITHOUT a per-call backend:'cloud' flag (e.g.`,
+    `                         'deep' = escalate deep work, keep everything else`,
+    `                         local). Default empty/none = zero egress on a key`,
+    `                         alone. A per-call backend:'local' still pins one`,
+    `                         call local; escalation is never inferred from`,
+    `                         prompt size, model quality, or a local failure.`,
     ``,
     `  Partial list — see the README (Hardware profiles / Cloud env vars) for the rest.`,
     ``,
@@ -980,9 +1018,19 @@ function printHelp(): void {
  *                     suggested `doctor | jq .` against the prose report,
  *                     which never worked).
  *   --fail-unhealthy  exit 1 when `healthy` is false OR the cloud config
- *                     itself failed to load (e.g. PRIMARY without a key) —
- *                     the machine gate the old "grep the report" advice
- *                     pretended existed.
+ *                     itself failed to load (e.g. PRIMARY without a key) OR
+ *                     an explicit --cloud-check returned a definitive
+ *                     operator-config verdict — the machine gate the old
+ *                     "grep the report" advice pretended existed.
+ *   --cloud-check     (F-34227a72) EXPLICIT EGRESS. Reads the cloud model
+ *                     catalog and sends ONE 8-token generate with a fixed
+ *                     non-sensitive prompt, to answer the question the
+ *                     ordinary probe structurally cannot: does this key
+ *                     work? (/api/tags returns 200 for an invalid key, so
+ *                     `auth` could only ever read 'unverified'.) Discloses
+ *                     on stderr before the first byte and writes a
+ *                     cloud_egress receipt. Never implied — no flag, no
+ *                     egress, exactly as with no key at all.
  *
  * Default (no flags): the human prose report, exit 0 regardless of health —
  * doctor's job is to REPORT; gating is the explicit flag's job. Returns the
@@ -998,16 +1046,19 @@ function printHelp(): void {
  * standing at the terminal that `init` points at.
  */
 async function runCliDoctor(flags: string[] = []): Promise<number> {
-  const unknown = flags.filter((f) => f !== "--json" && f !== "--fail-unhealthy");
+  const unknown = flags.filter(
+    (f) => f !== "--json" && f !== "--fail-unhealthy" && f !== "--cloud-check",
+  );
   if (unknown.length > 0) {
     // eslint-disable-next-line no-console
     console.error(
-      `ollama-intern: unknown doctor flag(s): ${unknown.join(", ")}. Supported: --json, --fail-unhealthy.`,
+      `ollama-intern: unknown doctor flag(s): ${unknown.join(", ")}. Supported: --json, --fail-unhealthy, --cloud-check.`,
     );
     return 1;
   }
   const asJson = flags.includes("--json");
   const failUnhealthy = flags.includes("--fail-unhealthy");
+  const cloudCheck = flags.includes("--cloud-check");
   // Resolve profile fail-fast so doctor surfaces a CONFIG_INVALID before
   // it has a chance to hit the Ollama probe.
   let profile: ReturnType<typeof loadProfile>;
@@ -1057,6 +1108,27 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
   };
   const env = await handleDoctor({}, ctx);
   const r = env.result;
+  // F-34227a72 — the explicit cloud check. ONLY when the operator typed the
+  // flag: it is real egress (one tiny generate + the catalog read), so it is
+  // never implied by plain `doctor`, and never by startup. A key with no flag
+  // still sends nothing. runCloudCheck discloses on stderr before the first
+  // byte and writes its own cloud_egress receipt.
+  //
+  // The receipt goes to the REAL NdjsonLogger, not the NullLogger `ctx` uses:
+  // ctx's NullLogger exists so a CLI invocation doesn't append a `call` event
+  // and skew tool-call histograms, but an egress receipt is an audit record
+  // of data leaving the machine and has to survive the process.
+  let cloudCheckResult: CloudCheckResult | null = null;
+  let cloudCheckSkipped: string | null = null;
+  if (cloudCheck) {
+    if (!cloud) {
+      cloudCheckSkipped = cloudConfigError
+        ? "cloud config failed to load (see the error above) — nothing to check."
+        : "cloud is not configured (no OLLAMA_API_KEY), so there is nothing to check and nothing was sent.";
+    } else {
+      cloudCheckResult = await runCloudCheck({ cloud, logger: new NdjsonLogger() });
+    }
+  }
   // The envelope's warnings carry the remediation sentences; a broken cloud
   // config is not one of them (handleDoctor never saw the config that failed
   // to load), so it is prepended as a synthetic warning and leads the list —
@@ -1065,6 +1137,29 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
     ...(cloudConfigError ? [`Cloud config error — ${cloudConfigError}`] : []),
     ...(env.warnings ?? []),
   ];
+  // A MEASURED cloud verdict outranks the probe-derived `auth: unverified`
+  // that handleDoctor produces, so its remediation joins the same warnings
+  // list both renderings already read. Catalog misses warn too — loudly,
+  // without gating (see shouldGate).
+  if (cloudCheckSkipped) warnings.push(`Cloud check skipped — ${cloudCheckSkipped}`);
+  if (cloudCheckResult) {
+    if (cloudCheckResult.hint) {
+      warnings.push(`Cloud check (${cloudCheckResult.auth}) — ${cloudCheckResult.hint}`);
+    }
+    if (cloudCheckResult.model_substituted) {
+      warnings.push(
+        `Ollama Cloud served '${cloudCheckResult.served_model}' when '${cloudCheckResult.model_requested}' was requested — the backend substituted a model. Verify INTERN_CLOUD_MODEL against https://ollama.com/search?c=cloud.`,
+      );
+    }
+    for (const e of cloudCheckResult.catalog.entries) {
+      if (e.status === "missing") {
+        warnings.push(
+          `Cloud model '${e.id}' (${e.source}) is NOT in the backend's catalog${e.suggestion ? ` — nearest live id: '${e.suggestion}'` : ""}. Cloud ids rotate server-side; re-pin from https://ollama.com/search?c=cloud. Calls using it degrade to the local profile (degrade_reason: cloud_model_missing).`,
+        );
+      }
+    }
+  }
+  const cloudCheckGates = cloudCheckResult !== null && shouldGate(cloudCheckResult);
   if (asJson) {
     // Machine mode: stdout is ONLY the JSON (config hints also go to stderr).
     // eslint-disable-next-line no-console
@@ -1074,12 +1169,17 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
           ...r,
           warnings,
           ...(cloudConfigError ? { cloud_config_error: cloudConfigError } : {}),
+          // F-34227a72 — the CI-consumable cloud gate. Present only when the
+          // operator asked for it, so `doctor --json` is byte-identical to
+          // before without the flag.
+          ...(cloudCheckResult ? { cloud_check: cloudCheckResult } : {}),
+          ...(cloudCheckSkipped ? { cloud_check_skipped: cloudCheckSkipped } : {}),
         },
         null,
         2,
       ),
     );
-    return failUnhealthy && (!r.healthy || cloudConfigBroken) ? 1 : 0;
+    return failUnhealthy && (!r.healthy || cloudConfigBroken || cloudCheckGates) ? 1 : 0;
   }
   // Compact, human-readable rendering for stdout (unchanged default path).
   // Machine consumers use --json above — the prose was never jq-able.
@@ -1105,11 +1205,45 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
     out.push(
       `  auth:      ${r.cloud.auth === "failed" ? "FAILED (bad key)" : "unverified (checked on first call)"}`,
     );
+    // 'unverified' is a limit of the PROBE, not a symptom: /api/tags returns
+    // 200 for an invalid key, so this line can never say 'ok' no matter how
+    // good the key is. Sitting directly under the verdict it qualifies,
+    // point at the command that CAN answer — otherwise the operator's read
+    // of "unverified" is a dead end. Suppressed when a 401/403 already gave
+    // a definitive answer, and when --cloud-check is about to print one.
+    if (r.cloud.auth !== "failed" && !cloudCheck) {
+      out.push(
+        `             ('unverified' is the probe's ceiling — /api/tags returns 200 even for a bad key. Run 'doctor --cloud-check' to prove it with one tiny generate: explicit egress, disclosed before it sends.)`,
+      );
+    }
     out.push(
       `  models:    instant=${r.cloud.models.instant}  workhorse=${r.cloud.models.workhorse}  deep=${r.cloud.models.deep}`,
     );
     if (r.cloud.circuit_state) out.push(`  circuit:   ${r.cloud.circuit_state}`);
+    // An honest absence beats a silently missing line. The breaker is
+    // per-process state inside the MCP SERVER; this CLI builds its own plain
+    // HttpOllamaClient (never a RoutingOllamaClient), so `circuit_state` is
+    // structurally unreachable here — and even if it were rendered, it would
+    // describe this short-lived CLI process, not the server your MCP client
+    // is actually talking to. Say so, and point at the one surface that does
+    // carry the server's degradation history.
+    else {
+      out.push(
+        `  circuit:   not observable from the CLI — the breaker is in-process state inside the running MCP server.`,
+      );
+      out.push(
+        `             For that server's degradation history: ollama_log_tail --filter_kind backend_fallback`,
+      );
+    }
     if (r.cloud.error) out.push(`  error:     ${r.cloud.error}`);
+    out.push(``);
+  }
+  if (cloudCheckSkipped) {
+    out.push(`Cloud check: skipped — ${cloudCheckSkipped}`);
+    out.push(``);
+  }
+  if (cloudCheckResult) {
+    out.push(...formatCloudCheck(cloudCheckResult));
     out.push(``);
   }
   out.push(`Models:`);
@@ -1157,7 +1291,7 @@ async function runCliDoctor(flags: string[] = []): Promise<number> {
   out.push(`Healthy: ${r.healthy ? "yes" : "no"}`);
   // eslint-disable-next-line no-console
   console.log(out.join("\n"));
-  return failUnhealthy && (!r.healthy || cloudConfigBroken) ? 1 : 0;
+  return failUnhealthy && (!r.healthy || cloudConfigBroken || cloudCheckGates) ? 1 : 0;
 }
 
 /**
