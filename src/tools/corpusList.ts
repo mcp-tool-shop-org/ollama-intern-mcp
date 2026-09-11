@@ -10,8 +10,7 @@ import { z } from "zod";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import { resolveTier } from "../tiers.js";
-import { listCorpora, type CorpusSummary } from "../corpus/storage.js";
+import { listCorpora, corpusDir, type CorpusSummary } from "../corpus/storage.js";
 import type { RunContext } from "../runContext.js";
 
 export const corpusListSchema = z.object({});
@@ -28,7 +27,6 @@ export async function handleCorpusList(
   ctx: RunContext,
 ): Promise<Envelope<CorpusListResult>> {
   const startedAt = Date.now();
-  const model = resolveTier("embed", ctx.tiers);
   const corpora = await listCorpora();
 
   // Surface health warnings at the envelope level so callers can spot
@@ -51,10 +49,13 @@ export async function handleCorpusList(
   const envelope = buildEnvelope<CorpusListResult>({
     result: {
       corpora,
-      corpus_dir: process.env.INTERN_CORPUS_DIR ?? "~/.ollama-intern/corpora",
+      // The directory actually read from, not a display literal — an
+      // unexpanded "~" is not a path any Windows shell or fs call resolves,
+      // and doctor/artifact_prune already report resolved roots.
+      corpus_dir: corpusDir(),
     },
-    tier: "embed",
-    model,
+    tier: "instant", // no model call; "instant" is the cheapest tier we report
+    model: "",
     hardwareProfile: ctx.hardwareProfile,
     tokensIn: 0,
     tokensOut: 0,

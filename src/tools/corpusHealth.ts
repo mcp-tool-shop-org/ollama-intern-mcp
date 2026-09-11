@@ -1,12 +1,14 @@
 /**
  * ollama_corpus_health — dedicated health summary for indexed corpora.
  *
- * No Ollama call. Superset of ollama_corpus_list: returns everything list
- * returns PLUS staleness age (days since indexed_at), the drift fields
- * from the manifest (resolved tag + within-refresh drift), a
- * write-complete flag, and a warnings[] per corpus. In `detailed: true`
- * mode adds per-file mtime + stale-days so callers can pinpoint which
- * source file triggered a stale flag without re-running corpus_refresh.
+ * No Ollama call. Superset of ollama_corpus_list: every entry IS a
+ * CorpusSummary (same keys, same spellings — the type extends it, so a
+ * caller can swap list for health without touching a field name) PLUS
+ * staleness age (days since indexed_at), the drift fields from the
+ * manifest (resolved tag + within-refresh drift), and a warnings[] per
+ * corpus. In `detailed: true` mode adds per-file mtime + staleness days so
+ * callers can pinpoint which source file triggered a stale flag without
+ * re-running corpus_refresh.
  *
  * Use this when you want "is my corpus set healthy?" as a single call.
  */
@@ -16,8 +18,13 @@ import { stat } from "node:fs/promises";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import { resolveTier } from "../tiers.js";
-import { listCorpora, loadCorpus, corpusPath } from "../corpus/storage.js";
+import {
+  listCorpora,
+  loadCorpus,
+  corpusPath,
+  corpusDir,
+  type CorpusSummary,
+} from "../corpus/storage.js";
 import { loadManifest } from "../corpus/manifest.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
@@ -32,7 +39,7 @@ export const corpusHealthSchema = z.object({
   detailed: z
     .boolean()
     .optional()
-    .describe("When true, each entry gets a per-file list with mtime + staleness days. Default false — cheaper."),
+    .describe("When true, each entry gets a per-file list with mtime + staleness_days. Default false — cheaper."),
 });
 
 export type CorpusHealthInput = z.infer<typeof corpusHealthSchema>;
@@ -43,32 +50,31 @@ export interface CorpusHealthFileDetail {
   mtime: string | null;
   /** Number of chunks the corpus currently stores for this path. */
   chunk_count: number;
-  /** Whole-day-rounded age since mtime; null when mtime is null. */
-  stale_days: number | null;
+  /**
+   * Whole-day-rounded age since mtime; null when mtime is null. Same
+   * spelling as the entry-level `staleness_days` on purpose — one concept,
+   * one key, so a health table's rolled-up row and its per-file rows read
+   * the same column.
+   */
+  staleness_days: number | null;
 }
 
-export interface CorpusHealthEntry {
-  name: string;
-  chunks: number;
-  docs: number;
-  bytes: number;
-  indexed_at: string;
+/**
+ * Extends CorpusSummary rather than restating it, so the "superset of
+ * corpus_list" promise is enforced by the compiler instead of by prose. A
+ * key renamed on CorpusSummary breaks this build; a key renamed HERE can't
+ * happen. `failed_path_count` and `write_complete` keep the base's
+ * omit-when-zero / omit-when-unknown semantics for the same reason.
+ */
+export interface CorpusHealthEntry extends CorpusSummary {
   /** Days since indexed_at — a coarse freshness hint; does NOT mean drift. */
   staleness_days: number;
-  embed_model: string;
   /** Resolved tag captured at last index (e.g. "nomic-embed-text:latest"). null when unknown. */
   embed_model_resolved: string | null;
   /** True when the manifest records within-refresh :latest drift (an index saw >1 distinct resolved tag). */
   drift_detected: boolean;
   /** Populated only when drift_detected is true. */
   drift_within_refresh?: string[];
-  failed_paths_count: number;
-  /**
-   * True when the manifest was written cleanly (completed_at present). False
-   * when the previous mutation landed the corpus but was interrupted before
-   * the manifest's tail marker. Undefined for legacy pre-Stage-B+C manifests.
-   */
-  write_complete: boolean | undefined;
   /** Plain-English health notes — callers should read these. */
   warnings: string[];
   /** Only populated when `detailed: true`. */
@@ -151,27 +157,30 @@ async function buildEntry(
 
   const staleness = staleDays(corpus.indexed_at, nowMs) ?? 0;
 
+  // CorpusSummary keys first, in listCorpora's own order and with its
+  // omit-when-zero / omit-when-unknown rules, then the health-only extras.
   const entry: CorpusHealthEntry = {
     name: corpus.name,
-    chunks: corpus.stats.chunks,
-    docs: corpus.stats.documents,
-    bytes,
+    model_version: corpus.model_version,
     indexed_at: corpus.indexed_at,
+    documents: corpus.stats.documents,
+    chunks: corpus.stats.chunks,
+    total_chars: corpus.stats.total_chars,
+    bytes_on_disk: bytes,
+    ...(failedPathsCount > 0 ? { failed_path_count: failedPathsCount } : {}),
+    ...(writeComplete === undefined ? {} : { write_complete: writeComplete }),
     staleness_days: staleness,
-    embed_model: corpus.model_version,
     embed_model_resolved: manifest?.embed_model_resolved ?? null,
     drift_detected: driftDetected,
     ...(driftDetected ? { drift_within_refresh: driftWithin } : {}),
-    failed_paths_count: failedPathsCount,
-    write_complete: writeComplete,
     warnings,
     has_amended_content: amended,
   };
 
   if (detailed) {
     // Gather per-path chunk counts from the corpus file itself (chunk_count).
-    // Pair with a current-disk stat for mtime + stale_days. Files we can't
-    // stat report mtime:null, stale_days:null — caller sees the gap.
+    // Pair with a current-disk stat for mtime + staleness_days. Files we
+    // can't stat report mtime:null, staleness_days:null — caller sees the gap.
     const chunkCountByPath = new Map<string, number>();
     for (const c of corpus.chunks) {
       chunkCountByPath.set(c.path, (chunkCountByPath.get(c.path) ?? 0) + 1);
@@ -188,7 +197,7 @@ async function buildEntry(
         // missing / unreadable → null mtime. Caller can decide whether to
         // retry_failed or ignore. No throw — this is a health tool.
       }
-      paths.push({ path, mtime, chunk_count, stale_days: stale });
+      paths.push({ path, mtime, chunk_count, staleness_days: stale });
     }
     paths.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     entry.paths = paths;
@@ -202,7 +211,6 @@ export async function handleCorpusHealth(
   ctx: RunContext,
 ): Promise<Envelope<CorpusHealthResult>> {
   const startedAt = Date.now();
-  const model = resolveTier("embed", ctx.tiers);
   const detailed = input.detailed === true;
   const nowMs = Date.now();
 
@@ -237,7 +245,7 @@ export async function handleCorpusHealth(
   // entry's warnings[].
   const envWarnings: string[] = [];
   const needsRefresh = entries.filter((e) => e.write_complete === false).map((e) => e.name);
-  const withFailed = entries.filter((e) => e.failed_paths_count > 0).map((e) => e.name);
+  const withFailed = entries.filter((e) => (e.failed_path_count ?? 0) > 0).map((e) => e.name);
   const withDrift = entries.filter((e) => e.drift_detected).map((e) => e.name);
   const withAmend = entries.filter((e) => e.has_amended_content).map((e) => e.name);
   if (needsRefresh.length > 0) {
@@ -264,10 +272,13 @@ export async function handleCorpusHealth(
   const envelope = buildEnvelope<CorpusHealthResult>({
     result: {
       corpora: entries,
-      corpus_dir: process.env.INTERN_CORPUS_DIR ?? "~/.ollama-intern/corpora",
+      // The directory actually read from, not a display literal — an
+      // unexpanded "~" is not a path any Windows shell or fs call resolves,
+      // and doctor/artifact_prune already report resolved roots.
+      corpus_dir: corpusDir(),
     },
-    tier: "embed",
-    model,
+    tier: "instant", // no model call; "instant" is the cheapest tier we report
+    model: "",
     hardwareProfile: ctx.hardwareProfile,
     tokensIn: 0,
     tokensOut: 0,

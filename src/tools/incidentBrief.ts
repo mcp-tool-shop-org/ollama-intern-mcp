@@ -30,7 +30,7 @@ import {
   readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
-import { normalizeCorpusQuery } from "./_helpers.js";
+import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "./_helpers.js";
 
 export const incidentBriefSchema = z.object({
   log_text: z.string().min(1).optional().describe("Raw log blob to reason over. Combine with source_paths and/or corpus for a richer brief."),
@@ -46,8 +46,13 @@ export const incidentBriefSchema = z.object({
   corpus_query: z
     .string()
     .min(1)
+    // Bound in the SCHEMA so the client's picker renders the limit — the
+    // runtime normalizeCorpusQuery re-checks the fence/newline-stripped
+    // form as defence-in-depth. Without this the caller learned the cap
+    // only from a mid-run SCHEMA_INVALID.
+    .max(MAX_CORPUS_QUERY_CHARS, `corpus_query must be ${MAX_CORPUS_QUERY_CHARS} characters or fewer`)
     .optional()
-    .describe("Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided."),
+    .describe("Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided." + CORPUS_QUERY_CAP_NOTE),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_hypotheses: z.number().int().min(1).max(10).optional().describe("Cap on root-cause hypotheses in the output (default 5)."),
   corpus_min_evidence_score: z

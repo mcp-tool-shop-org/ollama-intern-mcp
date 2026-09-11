@@ -123,6 +123,16 @@ export interface CodeReviewResult {
   summary: string;
   /** Byte size of the input diff — surfaces clipping when a diff was truncated upstream. */
   diff_size_bytes: number;
+  /**
+   * How many findings survived the severity floor and the allowlist filter,
+   * BEFORE max_findings trimmed the list. Equals findings.length on the
+   * happy path; larger means the cap bit. Without it the operator sees
+   * exactly max_findings entries and cannot tell whether the model produced
+   * that many or three times that many.
+   */
+  total_findings: number;
+  /** True when total_findings > max_findings — findings were dropped. */
+  max_findings_hit: boolean;
 }
 
 // ── Coerce helpers — drop malformed, never throw ────────────
@@ -292,7 +302,13 @@ function coerceReview(
   // empty result with the floor + cap honored. summary stays "" so
   // operator UIs can show a placeholder.
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return { findings: [], summary: "", diff_size_bytes: opts.diffSize };
+    return {
+      findings: [],
+      summary: "",
+      diff_size_bytes: opts.diffSize,
+      total_findings: 0,
+      max_findings_hit: false,
+    };
   }
   const obj = data as Record<string, unknown>;
   const summary = readString(obj, "summary").trim();
@@ -323,8 +339,24 @@ function coerceReview(
     );
   }
 
+  // Same truncation contract code_map uses for max_files: report the
+  // pre-cap total and a hit flag, and say so in a warning. A capped list
+  // that reads as "these are the problems with this change" must not hide
+  // that there were more.
   const findings = raw.slice(0, opts.maxFindings);
-  return { findings, summary, diff_size_bytes: opts.diffSize };
+  const maxFindingsHit = raw.length > opts.maxFindings;
+  if (maxFindingsHit && opts.warnings) {
+    opts.warnings.push(
+      `Hit max_findings cap (${opts.maxFindings}). ${raw.length - opts.maxFindings} finding(s) at or above the severity floor were dropped; raise max_findings or raise severity_floor to see the rest.`,
+    );
+  }
+  return {
+    findings,
+    summary,
+    diff_size_bytes: opts.diffSize,
+    total_findings: raw.length,
+    max_findings_hit: maxFindingsHit,
+  };
 }
 
 // ── Prompt builder ──────────────────────────────────────────

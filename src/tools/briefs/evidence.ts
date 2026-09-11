@@ -143,3 +143,47 @@ export function sliceDiffIntoEvidence(diffText: string, startId: number): Eviden
   }
   return items;
 }
+
+/**
+ * The excerpt cap the slicer above applied when an item of this kind was
+ * built. Renderers clip to THIS rather than a flat literal — a hard-coded
+ * display cap below the build cap makes the human-readable .md half of an
+ * artifact pair show less than the machine-readable .json half stored
+ * beside it, while the pair is sold as one diffable unit.
+ */
+export function excerptCapFor(kind: EvidenceKind): number {
+  switch (kind) {
+    case "log":
+      return EVIDENCE_CONFIG.LOG_EXCERPT_CHARS;
+    case "path":
+      return EVIDENCE_CONFIG.PATH_EXCERPT_CHARS;
+    case "corpus":
+      return EVIDENCE_CONFIG.CORPUS_EXCERPT_CHARS;
+    case "diff":
+      return EVIDENCE_CONFIG.DIFF_EXCERPT_CHARS;
+  }
+}
+
+/**
+ * Render one evidence item as markdown lines: `**[id]** kind — ref`, the
+ * excerpt in a fence, then a truncation marker when the excerpt stops
+ * short of its source.
+ *
+ * A fenced block reads as a verbatim quote, so an unmarked clip can stop
+ * mid-word with nothing telling the reader evidence was cut. The slicers
+ * clip at the per-kind cap, so an excerpt sitting AT the cap is the first
+ * N chars of something longer — say so. Same convention as
+ * codeCitation.excerptLines / hypothesisDrill's evidence previews, which
+ * both mark a display clip rather than letting it pass silently.
+ */
+export function renderEvidenceMarkdown(e: EvidenceItem): string[] {
+  const cap = excerptCapFor(e.kind);
+  const shown = e.excerpt.slice(0, cap);
+  const lines = [`**[${e.id}]** \`${e.kind}\` — \`${e.ref}\``, "", "```", shown, "```"];
+  if (e.excerpt.length >= cap) {
+    lines.push("");
+    lines.push(`_Excerpt clipped to the first ${cap} chars of \`${e.ref}\`._`);
+  }
+  lines.push("");
+  return lines;
+}

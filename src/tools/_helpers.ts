@@ -18,6 +18,15 @@ import { InternError } from "../errors.js";
 export const MAX_CORPUS_QUERY_CHARS = 200;
 
 /**
+ * Tail appended to every corpus_query .describe() so the cap is visible in
+ * the tool picker, not just in the SCHEMA_INVALID a caller hits mid-run.
+ * One constant across all six tools that expose the field — a cap stated
+ * six different ways drifts on the first edit.
+ */
+export const CORPUS_QUERY_CAP_NOTE =
+  ` (max ${MAX_CORPUS_QUERY_CHARS} chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)`;
+
+/**
  * Enforce the corpus_query length + shape contract.
  *
  * The query flows through to embedding + prompt contexts; long multi-line

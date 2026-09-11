@@ -34,7 +34,14 @@ import type { RunContext } from "../runContext.js";
 import { buildGuardrailEventWithCorrelation } from "./_runContext.js";
 
 export const researchSchema = z.object({
-  question: z.string().min(1).describe("The question to answer."),
+  question: z
+    .string()
+    .min(1)
+    // Bound in the SCHEMA so the picker renders the cap; sanitizePromptField
+    // re-checks the fence/newline-stripped form at runtime (the question is
+    // interpolated verbatim into the research prompt).
+    .max(1000, "question must be 1000 characters or fewer")
+    .describe("The question to answer (max 1000 chars — it is interpolated verbatim into the prompt, so newlines and code fences are stripped)."),
   source_paths: strictStringArray({ min: 1, fieldName: "source_paths" }).describe("Files the answer must be grounded in. Nothing outside this list is allowed as a source."),
   max_words: z.number().int().min(20).max(1500).optional().describe("Target answer length in words (default 300)."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read per file (default 40k)."),

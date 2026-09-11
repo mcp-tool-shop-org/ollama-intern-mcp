@@ -43,10 +43,21 @@ export const classifySchema = z.object({
     .min(1)
     .optional()
     .describe("Batch of texts to classify. Each needs a stable caller-provided id so results join back to source inputs cleanly. Returns one batch envelope with per-item {id, ok, result|error} entries."),
-  labels: strictStringArray({ min: 2, fieldName: "labels" }).describe("Candidate labels — the model picks exactly one, or null if allow_none."),
+  // The 100-char per-label cap is enforced at runtime by sanitizePromptField
+  // (see handleClassify) and stated here so the picker shows it.
+  // strictStringArray has no per-item max yet — adding `maxItemLen` to
+  // src/guardrails/stringifiedArrayGuard.ts would let this be a real schema
+  // bound rather than prose.
+  labels: strictStringArray({ min: 2, fieldName: "labels" }).describe("Candidate labels — the model picks exactly one, or null if allow_none. Each label max 100 chars (interpolated verbatim into the prompt, so newlines and code fences are stripped)."),
   allow_none: z.boolean().optional().describe("If true and confidence < threshold, return label=null instead of a weak guess."),
   threshold: z.number().min(0).max(1).optional().describe("Confidence floor (default 0.7)."),
-  frame: z.string().optional().describe("The question / section purpose / topic this classification is FOR. When supplied, the model first determines on/off-topic for the frame, then picks a label only within that frame. Off-topic inputs return label=null with off_topic=true regardless of label fit."),
+  frame: z
+    .string()
+    // Bound in the SCHEMA so the picker renders the cap; sanitizePromptField
+    // re-checks the fence/newline-stripped form at runtime.
+    .max(500, "frame must be 500 characters or fewer")
+    .optional()
+    .describe("The question / section purpose / topic this classification is FOR (max 500 chars). When supplied, the model first determines on/off-topic for the frame, then picks a label only within that frame. Off-topic inputs return label=null with off_topic=true regardless of label fit."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars to read when source_path is used (default 40k)."),
   model: z
     .string()

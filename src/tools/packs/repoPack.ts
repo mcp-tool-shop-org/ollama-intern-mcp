@@ -49,6 +49,7 @@ import {
   getCallContext,
 } from "../_runContext.js";
 import { assembleEvidence } from "../briefs/common.js";
+import { renderEvidenceMarkdown } from "../briefs/evidence.js";
 import { loadSources, formatSourcesBlock } from "../../sources.js";
 import {
   synthesizeRepoBrief,
@@ -56,7 +57,12 @@ import {
   type RepoBriefResult,
 } from "../repoBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
-import { normalizeCorpusQuery, allowlistPathsMatch } from "../_helpers.js";
+import {
+  normalizeCorpusQuery,
+  allowlistPathsMatch,
+  MAX_CORPUS_QUERY_CHARS,
+  CORPUS_QUERY_CAP_NOTE,
+} from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -70,7 +76,16 @@ export const repoPackSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
     .optional()
     .describe("Optional named corpus (e.g. 'handbook', 'doctrine') for cross-cutting architecture context. When given, queried as the pack's main working surface alongside source_paths."),
-  corpus_query: z.string().min(1).optional().describe("Corpus query (defaults to 'repo architecture and surfaces')."),
+  corpus_query: z
+    .string()
+    .min(1)
+    // Bound in the SCHEMA so the client's picker renders the limit — the
+    // runtime normalizeCorpusQuery re-checks the fence/newline-stripped
+    // form as defence-in-depth. A pack that refuses at char 201 halfway
+    // through a multi-step run must have shown the cap up front.
+    .max(MAX_CORPUS_QUERY_CHARS, `corpus_query must be ${MAX_CORPUS_QUERY_CHARS} characters or fewer`)
+    .optional()
+    .describe("Corpus query (defaults to 'repo architecture and surfaces')." + CORPUS_QUERY_CAP_NOTE),
   title: z.string().min(1).max(120).optional().describe("Short human title — used in the artifact header and filename slug. Defaults to the repo thesis head."),
   artifact_dir: z.string().min(1).optional().describe("Directory to write the repo.md + repo.json artifact pair. Defaults to ~/.ollama-intern/artifacts/repo/."),
   allowed_roots: z
@@ -81,10 +96,13 @@ export const repoPackSchema = z.object({
     .boolean()
     .optional()
     .describe("Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft."),
-  per_file_max_chars: z.number().int().min(1000).max(200_000).optional(),
-  max_key_surfaces: z.number().int().min(1).max(20).optional(),
-  max_risk_areas: z.number().int().min(1).max(10).optional(),
-  max_read_next: z.number().int().min(1).max(15).optional(),
+  // Forwarded verbatim to the brief step, so these carry the SAME meanings
+  // and the SAME defaults as the ollama_repo_brief siblings — describe them
+  // identically rather than shipping bare `number` fields with no unit.
+  per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
+  max_key_surfaces: z.number().int().min(1).max(20).optional().describe("Cap on key_surfaces (default 8)."),
+  max_risk_areas: z.number().int().min(1).max(10).optional().describe("Cap on risk_areas (default 5)."),
+  max_read_next: z.number().int().min(1).max(15).optional().describe("Cap on read_next (default 8)."),
 });
 
 export type RepoPackInput = z.infer<typeof repoPackSchema>;
@@ -498,13 +516,11 @@ function renderMarkdown(args: {
   if (b.evidence.length === 0) {
     lines.push(`_No evidence items._`);
   } else {
+    // Clip at the item's own per-kind cap (and mark the clip) rather than a
+    // flat display literal — keeps this half of the pair in step with the
+    // .json sibling. See briefs/evidence.ts renderEvidenceMarkdown.
     for (const e of b.evidence) {
-      lines.push(`**[${e.id}]** \`${e.kind}\` — \`${e.ref}\``);
-      lines.push("");
-      lines.push("```");
-      lines.push(e.excerpt.slice(0, 400));
-      lines.push("```");
-      lines.push("");
+      for (const line of renderEvidenceMarkdown(e)) lines.push(line);
     }
   }
 
