@@ -22,6 +22,7 @@ on:
       - "src/**"
       - "tests/**"
       - "scripts/gen-tool-docs.mjs"
+      - "scripts/sync-doc-versions.mjs"
       - "site/src/content/docs/handbook/tools.md"
       - "site/src/content/docs/handbook/tools/**"
       - ".github/workflows/**"
@@ -37,6 +38,7 @@ on:
       - "src/**"
       - "tests/**"
       - "scripts/gen-tool-docs.mjs"
+      - "scripts/sync-doc-versions.mjs"
       - "site/src/content/docs/handbook/tools.md"
       - "site/src/content/docs/handbook/tools/**"
       - ".github/workflows/**"
@@ -117,7 +119,31 @@ jobs:
         run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
-      - run: npm test
+      - name: Run tests
+        if: matrix.os != 'ubuntu-latest' || matrix.node != '20'
+        run: npm test
+      # ubuntu/20 is the single cell that records the pass count for
+      # sync-docs:check. pipefail means a failing suite fails this step
+      # before any count is parsed — never a partial 'N passed' (F-f613f553).
+      # The check runs against THIS run's count so it does not spawn a
+      # second full suite (F-7df86b73).
+      - name: Run tests (ubuntu/20 — pass count + sync-docs:check)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+        shell: bash
+        env:
+          NO_COLOR: "1"
+          FORCE_COLOR: "0"
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee test-output.txt
+          CLEAN="$(sed -E 's/\x1b\[[0-9;]*m//g' test-output.txt)"
+          PASSED="$(printf '%s\n' "$CLEAN" | grep -E "^\s*Tests\s+" | tail -1 | sed -E 's/.*\b([0-9]+)\s+passed.*/\1/' || true)"
+          if [ -z "$PASSED" ]; then
+            echo "::error::Could not parse passing-test count from vitest output."
+            exit 1
+          fi
+          echo "Resolved passing test count: $PASSED"
+          node scripts/sync-doc-versions.mjs --check --test-count="$PASSED"
 
   audit:
     runs-on: ubuntu-latest
@@ -192,7 +218,8 @@ jobs:
       # v6
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Build image (no push)
-        uses: docker/build-push-action@v7
+        # Same pin as release.yml docker job (H8 pre-tag image gate).
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: false

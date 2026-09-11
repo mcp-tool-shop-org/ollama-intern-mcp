@@ -45,12 +45,14 @@ jobs:
       # v6
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      # v3 — github/codeql-action/init pinned to current major. CodeQL bumps
-      # the analyzer queries on its own cadence; pinning to a SHA here would
-      # mean we never get query updates without a manual bump. @v3 is the
-      # documented stability surface.
+      # v4.38.0 — SHA-pinned so a retagged @v4 cannot swap the Action JS that
+      # uploads SARIF (security-events: write). Query-pack freshness is the
+      # Dependabot monthly github-actions group (same cadence as checkout);
+      # bumping this SHA picks up new packs. Floating @v4 would refresh
+      # queries sooner and would also refresh the uploader — we take the
+      # pin. (F-e03ca7c5)
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           languages: ${{ matrix.language }}
           # `security-and-quality` is the broader query suite — catches
@@ -64,6 +66,6 @@ jobs:
       # job and avoids spurious compile failures driven by build-tool drift.
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           category: "/language:${{ matrix.language }}"
