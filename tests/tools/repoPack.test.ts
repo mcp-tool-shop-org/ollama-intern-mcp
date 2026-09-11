@@ -365,11 +365,14 @@ describe("handleRepoPack — markdown layout", () => {
     expect(md).toContain("**Packages:** `@mcptoolshop/foundry`");
     expect(md).toContain("**Exposed surfaces:** MCP stdio, CLI");
     expect(md).toContain("**Entrypoints:**");
-    expect(md).toContain("`src/index.ts`");
     expect(md).toContain("**Scripts:**");
     expect(md).toContain("`build`");
-    expect(md).toContain("**Config files:** `tsconfig.json`, `package.json`");
     expect(md).toContain("**Runtime hints:** Node 18+, TypeScript ES2022");
+    expect(md).toContain("Dropped 3 invented onboarding path");
+    expect(md).toContain("`src/index.ts`");
+    expect(md).toContain("`tsconfig.json`");
+    expect(md).toContain("`package.json`");
+    expect(md).not.toContain("**Config files:** `tsconfig.json`, `package.json`");
   });
 
   it("markdown shows weak banner when brief.weak is true", async () => {

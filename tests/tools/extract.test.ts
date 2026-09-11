@@ -151,6 +151,7 @@ describe("handleExtract — frame contract", () => {
 
   it("frame supplied + model says on_topic:false → frame_alignment.on_topic is false", async () => {
     const modelOut = JSON.stringify({
+      name: null,
       _frame_alignment: { on_topic: false, reason: "source is about a different topic entirely" },
     });
     const client = mock(modelOut);
@@ -184,6 +185,7 @@ describe("handleExtract — frame contract", () => {
 
   it("frame supplied + unaddressed_aspects array → passes through to frame_alignment", async () => {
     const modelOut = JSON.stringify({
+      name: null,
       _frame_alignment: {
         on_topic: false,
         reason: "off-topic",
