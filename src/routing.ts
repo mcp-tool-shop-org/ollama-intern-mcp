@@ -9,9 +9,12 @@
  *
  * Two ROUTING MODES (F2, v2.9):
  *   - cloud-primary (v2.7.0): every tiered call tries cloud first.
- *   - STANDBY: local-primary; cloud serves ONLY calls carrying an explicit
- *     per-call `backend:'cloud'` route directive. Zero egress otherwise —
- *     the deterministic guarantee the model never overrides.
+ *   - STANDBY: local-primary; cloud serves calls carrying an explicit
+ *     per-call `backend:'cloud'` route directive, plus (v2.9.2, F-ef444c5d)
+ *     any tier named by the operator's declared INTERN_CLOUD_STANDBY_TIERS
+ *     escalation policy. Both are OPERATOR/CALLER declarations; the policy
+ *     is empty by default, so a key alone remains zero egress — the
+ *     deterministic guarantee the model never overrides.
  * Per-call route directives ride the REQUEST as a non-enumerable Symbol
  * (mirror of the response provenance tag below) so they can never serialize
  * onto the wire: `backend` escalates one call (standby) or pins one local
@@ -358,6 +361,14 @@ export interface RoutingOllamaClientOptions {
   standby?: boolean;
   /** Cloud host, named in the first-egress disclosure line. */
   cloudHost?: string;
+  /**
+   * STANDBY escalation policy (F-ef444c5d): tiers that escalate to cloud in
+   * standby WITHOUT a per-call `backend:'cloud'` directive. Resolved from
+   * INTERN_CLOUD_STANDBY_TIERS in loadCloudConfig; default/omitted = empty =
+   * today's behavior (a key alone is zero egress). An explicit per-call
+   * directive always outranks this, in BOTH directions.
+   */
+  standbyEscalateTiers?: readonly Tier[];
 }
 
 export class RoutingOllamaClient implements OllamaClient {
@@ -371,6 +382,8 @@ export class RoutingOllamaClient implements OllamaClient {
   private readonly logger?: Logger;
   private readonly standby: boolean;
   private readonly cloudHost?: string;
+  /** Standby escalation policy, as a Set for a per-call membership test. */
+  private readonly standbyEscalateTiers: ReadonlySet<Tier>;
   /** True once the standby first-egress disclosure has been emitted. */
   private egressDisclosed = false;
 
@@ -385,6 +398,7 @@ export class RoutingOllamaClient implements OllamaClient {
     this.logger = opts.logger;
     this.standby = opts.standby ?? false;
     this.cloudHost = opts.cloudHost;
+    this.standbyEscalateTiers = new Set(opts.standbyEscalateTiers ?? []);
   }
 
   generate(req: GenerateRequest, signal?: AbortSignal, tier?: Tier): Promise<GenerateResponse> {
@@ -408,6 +422,22 @@ export class RoutingOllamaClient implements OllamaClient {
   /** Reachability of the always-available local backend. Cloud auth is checked by `doctor`. */
   probe(timeoutMs?: number): Promise<{ ok: boolean; reason?: string }> {
     return this.local.probe(timeoutMs);
+  }
+
+  /**
+   * Local catalog (F-2d685731). Mirrors `probe()`: this method answers for
+   * the LOCAL rail, because that is the one every call can fall back to.
+   * The CLOUD catalog is deliberately NOT fetched here — reading it is
+   * egress, and egress from a routing method that a caller reaches for to
+   * ask "what's installed" would fire without an opt-in. The cloud catalog
+   * is read only by the explicit `doctor --cloud-check` path, which builds
+   * its own cloud client and discloses before it goes.
+   *
+   * Returns `[]` rather than throwing when the local client predates the
+   * optional method (a test double) — this is a reporting surface.
+   */
+  listModels(): Promise<string[]> {
+    return this.local.listModels?.() ?? Promise.resolve([]);
   }
 
   /**
@@ -439,12 +469,31 @@ export class RoutingOllamaClient implements OllamaClient {
 
     const directive = getRouteDirective(req);
 
-    // Per-call local pin (cloud-primary), or standby without an explicit
-    // escalation → serve local AS-IS. NOT a degradation: the caller (or the
-    // standby default) chose local, so no degrade_reason, no breaker touch,
-    // and — load-bearing for the standby zero-egress guarantee — no cloud
-    // attempt of any kind.
-    if (directive?.backend === "local" || (this.standby && directive?.backend !== "cloud")) {
+    // F-ef444c5d — STANDBY ESCALATION POLICY. In standby, a call reaches
+    // cloud when EITHER the caller escalated it per-call (`backend:'cloud'`)
+    // OR the operator declared this tier in INTERN_CLOUD_STANDBY_TIERS.
+    //
+    // Precedence is deliberate and one-way: the explicit per-call directive
+    // is evaluated FIRST and wins in both directions — `backend:'local'`
+    // pins a policy tier local (the zero-egress escape hatch a caller can
+    // always reach for), `backend:'cloud'` escalates a tier the policy does
+    // not name. Only when there is NO directive does the policy speak.
+    //
+    // Default is an empty policy, so a key alone is still zero egress. This
+    // is a DECLARED policy, never an inferred one: nothing here looks at
+    // model quality, prompt size, or a local failure to decide — that would
+    // be silent egress, which is the one thing standby exists to prevent.
+    const policyEscalates = this.standby && this.standbyEscalateTiers.has(tier);
+    const servesLocal =
+      directive?.backend === "local" ||
+      (this.standby && directive?.backend !== "cloud" && !policyEscalates);
+
+    // Per-call local pin (cloud-primary), or standby with neither an explicit
+    // escalation nor a policy hit → serve local AS-IS. NOT a degradation: the
+    // caller (or the standby default) chose local, so no degrade_reason, no
+    // breaker touch, and — load-bearing for the standby zero-egress guarantee
+    // — no cloud attempt of any kind.
+    if (servesLocal) {
       const resp = await call(this.local, req, signal, tier);
       return tag(resp, {
         backend: "local",
@@ -484,9 +533,18 @@ export class RoutingOllamaClient implements OllamaClient {
     if (this.standby && !this.egressDisclosed) {
       this.egressDisclosed = true;
       const host = this.cloudHost ?? "Ollama Cloud";
+      // The second sentence states the ACTUAL rule in force, not the
+      // per-call rule. With an escalation policy set (F-ef444c5d) the old
+      // wording — "standby sends ONLY calls that request backend:'cloud'" —
+      // would have been false at the exact moment it printed, on the one
+      // line whose entire job is to tell the truth about egress.
+      const policy =
+        this.standbyEscalateTiers.size > 0
+          ? `Standby is escalating tier(s) ${[...this.standbyEscalateTiers].join(", ")} by policy (INTERN_CLOUD_STANDBY_TIERS), plus any call that requests backend:'cloud'; every other call stays local.`
+          : `Standby mode sends ONLY calls that request backend:'cloud'; everything else stays local.`;
       // eslint-disable-next-line no-console
       console.error(
-        `ollama-intern: CLOUD ESCALATION — this call is being sent to ${host} (model ${cloudModel}, tier ${tier}). Standby mode sends ONLY calls that request backend:'cloud'; everything else stays local.`,
+        `ollama-intern: CLOUD ESCALATION — this call is being sent to ${host} (model ${cloudModel}, tier ${tier}). ${policy}`,
       );
       void this.logger?.log({
         kind: "cloud_egress",

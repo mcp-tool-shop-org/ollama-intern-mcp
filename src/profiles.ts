@@ -437,6 +437,32 @@ export interface CloudConfig {
    * per-invocation routing). False = cloud-primary (v2.7.0 behavior).
    */
   standby: boolean;
+  /**
+   * STANDBY ESCALATION POLICY (F-ef444c5d, v2.9.2) — the tiers that escalate
+   * to cloud in standby mode WITHOUT a per-call `backend:'cloud'` directive.
+   * Resolved from INTERN_CLOUD_STANDBY_TIERS; **empty by default**, which is
+   * byte-for-byte today's behavior (a key alone is still zero egress).
+   *
+   * Why it exists: standby covered exactly ONE caller-selectable tool
+   * (ollama_chat), because escalation was a per-call flag and only chat
+   * exposed it. The README's own promise — "escalate one high-stakes review
+   * to a 600B model without flipping every call to cloud" — was unreachable
+   * for code_review, research, the briefs and the packs. A DECLARED policy
+   * ("deep leaves the box, nothing else does") is the middle setting between
+   * "chat only" and the all-or-nothing OLLAMA_CLOUD_PRIMARY=1.
+   *
+   * Trust properties preserved, deliberately:
+   *   - default empty → no key-only egress, ever;
+   *   - an explicit per-call directive ALWAYS wins over the policy, in both
+   *     directions (`backend:'local'` pins a policy tier local);
+   *   - `embed` can never appear here — embeddings never route to cloud;
+   *   - the first-egress stderr disclosure + `cloud_egress` event still fire
+   *     on the first policy-escalated call, and main() names the policy in
+   *     the startup STANDBY line, so the operator is TOLD which tiers leave.
+   * What it is NOT: escalation is never inferred from model quality, prompt
+   * size, or a local failure. That would be silent egress.
+   */
+  standbyEscalateTiers: Tier[];
 }
 
 const CLOUD_DEFAULT_HOST = "https://ollama.com";
@@ -502,6 +528,74 @@ function positiveIntEnv(varName: string, raw: string | undefined, fallback: numb
 }
 
 /**
+ * The tiers a standby escalation policy may name. `embed` is deliberately
+ * absent: Ollama Cloud serves no embedding models, so naming it could only
+ * ever be a typo that silently did nothing (FT-002 — a knob that appears to
+ * work and doesn't is worse than one that refuses).
+ */
+const CLOUD_STANDBY_TIER_NAMES = ["instant", "workhorse", "deep"] as const;
+type StandbyTier = (typeof CLOUD_STANDBY_TIER_NAMES)[number];
+
+function isStandbyTier(x: string): x is StandbyTier {
+  return (CLOUD_STANDBY_TIER_NAMES as readonly string[]).includes(x);
+}
+
+/**
+ * Resolve INTERN_CLOUD_STANDBY_TIERS — the standby escalation policy
+ * (F-ef444c5d).
+ *
+ *   unset / empty / `none` → `[]`, today's behavior (zero egress on a key
+ *                            alone; only an explicit per-call
+ *                            `backend:'cloud'` reaches cloud).
+ *   `deep` / `workhorse,deep` / `instant,workhorse,deep`
+ *                          → those tiers escalate to cloud by default in
+ *                            standby, WITHOUT a per-call flag on 16 surfaces.
+ *   anything else          → CONFIG_INVALID, synchronously at startup.
+ *
+ * Fail-fast, not silent-ignore: this knob decides what leaves the machine.
+ * A typo'd `INTERN_CLOUD_STANDBY_TIERS=Deep` that quietly resolved to `[]`
+ * would leave an operator believing they had escalation when they had none
+ * — and the mirror-image typo would be worse. Same posture as
+ * resolvePrewarm / validateEnvModel (FT-002). `embed` is rejected by name
+ * with a pointed hint rather than falling into the generic unknown-tier
+ * message, because "why didn't my embeddings go to cloud" is the question
+ * it answers.
+ *
+ * Duplicates are tolerated and de-duped (`deep,deep`); ordering is
+ * irrelevant. Whitespace around commas is trimmed, case is normalized —
+ * this is pasted out of a shell profile more often than it is typed.
+ */
+function resolveStandbyEscalateTiers(env: NodeJS.ProcessEnv): Tier[] {
+  const raw = (env.INTERN_CLOUD_STANDBY_TIERS ?? "").trim().toLowerCase();
+  if (raw === "" || raw === "none") return [];
+  const parts = raw
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p !== "");
+  const out: Tier[] = [];
+  for (const p of parts) {
+    if (p === "embed") {
+      throw new InternError(
+        "CONFIG_INVALID",
+        `Invalid INTERN_CLOUD_STANDBY_TIERS value 'embed'`,
+        "Embeddings never route to Ollama Cloud (it serves no embedding models) — the embed tier is always local. Use a comma list of: instant, workhorse, deep (or 'none' for the zero-egress default).",
+        false,
+      );
+    }
+    if (!isStandbyTier(p)) {
+      throw new InternError(
+        "CONFIG_INVALID",
+        `Invalid INTERN_CLOUD_STANDBY_TIERS value '${p}'`,
+        `INTERN_CLOUD_STANDBY_TIERS is a comma list of the tiers that escalate to cloud in STANDBY mode: ${CLOUD_STANDBY_TIER_NAMES.join(", ")} (or 'none'/unset for the zero-egress default). Got '${p}'.`,
+        false,
+      );
+    }
+    if (!out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
+/**
  * Cloud num_ctx: unset/empty → default. Non-empty must be an integer in
  * [NUM_CTX_MIN, NUM_CTX_MAX] — never fall back after a typo (FT-002).
  */
@@ -531,6 +625,10 @@ function cloudNumCtxEnv(raw: string | undefined): number {
  *                               deepseek-v4-pro:cloud — thinking OK here)
  *   INTERN_CLOUD_TIMEOUT_*_MS   per-tier cloud timeouts (instant/workhorse/deep)
  *   INTERN_CLOUD_NUM_CTX        cloud context-window cap (default 32768)
+ *   INTERN_CLOUD_STANDBY_TIERS  STANDBY escalation policy — comma list of
+ *                               instant|workhorse|deep whose calls escalate to
+ *                               cloud without a per-call directive. Default
+ *                               empty = zero egress on a key alone.
  */
 export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConfig | null {
   const primary = isCloudEnabled(env);
@@ -567,6 +665,12 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
     embed: CLOUD_DEFAULT_TIMEOUTS.embed,
   };
 
+  // Resolved unconditionally so a typo fails fast even under cloud-primary
+  // (where the policy is a no-op — every tier already serves from cloud).
+  // main() prints a one-line no-op notice in that case rather than letting
+  // the operator believe they tuned something.
+  const standbyEscalateTiers = resolveStandbyEscalateTiers(env);
+
   return {
     host: normalizeCloudHost(env.OLLAMA_CLOUD_HOST),
     apiKey,
@@ -574,7 +678,27 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
     timeouts,
     numCtx,
     standby: !primary,
+    standbyEscalateTiers,
   };
+}
+
+/**
+ * True when the STANDBY escalation policy sends this tier to cloud on its
+ * own (F-ef444c5d). The single predicate `routing.route()` and
+ * `cloudMayServe` share, so "which tiers leave the box in standby" can
+ * never drift between the routing decision and the budget that has to
+ * cover it.
+ *
+ * Returns false for anything but a standby config — under cloud-primary
+ * every tier already serves from cloud and the policy is a no-op; with no
+ * cloud config there is nothing to escalate to.
+ */
+export function standbyPolicyEscalates(
+  cloud: CloudConfig | null | undefined,
+  tier: Tier | undefined,
+): boolean {
+  if (!cloud || !cloud.standby || tier === undefined) return false;
+  return cloud.standbyEscalateTiers.includes(tier);
 }
 
 /**
@@ -584,17 +708,40 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
  *   - no cloud config          → false (local-only)
  *   - per-call backend:'local' → false (caller pinned this call local)
  *   - cloud-primary            → true
- *   - standby                  → only when the call explicitly requested
- *                                backend:'cloud'
+ *   - standby                  → when the call explicitly requested
+ *                                backend:'cloud', OR the tier is named by the
+ *                                INTERN_CLOUD_STANDBY_TIERS escalation policy
+ *                                (F-ef444c5d; policy is empty by default)
  * Callers that cannot carry a per-call directive (batch, corpus-search
- * explain) call this without `backend` — under standby they stay local,
- * and their tier budgets must NOT be inflated by cloud timeouts.
+ * explain) call this without `backend` — under standby with no policy they
+ * stay local, and their tier budgets must NOT be inflated by cloud timeouts.
+ *
+ * WHY `tier` MATTERS (load-bearing, read before changing a call site):
+ * this predicate does not just describe routing, it sizes the OUTER tier
+ * budget that has to cover cloud-attempt + local-fallback inside one
+ * generate(). If a call escalates via the policy but its budget was sized
+ * local-only, the outer signal aborts mid-cloud-attempt and the runner
+ * degrades the tier instead — the escalation silently stops working.
+ *
+ * So the tier-less overload is deliberately CONSERVATIVE: under standby
+ * with a NON-EMPTY policy and no `tier` to check, it returns true and the
+ * caller sums the cloud budget for every tier. That over-sizes the ceiling
+ * on tiers the policy does not name (a hung LOCAL call takes longer to hit
+ * its tier timeout) — a mild, opt-in-only cost, chosen over a feature that
+ * half-works. Pass `tier` and the answer is exact.
+ *
+ * Call sites that should pass `tier` (tools domain): runner.ts (input.tier),
+ * chat.ts, batch.ts (per-item tier), corpusSearch.ts (the explain tier).
  */
 export function cloudMayServe(
   cloud: CloudConfig | null | undefined,
   backend?: "cloud" | "local",
+  tier?: Tier,
 ): boolean {
   if (!cloud) return false;
   if (backend === "local") return false;
-  return !cloud.standby || backend === "cloud";
+  if (!cloud.standby || backend === "cloud") return true;
+  // Standby, no explicit escalation → the declared policy decides.
+  if (cloud.standbyEscalateTiers.length === 0) return false;
+  return tier === undefined || cloud.standbyEscalateTiers.includes(tier);
 }

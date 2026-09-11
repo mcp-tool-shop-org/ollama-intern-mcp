@@ -281,6 +281,22 @@ export interface PsResponse {
   models: PsModel[];
 }
 
+/**
+ * One entry of `/api/tags` — the model CATALOG. On a local host this is the
+ * pulled-models list; on the cloud host it is the list of cloud model ids
+ * currently served. Only `name`/`model` are load-bearing here (the endpoint
+ * also returns size/digest/details, which we deliberately do not model:
+ * nothing downstream reads them and a narrower type is a smaller lie).
+ */
+export interface TagsModel {
+  name?: string;
+  model?: string;
+}
+
+export interface TagsResponse {
+  models?: TagsModel[];
+}
+
 export interface OllamaClient {
   /**
    * `tier` (added Stage C / F-004) is OPTIONAL context that lets the HTTP
@@ -296,6 +312,27 @@ export interface OllamaClient {
   residency(model: string): Promise<Residency | null>;
   /** Reachability probe — no retry, short timeout. Used at startup. */
   probe(timeoutMs?: number): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * The backend's model CATALOG (`/api/tags`) — pulled models on a local
+   * host, served cloud ids on the cloud host (F-2d685731).
+   *
+   * `probe()` for kind:'cloud' already GETs this exact endpoint and throws
+   * the body away, so nothing ever checked INTERN_CLOUD_MODEL /
+   * INTERN_CLOUD_DEEP_MODEL (or a verify_claims juror id) against the list
+   * of ids that actually exist. The result was that a retired or typo'd
+   * cloud id — and the repo's own comments record that cloud ids rotate
+   * server-side (the 2026-06-09 minimax-m3 incident) — was discovered only
+   * by paying for a call that degraded to the small local model.
+   *
+   * OPTIONAL on the interface, on purpose: ~25 test doubles and the corpus
+   * embed mocks implement `OllamaClient` directly, and a required method
+   * would break every one of them for a capability none of them exercise.
+   * Callers duck-type it (`client.listModels?.()`) and treat absence the
+   * same as a failed fetch — REPORT, never enforce. A catalog that can't be
+   * read must never block startup, flip `healthy`, or refuse a call the
+   * backend would have served.
+   */
+  listModels?(): Promise<string[]>;
 }
 
 /**
@@ -742,6 +779,29 @@ export class HttpOllamaClient implements OllamaClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Model catalog via `/api/tags` (F-2d685731). Same endpoint the cloud
+   * `probe()` already hits — this one keeps the body.
+   *
+   * Returns the de-duplicated ids exactly as the backend spells them
+   * (`hermes3:8b`, `qwen3-coder-next:cloud`). Entries carry `name` and
+   * `model`; both are collected because the cloud host and older local
+   * Ollama builds have not always populated the same one, and a catalog
+   * check that silently misses half the list is worse than no check.
+   *
+   * Throws on an unreachable/HTTP-error host (via `get`) — every caller is
+   * a REPORTING path and must catch, per the interface contract.
+   */
+  async listModels(): Promise<string[]> {
+    const tags = await this.get<TagsResponse>("/api/tags");
+    const out = new Set<string>();
+    for (const m of tags.models ?? []) {
+      if (typeof m?.name === "string" && m.name !== "") out.add(m.name);
+      if (typeof m?.model === "string" && m.model !== "") out.add(m.model);
+    }
+    return [...out];
   }
 
   private async get<T>(path: string): Promise<T> {
