@@ -8,6 +8,13 @@
 # billable minutes exceed wall time — many short jobs cost more than one long
 # one. This number is measured, never estimated; re-measure after any change:
 #   gh api repos/mcp-tool-shop-org/ollama-intern-mcp/actions/runs/<id>/jobs
+#
+# STALE as of 2026-09-11: the tarball install-and-run smoke (F-c32cff48) was
+# added to the EXISTING lockfile-sync job — no new job, no new workflow, no
+# second suite run. Measured ~40s locally (pack 5s / install 15s / four CLI
+# runs 5s). Billing rounds UP per job, so the realistic delta is 0-1 billable
+# minutes on one ubuntu job. Re-measure with the command above and replace
+# this paragraph with the real figure.
 # ---------------------------------------------------------------------------
 name: CI
 
@@ -27,6 +34,7 @@ on:
       - "site/src/content/docs/handbook/tools/**"
       - ".github/workflows/**"
       - ".npmignore"
+      - "hermes.config.example.yaml"
       - "Dockerfile"
       - ".dockerignore"
   pull_request:
@@ -43,6 +51,7 @@ on:
       - "site/src/content/docs/handbook/tools/**"
       - ".github/workflows/**"
       - ".npmignore"
+      - "hermes.config.example.yaml"
       - "Dockerfile"
       - ".dockerignore"
   workflow_dispatch:
@@ -201,7 +210,7 @@ jobs:
     # `npm ci` those release artifacts use, so a desync turns CI red BEFORE a tag
     # exists. --ignore-scripts keeps it fast (the verify matrix covers build/test);
     # npm ci checks package.json/lockfile sync before it would run any script.
-    name: Lockfile in sync (npm ci)
+    name: Lockfile in sync + tarball smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -223,6 +232,150 @@ jobs:
         run: npm run build
       - name: Tool docs match a fresh docgen (schema change without regen fails)
         run: npm run gen:tool-docs:check
+
+      # ── Tarball install-and-run smoke (F-c32cff48) ──────────────────────────
+      # Nothing in CI installed the published artifact and ran the binary.
+      # tests/pack.test.ts contract-tests the tarball's FILE LIST (required
+      # paths present, forbidden prefixes absent, size envelope) and never
+      # executes it, so a tarball that is internally consistent but missing a
+      # file the CODE reaches for ships green. It did: `files` omitted
+      # hermes.config.example.yaml while src/index.ts resolves
+      # <bin-dir>/../hermes.config.example.yaml for the `init` verb advertised
+      # in --help, so `init` answered every npm install with its own
+      # "This is a packaging bug -- please report" error. Measured 2026-09-11:
+      # this smoke goes RED on the pre-fix tarball (init exit 1) and GREEN on
+      # the fixed one (init exit 0, 1840 bytes written).
+      #
+      # It rides HERE, in lockfile-sync, on purpose:
+      #   * no new workflow (the repo is at 5 files against a cap of 2 for
+      #     push-triggered ones) and no new job;
+      #   * this job already checks out, `npm ci`s against the COMMITTED
+      #     lockfile and builds, which is exactly the state a tarball is packed
+      #     from -- so the smoke is ~40s of marginal cost, not a new leg;
+      #   * it never invokes vitest. The four full-suite runs stay in `verify`.
+      #
+      # Zero egress beyond the npm registry: no OLLAMA_API_KEY (asserted
+      # below), and OLLAMA_HOST is pointed at a port nothing listens on, so
+      # every Ollama probe refuses instantly. `doctor` exits 0 when unhealthy
+      # by design -- reporting is its job and --fail-unhealthy is the gate --
+      # so the assertion is "the envelope parses and carries its keys", never
+      # "healthy".
+      - name: Pack the tarball a user would install
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --ignore-scripts: `prepack` is `clean && build`, which would wipe
+          # the dist/ the previous two steps just produced and verified. The
+          # tarball listing does not require prepack to run; tests/pack.test.ts
+          # skips it for the same reason.
+          TGZ="$(npm pack --ignore-scripts --silent | tail -n 1)"
+          # Guard the --silent contract: if a future npm stops printing the
+          # filename on stdout, fail here rather than mv-ing a bogus name.
+          if [ -z "$TGZ" ] || [ ! -f "$TGZ" ]; then
+            echo "::error::npm pack --silent did not name a tarball (got: '$TGZ')"
+            exit 1
+          fi
+          mv "$TGZ" "$RUNNER_TEMP/$TGZ"
+          echo "tarball=$RUNNER_TEMP/$TGZ" >> "$GITHUB_OUTPUT"
+          echo "packed $TGZ into $RUNNER_TEMP"
+
+      - name: Install the tarball and run the binary (no Ollama, no API key)
+        shell: bash
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          # Nothing listens on port 1, so every probe ECONNREFUSEs immediately.
+          # Explicit rather than relying on "the runner happens to have no
+          # Ollama" -- a future runner image with something on 11434 would
+          # otherwise quietly turn this into a different test.
+          OLLAMA_HOST: "http://127.0.0.1:1"
+        run: |
+          set -euo pipefail
+
+          # The whole point of this gate is the no-key path. A secret mapped
+          # into this job later would silently turn it into a cloud test.
+          if [ -n "${OLLAMA_API_KEY:-}" ]; then
+            echo "::error::OLLAMA_API_KEY is set in this job — the tarball smoke must prove the zero-egress, no-key path. Put cloud assertions in cloud-smoke instead."
+            exit 1
+          fi
+
+          SMOKE="$RUNNER_TEMP/tarball-smoke"
+          rm -rf "$SMOKE"
+          mkdir -p "$SMOKE/install" "$SMOKE/cwd"
+          # Keep doctor's log lookup out of the runner's home dir.
+          export INTERN_LOG_PATH="$SMOKE/log.ndjson"
+
+          # Install what `npm i ollama-intern-mcp` installs: the packed tarball
+          # plus its runtime deps, resolved fresh from the registry.
+          cd "$SMOKE/install"
+          npm init -y >/dev/null 2>&1
+          npm i --no-audit --no-fund --loglevel=error "$TARBALL"
+
+          # Through the bin shim, not `node dist/index.js` — the shim is what
+          # proves package.json `bin` mapped and dist/index.js kept its shebang.
+          BIN="$SMOKE/install/node_modules/.bin/ollama-intern-mcp"
+          if [ ! -x "$BIN" ]; then
+            echo "::error::bin shim missing or not executable at $BIN — package.json \"bin\" did not install."
+            exit 1
+          fi
+
+          # 1. --version: it starts, and it agrees with the manifest it shipped from.
+          WANT="$(node -p "require('$GITHUB_WORKSPACE/package.json').version")"
+          GOT="$("$BIN" --version)"
+          echo "--version: $GOT (manifest says $WANT)"
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::installed binary reports $GOT but package.json says $WANT"
+            exit 1
+          fi
+
+          # 2. --help: still advertises the verbs it advertises. `init` is
+          #    listed here, which is what makes step 4 a contract and not a
+          #    nice-to-have.
+          "$BIN" --help > "$SMOKE/help.txt"
+          for verb in init doctor; do
+            if ! grep -qE "^[[:space:]]+$verb[[:space:]]" "$SMOKE/help.txt"; then
+              echo "::error::--help no longer lists the $verb verb"
+              exit 1
+            fi
+          done
+          echo "--help: lists init + doctor"
+
+          # 3. doctor --json: exit 0 and a parseable envelope. NOT healthy —
+          #    there is no Ollama here, and this deliberately does not pass
+          #    --fail-unhealthy.
+          "$BIN" doctor --json > "$SMOKE/doctor.json"
+          node -e '
+            const fs = require("node:fs");
+            const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            for (const k of ["healthy", "profile", "ollama", "models", "paths", "warnings"]) {
+              if (!(k in d)) {
+                console.error("::error::doctor --json is missing the \"" + k + "\" key");
+                process.exit(1);
+              }
+            }
+            if (d.ollama.reachable !== false) {
+              console.error("::error::doctor reports a reachable Ollama on a runner that has none — OLLAMA_HOST did not take effect, so this run proved nothing about the offline path");
+              process.exit(1);
+            }
+            console.log("doctor --json: ok (healthy=" + d.healthy + ", reachable=" + d.ollama.reachable + ", warnings=" + d.warnings.length + ")");
+          ' "$SMOKE/doctor.json"
+
+          # 4. init: the assertion this gate exists for. It copies
+          #    hermes.config.example.yaml out of the installed package root, so
+          #    it goes red the moment that file stops shipping — the exact
+          #    defect a file-list test cannot see.
+          cd "$SMOKE/cwd"
+          if ! "$BIN" init; then
+            echo "::error::\`init\` failed from a real npm install. If it printed \"example config not found\", then hermes.config.example.yaml is missing from package.json \`files\` — that is exactly the defect this gate exists for (F-c32cff48); a file-list test cannot see it."
+            exit 1
+          fi
+          if [ ! -s hermes.config.yaml ]; then
+            echo "::error::init exited 0 but wrote no hermes.config.yaml"
+            exit 1
+          fi
+          echo "init: wrote $(wc -c < hermes.config.yaml) bytes of hermes.config.yaml"
+
+          echo "tarball smoke: OK — the published artifact installs and runs."
 
   docker-build:
     # H8: the release docker job now `needs: npm`, so a broken Dockerfile would
