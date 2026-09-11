@@ -13,9 +13,10 @@
 
 import { z } from "zod";
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readLogSuffix } from "./logRead.js";
+import { LOG_STATS_MAX_BYTES, readLogSuffix } from "./logRead.js";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
@@ -44,6 +45,10 @@ export interface DoctorResult {
     allowed_roots: string[];
     artifact_root: string;
     log_path: string;
+    /** Live log size in bytes. Absent when the file is missing. */
+    log_bytes?: number;
+    /** True when log_bytes exceeds LOG_STATS_MAX_BYTES (log_stats will refuse). */
+    log_over_stats_cap?: boolean;
   };
   /**
    * Cloud-primary status. Present only when cloud is opted into
@@ -284,6 +289,12 @@ export async function handleDoctor(
 
   const logPath = defaultLogPath();
   const recent_errors = await readRecentErrors(logPath);
+  let logBytes: number | undefined;
+  try {
+    logBytes = (await stat(logPath)).size;
+  } catch {
+    logBytes = undefined;
+  }
 
   const result: DoctorResult = {
     ollama: {
@@ -311,6 +322,12 @@ export async function handleDoctor(
       allowed_roots: resolveAllowedRoots(),
       artifact_root: defaultArtifactRoot(),
       log_path: logPath,
+      ...(logBytes !== undefined
+        ? {
+            log_bytes: logBytes,
+            log_over_stats_cap: logBytes > LOG_STATS_MAX_BYTES,
+          }
+        : {}),
     },
     ...(cloudStatus ? { cloud: cloudStatus } : {}),
     recent_errors,

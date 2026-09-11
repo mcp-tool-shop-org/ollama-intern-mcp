@@ -72,7 +72,7 @@ export async function* iterateLogLines(logPath: string): AsyncGenerator<string> 
     throw new InternError(
       "LOG_READ_FAILED",
       `Log at ${logPath} is ${size} bytes, exceeding the ${LOG_STATS_MAX_BYTES}-byte stats cap.`,
-      "Rotate or truncate ~/.ollama-intern/log.ndjson (or INTERN_LOG_PATH), then retry. log_stats streams line-by-line but refuses unbounded files.",
+      `ollama_doctor.paths.log_bytes reports the size. Rename or truncate ${logPath} (the writer also rotates log.ndjson → log.ndjson.1 once it crosses this cap on the next append). Then retry log_stats. log_tail still returns a bounded suffix without this cap.`,
       false,
     );
   }
