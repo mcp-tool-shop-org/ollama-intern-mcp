@@ -14,7 +14,7 @@ description: "FLAGSHIP compound job."
 | `diff_text` | string | no | — | Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers into numbered evidence items. |
 | `source_paths` | string[] | no | — | Changed files to read server-side. Use alongside diff_text when the full file context matters, or alone when no diff is available. Optional — diff-driven calls work without it; runtime requires at least one of diff_text or source_paths. |
 | `corpus` | string | no | — | Optional: named corpus (e.g. 'handbook', 'doctrine') for architecture and release-process context. |
-| `corpus_query` | string | no | — | Query used to pull chunks from the corpus. Defaults to a digest of the diff/path heads. |
+| `corpus_query` | string | no | — | Query used to pull chunks from the corpus. Defaults to a digest of the diff/path heads. (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.) |
 | `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
 | `max_breakpoints` | integer | no | — | Cap on likely_breakpoints (default 6). |
 | `max_validation_checks` | integer | no | — | Cap on validation_checks (default 8). |
@@ -48,9 +48,10 @@ The JSON Schema below is generated from the same zod schema the server validates
       "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "corpus_query": {
-      "description": "Query used to pull chunks from the corpus. Defaults to a digest of the diff/path heads.",
+      "description": "Query used to pull chunks from the corpus. Defaults to a digest of the diff/path heads. (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 200
     },
     "per_file_max_chars": {
       "description": "Chars per source file (default 20k).",

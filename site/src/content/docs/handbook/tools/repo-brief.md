@@ -13,7 +13,7 @@ description: "FLAGSHIP compound job."
 |---|---|---|---|---|
 | `source_paths` | string[] | yes | — | Files the brief should read server-side. Typically README, key src/ entries, package/manifest files, docs. Claude does not preload them — that's the context-saving shape. |
 | `corpus` | string | no | — | Optional: named corpus (e.g. 'handbook', 'doctrine') for cross-cutting context beyond the repo's own files. |
-| `corpus_query` | string | no | — | Query used to pull chunks from the corpus. Defaults to 'repo architecture and surfaces' when unspecified. |
+| `corpus_query` | string | no | — | Query used to pull chunks from the corpus. Defaults to 'repo architecture and surfaces' when unspecified. (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.) |
 | `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
 | `max_key_surfaces` | integer | no | — | Cap on key_surfaces (default 8). |
 | `max_risk_areas` | integer | no | — | Cap on risk_areas (default 5). |
@@ -44,9 +44,10 @@ The JSON Schema below is generated from the same zod schema the server validates
       "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "corpus_query": {
-      "description": "Query used to pull chunks from the corpus. Defaults to 'repo architecture and surfaces' when unspecified.",
+      "description": "Query used to pull chunks from the corpus. Defaults to 'repo architecture and surfaces' when unspecified. (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 200
     },
     "per_file_max_chars": {
       "description": "Chars per source file (default 20k).",

@@ -14,13 +14,13 @@ description: "Runs the full incident job end-to-end: triage_logs → corpus_sear
 | `log_text` | string | no | — | Raw log blob. Combine with source_paths and/or corpus for richer coverage. |
 | `source_paths` | any | no | — | File paths read server-side (related source, config, incident notes). Optional — log-driven calls work without it; runtime requires at least one of log_text or source_paths. |
 | `corpus` | string | no | — | Optional named corpus for background context (e.g. 'doctrine', 'memory'). |
-| `corpus_query` | string | no | — | Corpus query (defaults to the log head). |
+| `corpus_query` | string | no | — | Corpus query (defaults to the log head). (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.) |
 | `title` | string | no | — | Short human title — used in the artifact header and filename slug. |
 | `artifact_dir` | string | no | — | Directory to write the incident.md + incident.json artifact pair. Defaults to ~/.ollama-intern/artifacts/incident/. |
 | `allowed_roots` | string[] | no | — | Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path. |
 | `confirm_write` | boolean | no | — | Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft. |
-| `per_file_max_chars` | integer | no | — |  |
-| `max_hypotheses` | integer | no | — |  |
+| `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
+| `max_hypotheses` | integer | no | — | Cap on root-cause hypotheses in the output (default 5). |
 
 ## Full input schema
 
@@ -45,9 +45,10 @@ The JSON Schema below is generated from the same zod schema the server validates
       "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "corpus_query": {
-      "description": "Corpus query (defaults to the log head).",
+      "description": "Corpus query (defaults to the log head). (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 200
     },
     "title": {
       "description": "Short human title — used in the artifact header and filename slug.",
@@ -73,11 +74,13 @@ The JSON Schema below is generated from the same zod schema the server validates
       "type": "boolean"
     },
     "per_file_max_chars": {
+      "description": "Chars per source file (default 20k).",
       "type": "integer",
       "minimum": 1000,
       "maximum": 200000
     },
     "max_hypotheses": {
+      "description": "Cap on root-cause hypotheses in the output (default 5).",
       "type": "integer",
       "minimum": 1,
       "maximum": 10

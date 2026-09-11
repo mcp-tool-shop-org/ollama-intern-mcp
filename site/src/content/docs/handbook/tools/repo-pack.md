@@ -13,15 +13,15 @@ description: "Runs the full repo ONBOARDING job: corpus_search (if corpus given)
 |---|---|---|---|---|
 | `source_paths` | string[] | yes | — | Files the onboarding brief should read (README, key src entries, package/manifest, docs). Required — these are the repo's concrete source-of-truth. |
 | `corpus` | string | no | — | Optional named corpus (e.g. 'handbook', 'doctrine') for cross-cutting architecture context. When given, queried as the pack's main working surface alongside source_paths. |
-| `corpus_query` | string | no | — | Corpus query (defaults to 'repo architecture and surfaces'). |
+| `corpus_query` | string | no | — | Corpus query (defaults to 'repo architecture and surfaces'). (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.) |
 | `title` | string | no | — | Short human title — used in the artifact header and filename slug. Defaults to the repo thesis head. |
 | `artifact_dir` | string | no | — | Directory to write the repo.md + repo.json artifact pair. Defaults to ~/.ollama-intern/artifacts/repo/. |
 | `allowed_roots` | string[] | no | — | Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path. |
 | `confirm_write` | boolean | no | — | Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft. |
-| `per_file_max_chars` | integer | no | — |  |
-| `max_key_surfaces` | integer | no | — |  |
-| `max_risk_areas` | integer | no | — |  |
-| `max_read_next` | integer | no | — |  |
+| `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
+| `max_key_surfaces` | integer | no | — | Cap on key_surfaces (default 8). |
+| `max_risk_areas` | integer | no | — | Cap on risk_areas (default 5). |
+| `max_read_next` | integer | no | — | Cap on read_next (default 8). |
 
 ## Full input schema
 
@@ -47,9 +47,10 @@ The JSON Schema below is generated from the same zod schema the server validates
       "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "corpus_query": {
-      "description": "Corpus query (defaults to 'repo architecture and surfaces').",
+      "description": "Corpus query (defaults to 'repo architecture and surfaces'). (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 200
     },
     "title": {
       "description": "Short human title — used in the artifact header and filename slug. Defaults to the repo thesis head.",
@@ -75,21 +76,25 @@ The JSON Schema below is generated from the same zod schema the server validates
       "type": "boolean"
     },
     "per_file_max_chars": {
+      "description": "Chars per source file (default 20k).",
       "type": "integer",
       "minimum": 1000,
       "maximum": 200000
     },
     "max_key_surfaces": {
+      "description": "Cap on key_surfaces (default 8).",
       "type": "integer",
       "minimum": 1,
       "maximum": 20
     },
     "max_risk_areas": {
+      "description": "Cap on risk_areas (default 5).",
       "type": "integer",
       "minimum": 1,
       "maximum": 10
     },
     "max_read_next": {
+      "description": "Cap on read_next (default 8).",
       "type": "integer",
       "minimum": 1,
       "maximum": 15

@@ -11,7 +11,7 @@ description: "Answer a question grounded in specific files."
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `question` | string | yes | — | The question to answer. |
+| `question` | string | yes | — | The question to answer (max 1000 chars — it is interpolated verbatim into the prompt, so newlines and code fences are stripped). |
 | `source_paths` | any | yes | — | Files the answer must be grounded in. Nothing outside this list is allowed as a source. |
 | `max_words` | integer | no | — | Target answer length in words (default 300). |
 | `per_file_max_chars` | integer | no | — | Chars to read per file (default 40k). |
@@ -29,7 +29,8 @@ The JSON Schema below is generated from the same zod schema the server validates
     "question": {
       "type": "string",
       "minLength": 1,
-      "description": "The question to answer."
+      "maxLength": 1000,
+      "description": "The question to answer (max 1000 chars — it is interpolated verbatim into the prompt, so newlines and code fences are stripped)."
     },
     "source_paths": {
       "description": "Files the answer must be grounded in. Nothing outside this list is allowed as a source."

@@ -14,7 +14,7 @@ description: "FLAGSHIP compound job."
 | `log_text` | string | no | — | Raw log blob to reason over. Combine with source_paths and/or corpus for a richer brief. |
 | `source_paths` | string[] | no | — | File paths read server-side (Claude does not preload). Use for config files, related source files, incident notes. Optional — log-driven calls work without it; runtime requires at least one of log_text or source_paths. |
 | `corpus` | string | no | — | Optional: named corpus (e.g. 'doctrine', 'memory') to pull background context from. Requires corpus_query when the log signal is too short to derive one. |
-| `corpus_query` | string | no | — | Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided. |
+| `corpus_query` | string | no | — | Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided. (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.) |
 | `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
 | `max_hypotheses` | integer | no | — | Cap on root-cause hypotheses in the output (default 5). |
 | `corpus_min_evidence_score` | number | no | — | Minimum retrieval score (0–1) for a corpus chunk to enter evidence. Hits below the floor are dropped before the model sees them, with a counted note in coverage_notes. Use this when corpus retrieval may surface off-topic chunks. Absent → no relevance filter. |
@@ -47,9 +47,10 @@ The JSON Schema below is generated from the same zod schema the server validates
       "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "corpus_query": {
-      "description": "Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided.",
+      "description": "Query used to pull chunks from the corpus. Defaults to a digest of the log head if not provided. (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 200
     },
     "per_file_max_chars": {
       "description": "Chars per source file (default 20k).",

@@ -102,7 +102,13 @@ import { verifyClaimsSchema, handleVerifyClaims } from "./tools/verifyClaims.js"
  * undocumented kind is undiscoverable and a guessed one returns an empty
  * result rather than an error.
  */
-const LOG_FILTER_KIND_ROSTER = LOG_EVENT_KINDS.map((k) => `'${k}'`).join(" | ");
+/**
+ * The filter_kind roster as it must appear in ollama_log_tail's description.
+ * The description is a plain string literal on purpose — scripts/gen-tool-docs.mjs
+ * parses it statically and cannot evaluate a template literal — so the
+ * no-drift guarantee lives in tests/logTailRoster.test.ts instead of in codegen.
+ */
+export const LOG_FILTER_KIND_ROSTER = LOG_EVENT_KINDS.map((k) => `'${k}'`).join(" | ");
 
 export function createServer(ctx: RunContext): McpServer {
   const server = new McpServer({ name: "ollama-intern-mcp", version: VERSION });
@@ -347,7 +353,7 @@ export function createServer(ctx: RunContext): McpServer {
   // Corpus health — dedicated superset of corpus_list with drift + staleness surfaced.
   server.tool(
     "ollama_corpus_health",
-    "CORPUS. Health summary for indexed corpora. No Ollama call. Superset of ollama_corpus_list: staleness_days, embed_model_resolved, within-refresh :latest drift, failed_paths_count, write_complete, and per-corpus warnings[]. Optional `name` narrows to a single corpus (typos fail loud). Optional `detailed: true` adds a per-file list with mtime + stale_days. Use this as your go-to 'is anything broken?' check before search or refresh.",
+    "CORPUS. Health summary for indexed corpora. No Ollama call. A true superset of ollama_corpus_list (every list key, same spelling, compiler-enforced) plus: staleness_days, embed_model_resolved, within-refresh :latest drift, failed_path_count, write_complete, and per-corpus warnings[]. Optional `name` narrows to a single corpus (typos fail loud). Optional `detailed: true` adds a per-file list with mtime + stale_days. Use this as your go-to 'is anything broken?' check before search or refresh.",
     corpusHealthSchema.shape,
     { title: "Corpus health", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleCorpusHealth(args, ctx), "ollama_corpus_health", extra),
@@ -459,7 +465,7 @@ export function createServer(ctx: RunContext): McpServer {
   // OPS — ollama_artifact_prune (dry-run-by-default cleanup of pack artifacts)
   server.tool(
     "ollama_artifact_prune",
-    "OPS. Clean up ~/.ollama-intern/artifacts/. No model call. DRY-RUN BY DEFAULT — pass `dry_run: false` to actually delete. Filter by `older_than_days` (file mtime) and/or `pack_type` ('incident' | 'change' | 'repo' | 'all'). Deletes matched files in .md + .json pairs. Returns `{matched:[{pack, slug, age_days, bytes}], total_matched, total_bytes, dry_run, deleted, artifact_root}`. Use this when disk is creeping or the artifact dir has stale handoffs you don't need.",
+    "OPS. Clean up ~/.ollama-intern/artifacts/. No model call. DRY-RUN BY DEFAULT — pass `dry_run: false` to actually delete. Filter by `older_than_days` (file mtime) and/or `pack` ('incident_pack' | 'repo_pack' | 'change_pack' | 'all') — the same spelling artifact_list / artifact_read / artifact_diff use, so an identity round-trips. The pre-v2.9.2 `pack_type` ('incident' | 'change' | 'repo') is still accepted so an existing filter is never silently widened to every pack. Deletes matched files in .md + .json pairs. Returns `{matched:[{pack, slug, age_days, bytes}], total_matched, total_bytes, dry_run, deleted, artifact_root}`. Use this when disk is creeping or the artifact dir has stale handoffs you don't need.",
     artifactPruneSchema.shape,
     { title: "Prune artifacts (deletes)", readOnlyHint: false, destructiveHint: true },
     (args, extra) => wrap(() => handleArtifactPrune(args, ctx), "ollama_artifact_prune", extra),
@@ -468,7 +474,7 @@ export function createServer(ctx: RunContext): McpServer {
   // OPS — ollama_log_tail (structured NDJSON log tail)
   server.tool(
     "ollama_log_tail",
-    `OPS. Structured tail of the NDJSON observability log at ~/.ollama-intern/log.ndjson (override via INTERN_LOG_PATH). No model call. Optional filters: \`limit\` (default 50, max 500), \`filter_kind\` (the COMPLETE roster, matched by EXACT equality — ${LOG_FILTER_KIND_ROSTER} — so mind the colon forms, and note that 'cloud_egress' is the data-left-the-machine event), \`filter_tool\`, \`since\` (ISO-8601). Truncated final lines are skipped silently. Missing log file is a soft-empty case, not an error. Returns \`{events, total_returned, log_path, log_present}\`. Use this to debug why a call was slow / what timed out / what the last failures were.`,
+    "OPS. Structured tail of the NDJSON observability log at ~/.ollama-intern/log.ndjson (override via INTERN_LOG_PATH). No model call. Optional filters: `limit` (default 50, max 500), `filter_kind` (the COMPLETE roster, matched by EXACT equality — 'call' | 'timeout' | 'fallback' | 'backend_fallback' | 'cloud_egress' | 'guardrail' | 'prewarm' | 'prewarm:in_progress_request' | 'semaphore:wait' | 'pack_step' — so mind the colon forms, and note that 'cloud_egress' is the data-left-the-machine event), `filter_tool`, `since` (ISO-8601). Truncated final lines are skipped silently. Missing log file is a soft-empty case, not an error. Returns `{events, total_returned, log_path, log_present}`. Use this to debug why a call was slow / what timed out / what the last failures were.",
     logTailSchema.shape,
     { title: "Tail NDJSON log", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleLogTail(args, ctx), "ollama_log_tail", extra),
@@ -477,7 +483,7 @@ export function createServer(ctx: RunContext): McpServer {
   // OPS — ollama_log_stats (aggregate the NDJSON receipts — measured economics)
   server.tool(
     "ollama_log_stats",
-    "OPS. Aggregate the NDJSON receipts into measured economics — no model call, no egress, instant. Optional `since` (ISO-8601) bounds the window ('tokens this week'). Returns `{totals:{calls, tokens_in, tokens_out}, by_tool:{calls, tokens, cloud_calls, degraded_calls, p50/p95 elapsed_ms}, by_tier, backend:{cloud_calls, local_calls, degraded_calls, unrouted_calls, backend_fallback_events, fallback_rate}, tier_events:{timeouts, fallbacks}, elapsed_ms:{p50, p95}, events_scanned, log_path, log_present}`. fallback_rate = degraded/(cloud-intended) — the early-warning that cloud is degrading; null when nothing intended cloud. Answers 'cloud vs local split', 'fallback rate', 'p95 per tool' without jq. Empty/absent log → zeros, never an error. Use ollama_log_tail for the raw events behind any number here.",
+    "OPS. Aggregate the NDJSON receipts into measured economics — no model call, no egress, instant. Optional `since` (ISO-8601) bounds the window ('tokens this week'). Returns `{totals:{calls, tokens_in, tokens_out}, by_tool:{calls, tokens, cloud_calls, degraded_calls, elapsed_ms:{p50, p95}}, by_tier, backend:{cloud_calls, local_calls, degraded_calls, unrouted_calls, backend_fallback_events, fallback_rate}, tier_events:{timeouts, fallbacks}, elapsed_ms:{p50, p95}, events_scanned, log_path, log_present}`. fallback_rate = degraded/(cloud-intended) — the early-warning that cloud is degrading; null when nothing intended cloud. Answers 'cloud vs local split', 'fallback rate', 'p95 per tool' without jq. Empty/absent log → zeros, never an error. Use ollama_log_tail for the raw events behind any number here.",
     logStatsSchema.shape,
     { title: "Log stats (measured economics)", readOnlyHint: true, destructiveHint: false },
     (args, extra) => wrap(() => handleLogStats(args, ctx), "ollama_log_stats", extra),
@@ -535,7 +541,7 @@ export function createServer(ctx: RunContext): McpServer {
   // REVIEW — ollama_code_review (Workhorse default — structured PR review findings)
   server.tool(
     "ollama_code_review",
-    "REVIEW. Given a unified diff (and optional source_paths for context), returns STRUCTURED FINDINGS: `{findings:[{severity, category, file, line?, symbol?, description, recommendation}], summary, diff_size_bytes}`. Severity enum critical|high|medium|low; category enum bug|security|performance|style|maintainability. Distinct from ollama_multi_file_refactor_propose (proposes refactors) — code_review flags issues to fix on the diff as-is. Optional `severity_floor` filters out below-floor findings; `max_findings` caps result. Diff capped at 2MB; source_paths max 50. Tier defaults to workhorse; pass `tier:'deep'` for high-stakes review. coerceReview drops malformed entries instead of throwing.",
+    "REVIEW. Given a unified diff (and optional source_paths for context), returns STRUCTURED FINDINGS: `{findings:[{severity, category, file, line?, symbol?, description, recommendation}], summary, diff_size_bytes, total_findings, max_findings_hit}`. `total_findings` counts what survived the severity floor BEFORE `max_findings` trimmed, and `max_findings_hit` says the list was cut — so a capped review never reads as a complete one. Severity enum critical|high|medium|low; category enum bug|security|performance|style|maintainability. Distinct from ollama_multi_file_refactor_propose (proposes refactors) — code_review flags issues to fix on the diff as-is. Optional `severity_floor` filters out below-floor findings; `max_findings` caps result. Diff capped at 2MB; source_paths max 50. Tier defaults to workhorse; pass `tier:'deep'` for high-stakes review. coerceReview drops malformed entries instead of throwing.",
     codeReviewSchema.shape,
     { title: "Code review", readOnlyHint: false, destructiveHint: false },
     (args, extra) => wrap(() => handleCodeReview(args, ctx), "ollama_code_review", extra),

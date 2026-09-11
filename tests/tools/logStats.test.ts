@@ -113,13 +113,13 @@ describe("handleLogStats — aggregates are arithmetically correct", () => {
     expect(research.tokens_in).toBe(300);
     expect(research.cloud_calls).toBe(2);
     expect(research.degraded_calls).toBe(1);
-    expect(research.p50_elapsed_ms).toBe(200);
-    expect(research.p95_elapsed_ms).toBe(300);
+    expect(research.elapsed_ms.p50).toBe(200);
+    expect(research.elapsed_ms.p95).toBe(300);
     // classify: elapsed [10,20] → nearest-rank p50=10, p95=20.
     const classify = r.by_tool["ollama_classify"];
     expect(classify.calls).toBe(2);
-    expect(classify.p50_elapsed_ms).toBe(10);
-    expect(classify.p95_elapsed_ms).toBe(20);
+    expect(classify.elapsed_ms.p50).toBe(10);
+    expect(classify.elapsed_ms.p95).toBe(20);
 
     // by_tier
     expect(r.by_tier["deep"].calls).toBe(3);

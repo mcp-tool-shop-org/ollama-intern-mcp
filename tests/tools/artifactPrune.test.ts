@@ -115,13 +115,34 @@ describe("ollama_artifact_prune", () => {
     expect(env.result.matched[0].slug).toBe("old");
   });
 
-  it("filters by pack_type", async () => {
+  it("filters by pack", async () => {
+    await writeArtifact("incident", "i", 5);
+    await writeArtifact("repo", "r", 5);
+    await writeArtifact("change", "c", 5);
+    const env = await handleArtifactPrune({ pack: "incident_pack" }, makeCtx());
+    expect(env.result.matched.length).toBe(1);
+    expect(env.result.matched[0].pack).toBe("incident_pack");
+  });
+
+  // The rename pack_type -> pack landed on the ONLY destructiveHint tool. If
+  // the legacy field were merely dropped, a pre-v2.9.2 caller's filter would
+  // fall back to "all" and a dry_run:false call would delete three packs
+  // instead of one. Revert the alias in artifactPrune.ts and this goes RED.
+  it("honors the deprecated pack_type without widening the blast radius", async () => {
     await writeArtifact("incident", "i", 5);
     await writeArtifact("repo", "r", 5);
     await writeArtifact("change", "c", 5);
     const env = await handleArtifactPrune({ pack_type: "incident" }, makeCtx());
     expect(env.result.matched.length).toBe(1);
-    expect(env.result.matched[0].pack).toBe("incident");
+    expect(env.result.matched[0].pack).toBe("incident_pack");
+  });
+
+  it("prefers pack over pack_type when both are supplied", async () => {
+    await writeArtifact("incident", "i", 5);
+    await writeArtifact("repo", "r", 5);
+    const env = await handleArtifactPrune({ pack: "repo_pack", pack_type: "incident" }, makeCtx());
+    expect(env.result.matched.length).toBe(1);
+    expect(env.result.matched[0].pack).toBe("repo_pack");
   });
 
   it("actually deletes when dry_run: false", async () => {

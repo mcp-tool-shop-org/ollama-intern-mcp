@@ -15,14 +15,14 @@ description: "Runs the full change REVIEW job: assemble evidence (diff + paths +
 | `source_paths` | any | no | — | Changed files to read server-side (Claude does not preload). Alongside or instead of diff_text. Optional — diff-driven calls work without it; runtime requires at least one of diff_text or source_paths. |
 | `log_text` | string | no | — | Optional CI log that triggered this review. When present, triage_logs runs and its signal is surfaced in the Change section. |
 | `corpus` | string | no | — | Optional named corpus for architecture/doctrine context. Pulled in only when you need it to sharpen impact — this pack is about the delta, not a repo tour. |
-| `corpus_query` | string | no | — | Corpus query (defaults to the head of diff_text or first source path). |
+| `corpus_query` | string | no | — | Corpus query (defaults to the head of diff_text or first source path). (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.) |
 | `title` | string | no | — | Short human title — used in the artifact header and filename slug. Defaults to the change_summary head. |
 | `artifact_dir` | string | no | — | Directory to write the change.md + change.json artifact pair. Defaults to ~/.ollama-intern/artifacts/change/. |
 | `allowed_roots` | string[] | no | — | Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path. |
 | `confirm_write` | boolean | no | — | Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft. |
-| `per_file_max_chars` | integer | no | — |  |
-| `max_breakpoints` | integer | no | — |  |
-| `max_validation_checks` | integer | no | — |  |
+| `per_file_max_chars` | integer | no | — | Chars per source file (default 20k). |
+| `max_breakpoints` | integer | no | — | Cap on likely_breakpoints (default 6). |
+| `max_validation_checks` | integer | no | — | Cap on validation_checks (default 8). |
 
 ## Full input schema
 
@@ -52,9 +52,10 @@ The JSON Schema below is generated from the same zod schema the server validates
       "pattern": "^[a-zA-Z0-9_-]+$"
     },
     "corpus_query": {
-      "description": "Corpus query (defaults to the head of diff_text or first source path).",
+      "description": "Corpus query (defaults to the head of diff_text or first source path). (max 200 chars — deliberately shorter than ollama_corpus_search.query's 1000, because this is a short retrieval prompt, not a document.)",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 200
     },
     "title": {
       "description": "Short human title — used in the artifact header and filename slug. Defaults to the change_summary head.",
@@ -80,16 +81,19 @@ The JSON Schema below is generated from the same zod schema the server validates
       "type": "boolean"
     },
     "per_file_max_chars": {
+      "description": "Chars per source file (default 20k).",
       "type": "integer",
       "minimum": 1000,
       "maximum": 200000
     },
     "max_breakpoints": {
+      "description": "Cap on likely_breakpoints (default 6).",
       "type": "integer",
       "minimum": 1,
       "maximum": 12
     },
     "max_validation_checks": {
+      "description": "Cap on validation_checks (default 8).",
       "type": "integer",
       "minimum": 1,
       "maximum": 15

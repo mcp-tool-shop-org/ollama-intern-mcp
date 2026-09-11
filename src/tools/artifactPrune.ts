@@ -36,11 +36,35 @@ export const artifactPruneSchema = z.object({
     .describe(
       "Limit prune to a single pack — same field name and same values as artifact_list / artifact_read / artifact_diff, so an identity round-trips between them. Omit (or pass 'all') to scan every pack.",
     ),
+  /**
+   * Pre-v2.9.2 spelling of `pack`, kept accepted on purpose.
+   *
+   * This tool is the only `destructiveHint: true` tool in the server. When
+   * `pack` replaced `pack_type` (and the values went long-form), a caller
+   * still sending `pack_type: "incident"` would have had that field dropped
+   * silently, falling back to "all" — so a `dry_run: false` call that used to
+   * delete ONE pack's artifacts would have deleted all three. A rename on a
+   * deleter must never widen the blast radius by being ignored, so the old
+   * field and the old short values both still resolve.
+   */
+  pack_type: z
+    .enum(["incident", "change", "repo", "all"])
+    .optional()
+    .describe(
+      "DEPRECATED — use `pack`. The pre-v2.9.2 short spelling ('incident' | 'change' | 'repo' | 'all'), still honored so existing callers are not silently widened to every pack. `pack` wins if both are supplied.",
+    ),
   dry_run: z
     .boolean()
     .optional()
     .describe("Report what would be deleted without touching disk. DEFAULTS TO true — pass false to actually delete."),
 });
+
+/** Pre-v2.9.2 short pack spellings → the canonical long-form PackName. */
+const LEGACY_PACK_ALIAS: Record<"incident" | "change" | "repo", PackName> = {
+  incident: "incident_pack",
+  change: "change_pack",
+  repo: "repo_pack",
+};
 
 export type ArtifactPruneInput = z.infer<typeof artifactPruneSchema>;
 
@@ -108,7 +132,13 @@ export async function handleArtifactPrune(
 ): Promise<Envelope<ArtifactPruneResult>> {
   const startedAt = Date.now();
   const dryRun = input.dry_run ?? true;
-  const packFilter = input.pack ?? "all";
+  // `pack` wins; otherwise fall back to the deprecated `pack_type`, mapping
+  // its short spelling onto the canonical PackName. Only when NEITHER is
+  // supplied do we scan every pack — an unrecognized legacy value must not
+  // quietly become "all" on a deleter.
+  const legacy = input.pack_type;
+  const packFilter: PackName | "all" =
+    input.pack ?? (legacy === undefined || legacy === "all" ? "all" : LEGACY_PACK_ALIAS[legacy]);
   const root = artifactRoot();
 
   const packs: PackName[] = packFilter === "all" ? [...KNOWN_PACKS] : [packFilter];

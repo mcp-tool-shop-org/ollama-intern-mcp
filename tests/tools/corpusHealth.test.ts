@@ -98,8 +98,11 @@ describe("handleCorpusHealth", () => {
     const entry = env.result.corpora[0];
     expect(entry.name).toBe("healthy");
     expect(entry.chunks).toBeGreaterThan(0);
-    expect(entry.docs).toBe(1);
-    expect(entry.failed_paths_count).toBe(0);
+    expect(entry.documents).toBe(1);
+    // failed_path_count is omitted (not 0) when there are no failures — the
+    // omit-when-zero rule corpus_list already used. Pinning undefined keeps
+    // the superset promise honest rather than re-admitting a 0 sentinel.
+    expect(entry.failed_path_count).toBeUndefined();
     expect(entry.drift_detected).toBe(false);
     expect(entry.write_complete).toBe(true);
     expect(entry.warnings).toEqual([]);
@@ -155,7 +158,7 @@ describe("handleCorpusHealth", () => {
     const env = await handleCorpusHealth({}, makeCtx());
     const entry = env.result.corpora.find((c) => c.name === "failed");
     expect(entry).toBeDefined();
-    expect(entry!.failed_paths_count).toBe(1);
+    expect(entry!.failed_path_count).toBe(1);
     expect(entry!.warnings.some((w) => /failed/i.test(w)), `entry!.warnings = ${JSON.stringify(entry!.warnings)}`).toBe(true);
   });
 
