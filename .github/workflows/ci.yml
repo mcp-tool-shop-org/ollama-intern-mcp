@@ -125,9 +125,17 @@ jobs:
       # ubuntu/20 is the single cell that records the pass count for
       # sync-docs:check. pipefail means a failing suite fails this step
       # before any count is parsed — never a partial 'N passed' (F-f613f553).
-      # The check runs against THIS run's count so it does not spawn a
-      # second full suite (F-7df86b73).
-      - name: Run tests (ubuntu/20 — pass count + sync-docs:check)
+      #
+      # The marker gate is a SEPARATE step that consumes this step's output, so
+      # it still runs against THIS run's count and never spawns a second suite
+      # (F-7df86b73). Splitting them is what makes the failure legible: these
+      # are three distinct failure modes (suite red / count unparseable /
+      # doc marker drifted) and one step name could describe none of them — a
+      # doc-only drift used to render in the PR checks list as
+      # "CI / verify (ubuntu-latest, 20)", which reads as a Node-20 test
+      # failure.
+      - name: Run tests (ubuntu/20 — records the pass count)
+        id: pass-count
         if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
         shell: bash
         env:
@@ -143,6 +151,19 @@ jobs:
             exit 1
           fi
           echo "Resolved passing test count: $PASSED"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+      # The script emits one '::error file=…::<MARKER> says X, source of truth
+      # says Y' per drifted marker, so the drift lands in the run's annotation
+      # list and the PR Files-changed view — the same treatment doc-drift.yml
+      # Checks 1-3 already get. Reads the count via env (not a `${{ }}` splice
+      # into the shell body), matching doc-drift.yml's steps.pkg idiom.
+      - name: Doc markers in sync (sync-docs:check)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+        shell: bash
+        env:
+          PASSED: ${{ steps.pass-count.outputs.passed }}
+        run: |
+          set -euo pipefail
           node scripts/sync-doc-versions.mjs --check --test-count="$PASSED"
 
   audit:
@@ -208,6 +229,7 @@ jobs:
     # otherwise surface only AFTER npm already published. Prove the release
     # image BUILDS on every push/PR that could affect it — build only
     # (push: false); the real tagged push happens in release.yml.
+    name: Release image builds (no push)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # docker/* JS actions still ship Node 20 entrypoints (removed from runners

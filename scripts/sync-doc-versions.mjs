@@ -143,27 +143,47 @@ function parseVitestPassCount(text) {
 // ----------------------------------------------------------------------------
 // Marker-based rewrite (markdown files)
 // ----------------------------------------------------------------------------
+//
+// Both rewriters take a `record(marker, from, to)` callback and call it for
+// every value they actually change. The report at the end is built from those
+// records, not from a byte delta: real drifts here are digit-count preserving
+// (2.9.1 -> 2.9.2, 44 -> 45, 1158 -> 1162), so a byte delta is almost always
+// +0 and tells an operator nothing about WHICH marker went stale.
 
-function rewriteMarkers(text, key, value) {
+function rewriteMarkers(text, key, value, record) {
   // Replace each <!-- KEY:start -->...<!-- KEY:end --> with the new value.
   // Anchor on the literal comment shape so we never grab stray HTML.
   const open = `<!-- ${key}:start -->`;
   const close = `<!-- ${key}:end -->`;
   const re = new RegExp(
     open.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") +
-      "[\\s\\S]*?" +
+      "([\\s\\S]*?)" +
       close.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&"),
     "g"
   );
-  return text.replace(re, `${open}${value}${close}`);
+  const next = String(value);
+  return text.replace(re, (_whole, current) => {
+    if (current !== next) record(key, current, next);
+    return `${open}${next}${close}`;
+  });
 }
 
 // ----------------------------------------------------------------------------
 // Regex-based rewrite (TS / non-marker files)
 // ----------------------------------------------------------------------------
 
-function rewriteRegex(text, pattern, replacement) {
-  return text.replace(pattern, replacement);
+function rewriteCount(text, pattern, value, record, marker) {
+  // `pattern` must bracket the number with exactly two capture groups:
+  //     /(prefix )\d+( suffix)/g
+  // so the current value can be read back out for the drift report. A rule
+  // that captures no digits can never change a byte — it is a stub, not
+  // coverage, and does not belong in the plan.
+  const next = String(value);
+  return text.replace(pattern, (whole, pre, post) => {
+    const current = whole.slice(pre.length, whole.length - post.length);
+    if (current !== next) record(marker, current, next);
+    return `${pre}${next}${post}`;
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -177,9 +197,9 @@ function planRewrites(version, toolCount, testCount) {
   plan.push({
     path: "README.md",
     rewrites: [
-      (t) => rewriteMarkers(t, "VERSION", version),
-      (t) => rewriteMarkers(t, "TOOL_COUNT", String(toolCount)),
-      (t) => rewriteMarkers(t, "TEST_COUNT", String(testCount)),
+      (t, rec) => rewriteMarkers(t, "VERSION", version, rec),
+      (t, rec) => rewriteMarkers(t, "TOOL_COUNT", toolCount, rec),
+      (t, rec) => rewriteMarkers(t, "TEST_COUNT", testCount, rec),
     ],
   });
 
@@ -187,9 +207,9 @@ function planRewrites(version, toolCount, testCount) {
   plan.push({
     path: "HANDOFF.md",
     rewrites: [
-      (t) => rewriteMarkers(t, "VERSION", version),
-      (t) => rewriteMarkers(t, "TOOL_COUNT", String(toolCount)),
-      (t) => rewriteMarkers(t, "TEST_COUNT", String(testCount)),
+      (t, rec) => rewriteMarkers(t, "VERSION", version, rec),
+      (t, rec) => rewriteMarkers(t, "TOOL_COUNT", toolCount, rec),
+      (t, rec) => rewriteMarkers(t, "TEST_COUNT", testCount, rec),
     ],
   });
 
@@ -197,9 +217,9 @@ function planRewrites(version, toolCount, testCount) {
   plan.push({
     path: "CONTRIBUTING.md",
     rewrites: [
-      (t) => rewriteMarkers(t, "VERSION", version),
-      (t) => rewriteMarkers(t, "TOOL_COUNT", String(toolCount)),
-      (t) => rewriteMarkers(t, "TEST_COUNT", String(testCount)),
+      (t, rec) => rewriteMarkers(t, "VERSION", version, rec),
+      (t, rec) => rewriteMarkers(t, "TOOL_COUNT", toolCount, rec),
+      (t, rec) => rewriteMarkers(t, "TEST_COUNT", testCount, rec),
     ],
   });
 
@@ -207,9 +227,30 @@ function planRewrites(version, toolCount, testCount) {
   plan.push({
     path: "SHIP_GATE.md",
     rewrites: [
-      (t) => rewriteMarkers(t, "VERSION", version),
-      (t) => rewriteMarkers(t, "TOOL_COUNT", String(toolCount)),
-      (t) => rewriteMarkers(t, "TEST_COUNT", String(testCount)),
+      (t, rec) => rewriteMarkers(t, "VERSION", version, rec),
+      (t, rec) => rewriteMarkers(t, "TOOL_COUNT", toolCount, rec),
+      (t, rec) => rewriteMarkers(t, "TEST_COUNT", testCount, rec),
+    ],
+  });
+
+  // .github/ISSUE_TEMPLATE/feature_request.md — the "what job can't be done
+  // with the current N tools" prompt. The number sits INSIDE the template's
+  // leading <!-- … --> instruction block, so marker comments cannot be used
+  // here: a nested `-->` would close the outer comment early and dump the rest
+  // of the instructions into the rendered issue body. Same situation as
+  // site-config.ts below — use a conservative regex anchor instead. (Do not
+  // "upgrade" this to TOOL_COUNT markers.)
+  plan.push({
+    path: ".github/ISSUE_TEMPLATE/feature_request.md",
+    rewrites: [
+      (t, rec) =>
+        rewriteCount(
+          t,
+          /(done with the current )\d+( tools)/g,
+          toolCount,
+          rec,
+          "TOOL_COUNT"
+        ),
     ],
   });
 
@@ -221,54 +262,65 @@ function planRewrites(version, toolCount, testCount) {
   plan.push({
     path: "site/src/site-config.ts",
     rewrites: [
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(local intern for Claude Code— |local intern for Claude Code — )\d+( job-shaped tools)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(')\d+( job-shaped tools across four tiers)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(four tiers, )\d+( tools)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
     ],
   });
 
-  // Handbook overview — uses prose tool counts.
+  // Handbook overview — uses prose tool counts. The frontmatter `description:`
+  // count (the one ending "…, evidence-first briefs, durable artifacts.") is
+  // maintained by the first rule below; it does NOT need a separate rule of
+  // its own. A no-op rule that matched only that trailing prose used to sit
+  // here and could never change a byte — it read as coverage for an
+  // unmaintained number while maintaining nothing.
   plan.push({
     path: "site/src/content/docs/handbook/index.md",
     rewrites: [
-      (t) =>
-        rewriteRegex(
-          t,
-          /(\bevidence-first briefs, durable artifacts\.)/g,
-          `$1`
-        ),
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(description: The local intern for Claude Code\. )\d+( job-shaped tools)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(Four tiers, )\d+( tools total\.)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(\*\*The local intern for Claude Code\.\*\* )\d+( job-shaped tools)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
     ],
   });
@@ -277,11 +329,13 @@ function planRewrites(version, toolCount, testCount) {
   plan.push({
     path: "site/src/content/docs/handbook/tools.md",
     rewrites: [
-      (t) =>
-        rewriteRegex(
+      (t, rec) =>
+        rewriteCount(
           t,
           /(description: All )\d+( tools grouped by tier\.)/g,
-          `$1${toolCount}$2`
+          toolCount,
+          rec,
+          "TOOL_COUNT"
         ),
     ],
   });
@@ -325,12 +379,24 @@ function run() {
       }
       throw err;
     }
+    // Collect (marker, oldValue, newValue) per file so the report can name
+    // WHAT drifted, not just which file. Dedupe: the same marker legitimately
+    // appears several times in one doc and drifts identically each time.
+    const seen = new Set();
+    const drifts = [];
+    const record = (marker, from, to) => {
+      const key = `${marker} ${from} ${to}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      drifts.push({ marker, from, to });
+    };
+
     let after = before;
     for (const fn of rewrites) {
-      after = fn(after);
+      after = fn(after, record);
     }
     if (before === after) continue;
-    changes.push({ path, bytesBefore: before.length, bytesAfter: after.length });
+    changes.push({ path, drifts });
     if (!CHECK_ONLY) {
       writeFileSync(abs, after, "utf8");
     }
@@ -341,16 +407,49 @@ function run() {
     return 0;
   }
 
-  console.log(`${CHECK_ONLY ? "drift detected in" : "wrote"} ${changes.length} file(s):`);
-  for (const c of changes) {
-    const delta = c.bytesAfter - c.bytesBefore;
-    const sign = delta >= 0 ? "+" : "";
-    console.log(`  ${c.path}  (${sign}${delta} bytes)`);
+  // Check mode is a CI gate, so it reports like one: to stderr, with a
+  // ::error file=…:: annotation per drift (the shape doc-drift.yml Checks 1-3
+  // already use) and a closing remediation command, mirroring
+  // gen-tool-docs.mjs. Write mode just says what it rewrote.
+  const say = CHECK_ONLY ? console.error : console.log;
+  if (CHECK_ONLY) console.error("");
+  say(`${CHECK_ONLY ? "drift detected in" : "wrote"} ${changes.length} file(s):`);
+  for (const { path, drifts } of changes) {
+    if (drifts.length === 0) {
+      // Defensive: a rewrite changed bytes without recording a value. Still
+      // name the file rather than printing a silent entry.
+      say(`  ${path}  (content changed)`);
+      continue;
+    }
+    for (const d of drifts) {
+      say(`  ${path}  ${d.marker}: ${d.from} -> ${d.to}`);
+    }
+  }
+
+  if (CHECK_ONLY) {
+    for (const { path, drifts } of changes) {
+      for (const d of drifts) {
+        console.error(
+          `::error file=${path}::${d.marker} says ${d.from}, source of truth says ${d.to}`
+        );
+      }
+    }
+    console.error("");
+    console.error("run `npm run sync-docs` and commit the result.");
   }
 
   // --check exits non-zero when drift exists so CI / pre-commit can gate.
   return CHECK_ONLY ? 1 : 0;
 }
 
-const exitCode = run();
-process.exit(exitCode);
+// Print only the message on failure — a raw Node stack trace buries the hint
+// these errors carry, and this script is wired into two CI gates (ci.yml
+// verify ubuntu/20 and doc-drift.yml Check 4). Same framing as
+// gen-tool-docs.mjs and cloud-smoke-generate.mjs; shipcheck Gate B forbids
+// raw stacks.
+try {
+  process.exit(run());
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}
