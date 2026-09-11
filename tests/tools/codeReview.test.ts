@@ -20,6 +20,9 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createFakeOllama, makeFakeCtx } from "../_helpers/index.js";
 import { handleCodeReview, codeReviewSchema } from "../../src/tools/codeReview.js";
 
@@ -97,6 +100,73 @@ describeIfImported()("handleCodeReview — happy path (small diff)", () => {
       expect(typeof f.file).toBe("string");
       expect(typeof f.line === "number" || f.line === undefined).toBe(true);
       expect(typeof f.severity).toBe("string");
+    }
+  });
+});
+
+describeIfImported()("handleCodeReview — invented paths and line cap (F-05a661a6)", () => {
+  it("strips invented files, zeros out-of-range lines, and warns on the strip", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "code-review-allow-"));
+    const fooPath = join(dir, "foo.ts");
+    try {
+      await writeFile(fooPath, "line1\nline2\nline3\n", "utf8");
+      const diff = [
+        "diff --git a/foo.ts b/foo.ts",
+        "index 1234..5678 100644",
+        "--- a/foo.ts",
+        "+++ b/foo.ts",
+        "@@ -1,3 +1,4 @@",
+        " line1",
+        "+debug",
+        " line2",
+        " line3",
+      ].join("\n");
+      const modelOut = JSON.stringify({
+        findings: [
+          {
+            file: "foo.ts",
+            line: 2,
+            severity: "low",
+            category: "style",
+            description: "in-diff finding that must survive",
+            recommendation: "keep this one",
+          },
+          {
+            file: "src/invented.ts",
+            line: 1,
+            severity: "high",
+            category: "bug",
+            description: "invented path must be stripped",
+            recommendation: "do not keep this",
+          },
+          {
+            file: "foo.ts",
+            line: 99999,
+            severity: "medium",
+            category: "bug",
+            description: "line past the loaded file must be zeroed",
+            recommendation: "zero or drop the line",
+          },
+        ],
+        summary: "mixed allowlist + line-cap",
+      });
+      const client = createFakeOllama({ defaultGenerateResponse: modelOut });
+      const ctx = makeFakeCtx({ client });
+      const env = (await handleCodeReview!({ diff_text: diff, source_paths: [fooPath] }, ctx)) as {
+        result: { findings: Array<{ file: string; line: number; description: string }> };
+        warnings?: string[];
+      };
+      const files = env.result.findings.map((f) => f.file);
+      expect(files, "invented path must be absent from findings").not.toContain("src/invented.ts");
+      expect(env.result.findings.some((f) => f.description.includes("in-diff finding"))).toBe(true);
+      const overRange = env.result.findings.find((f) => f.description.includes("line past the loaded file"));
+      expect(overRange, "out-of-range finding should remain with line zeroed or be dropped").toBeTruthy();
+      if (overRange) expect(overRange.line).toBe(0);
+      expect(env.warnings?.some((w) => /stripped/i.test(w) && /invented|not in the diff/i.test(w))).toBe(
+        true,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

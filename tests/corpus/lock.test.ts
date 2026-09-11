@@ -28,8 +28,9 @@
  * than just "expected true to be false".
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { withCorpusLock } from "../../src/corpus/lock.js";
+import { canonicalCorpusKey } from "../../src/corpus/identity.js";
 
 /** Deferred promise — the deterministic barrier used to order waiters. */
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
@@ -112,6 +113,57 @@ describe("withCorpusLock — serialization (F-002)", () => {
     ]);
     gateAlpha.resolve();
     await alphaPromise;
+  });
+
+  it("win32 Notes/notes aliases serialize on one lock slot (F-04a15a7b)", async () => {
+    // NTFS is case-insensitive: concurrent index/refresh on Notes vs notes
+    // must share one slot or the corpus+manifest pair can tear. Mutating
+    // withCorpusLock's Map key back to raw case-sensitive identity (no
+    // NFC/casefold) makes `notes` enter while Notes is held — this row RED.
+    let restore = (): void => undefined;
+    try {
+      const spy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+      restore = () => spy.mockRestore();
+    } catch {
+      // process.platform may not be a getter; on win32 the real API is enough.
+    }
+    try {
+      expect(canonicalCorpusKey("Notes")).toBe(canonicalCorpusKey("notes"));
+      expect(canonicalCorpusKey("Notes")).toBe("notes");
+
+      const gateNotes = deferred<void>();
+      const order: string[] = [];
+
+      const notesHeld = withCorpusLock("Notes", async () => {
+        order.push("Notes:enter");
+        await gateNotes.promise;
+        order.push("Notes:exit");
+        return "Notes";
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const aliasWaiter = withCorpusLock("notes", async () => {
+        order.push("notes:enter");
+        return "notes";
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(
+        order,
+        `win32 alias 'notes' must queue behind held 'Notes', but order so far is [${order.join(", ")}]`,
+      ).toEqual(["Notes:enter"]);
+
+      gateNotes.resolve();
+      const [heldVal, aliasVal] = await Promise.all([notesHeld, aliasWaiter]);
+      expect(heldVal).toBe("Notes");
+      expect(aliasVal).toBe("notes");
+      expect(order).toEqual(["Notes:enter", "Notes:exit", "notes:enter"]);
+    } finally {
+      restore();
+    }
   });
 });
 

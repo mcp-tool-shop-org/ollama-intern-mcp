@@ -108,21 +108,33 @@ describe("HttpOllamaClient — retry with backoff", () => {
     expect((mock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1);
   });
 
-  it("does NOT retry a 400 (definitive 4xx other than 429)", async () => {
-    const mock = vi.fn(async () => errorResponse(400, "bad request")) as unknown as FetchFn;
-    globalThis.fetch = mock;
-    const client = new HttpOllamaClient("http://127.0.0.1:11434");
+  it.each([400, 413, 422])(
+    "does NOT retry HTTP %s: retryable=false, hint names status/rejected, not an outage (F-d2ae2834)",
+    async (status) => {
+      const mock = vi.fn(async () => errorResponse(status, "bad request")) as unknown as FetchFn;
+      globalThis.fetch = mock;
+      const client = new HttpOllamaClient("http://127.0.0.1:11434");
 
-    let caught: unknown;
-    try {
-      await client.generate({ model: "m", prompt: "hi" });
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(InternError);
-    // Only 1 call — no retry on definitive 4xx.
-    expect((mock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1);
-  });
+      let caught: unknown;
+      try {
+        await client.generate({ model: "m", prompt: "hi" });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(InternError);
+      const err = caught as InternError;
+      // Load-bearing: postWithRetry already skipped InternError retries, so
+      // fetch-count===1 is not enough. Reverting retryable=true or restoring
+      // the 'ollama serve' outage hint must turn this row RED.
+      expect(err.retryable).toBe(false);
+      expect(err.code).toBe("OLLAMA_UNREACHABLE");
+      expect(err.message).toContain(String(status));
+      expect(err.hint).toMatch(/HTTP/);
+      expect(err.hint).toMatch(/reject/i);
+      expect(err.hint).not.toMatch(/ollama serve/i);
+      expect((mock as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1);
+    },
+  );
 
   it("retries a connection reset (ECONNRESET)", async () => {
     let attempts = 0;

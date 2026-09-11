@@ -368,11 +368,16 @@ describe("handleRepoPack — markdown layout", () => {
     expect(md).toContain("**Scripts:**");
     expect(md).toContain("`build`");
     expect(md).toContain("**Runtime hints:** Node 18+, TypeScript ES2022");
-    expect(md).toContain("Dropped 3 invented onboarding path");
-    expect(md).toContain("`src/index.ts`");
-    expect(md).toContain("`tsconfig.json`");
-    expect(md).toContain("`package.json`");
-    expect(md).not.toContain("**Config files:** `tsconfig.json`, `package.json`");
+    const factsSection = md.slice(md.indexOf("## Extracted facts"), md.indexOf("## Evidence"));
+    const coverage = md.slice(md.indexOf("## Coverage notes"), md.indexOf("## Step trace"));
+    expect(coverage).toContain("Dropped 3 invented onboarding path");
+    expect(coverage).toContain("`src/index.ts`");
+    expect(coverage).toContain("`tsconfig.json`");
+    expect(coverage).toContain("`package.json`");
+    expect(factsSection).not.toContain("`src/index.ts`");
+    expect(factsSection).not.toContain("`tsconfig.json`");
+    expect(factsSection).not.toContain("`package.json`");
+    expect(factsSection).not.toMatch(/\*\*Config files:\*\*/);
   });
 
   it("markdown shows weak banner when brief.weak is true", async () => {
@@ -424,6 +429,15 @@ describe("handleRepoPack — JSON artifact", () => {
     expect(obj.pack).toBe("repo_pack");
     expect(obj.brief.key_surfaces).toHaveLength(2);
     expect(obj.extracted_facts.package_names).toEqual(["@mcptoolshop/foundry"]);
+    const entryFiles = (obj.extracted_facts.entrypoints ?? [])
+      .map((e: { file?: string }) => e.file)
+      .filter((f: string | undefined): f is string => typeof f === "string" && f.length > 0);
+    expect(entryFiles).not.toContain("src/index.ts");
+    expect(obj.extracted_facts.config_files ?? []).not.toContain("tsconfig.json");
+    expect(obj.extracted_facts.config_files ?? []).not.toContain("package.json");
+    expect(JSON.stringify(obj.extracted_facts.entrypoints ?? [])).not.toContain("src/index.ts");
+    expect(JSON.stringify(obj.extracted_facts.config_files ?? [])).not.toContain("tsconfig.json");
+    expect(JSON.stringify(obj.extracted_facts.config_files ?? [])).not.toContain("package.json");
     expect(obj.steps.length).toBeGreaterThan(0);
     expect(obj.artifact.markdown_path).toBe(env.result.artifact.markdown_path);
     expect(obj.artifact.json_path).toBe(env.result.artifact.json_path);

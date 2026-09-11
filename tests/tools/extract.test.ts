@@ -151,7 +151,7 @@ describe("handleExtract — frame contract", () => {
 
   it("frame supplied + model says on_topic:false → frame_alignment.on_topic is false", async () => {
     const modelOut = JSON.stringify({
-      name: null,
+      name: "off-topic",
       _frame_alignment: { on_topic: false, reason: "source is about a different topic entirely" },
     });
     const client = mock(modelOut);
@@ -185,7 +185,7 @@ describe("handleExtract — frame contract", () => {
 
   it("frame supplied + unaddressed_aspects array → passes through to frame_alignment", async () => {
     const modelOut = JSON.stringify({
-      name: null,
+      name: "off-topic",
       _frame_alignment: {
         on_topic: false,
         reason: "off-topic",
@@ -202,6 +202,43 @@ describe("handleExtract — frame contract", () => {
       "evidence chain",
       "inspectability",
     ]);
+  });
+});
+
+describe("handleExtract — schema-mismatch is unparseable (F-b6791d5f)", () => {
+  async function extractRaw(raw: string, schema: Record<string, unknown> = simpleSchema) {
+    const env = await handleExtract({ text: "anything", schema }, makeCtx(mock(raw)));
+    return env.result;
+  }
+
+  it("missing required field → {ok:false, error:'unparseable'} with no data", async () => {
+    const result = await extractRaw("{}");
+    expect("data" in result, "conforming-JSON missing required must not take the success path").toBe(false);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error).toBe("unparseable");
+  });
+
+  it("wrong type for a declared string field → unparseable (no data)", async () => {
+    const result = await extractRaw(JSON.stringify({ name: 1 }));
+    expect("data" in result, "name:1 against type:string must not take the success path").toBe(false);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error).toBe("unparseable");
+  });
+
+  it("extra property when additionalProperties:false → unparseable (no data)", async () => {
+    const strictSchema = {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+      additionalProperties: false,
+    };
+    const result = await extractRaw(JSON.stringify({ name: "ok", extra: true }), strictSchema);
+    expect("data" in result, "extra-required mismatch must not take the success path").toBe(false);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error).toBe("unparseable");
   });
 });
 
