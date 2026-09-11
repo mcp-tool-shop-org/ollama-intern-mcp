@@ -46,8 +46,8 @@ export interface Envelope<T> {
   degraded?: boolean;
   /**
    * Why the call degraded to local: cloud_timeout | cloud_5xx |
-   * cloud_rate_limited | cloud_unreachable | cloud_auth_failed |
-   * cloud_model_missing | circuit_open.
+   * cloud_rate_limited | cloud_unreachable | cloud_rejected |
+   * cloud_auth_failed | cloud_model_missing | circuit_open.
    * Present only when `degraded` is true.
    */
   degrade_reason?: DegradeReason;

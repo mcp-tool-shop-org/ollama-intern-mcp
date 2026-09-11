@@ -149,6 +149,10 @@ export interface CellMetrics {
   n: number;
   precision1: number;
   precision3: number;
+  /** Queries in this cell that carried expected_phrases. 0 when none. */
+  phrase_n: number;
+  /** Fraction of phrase-bearing queries whose matching hit contained every phrase. */
+  phrase_hit: number;
 }
 
 export interface EvalSummary {
@@ -158,13 +162,20 @@ export interface EvalSummary {
 }
 
 function emptyCell(): CellMetrics {
-  return { n: 0, precision1: 0, precision3: 0 };
+  return { n: 0, precision1: 0, precision3: 0, phrase_n: 0, phrase_hit: 0 };
 }
 
 function accumulate(cell: CellMetrics, r: EvalRecord): void {
   cell.n += 1;
-  cell.precision1 += r.hit1 ? 1 : 0;
-  cell.precision3 += r.hit3 ? 1 : 0;
+  // Factual-anchor contract: a query with expected_phrases is not a P@K hit
+  // unless every phrase appeared in a matching hit's preview.
+  const phraseOk = r.phrasesHit !== false;
+  cell.precision1 += r.hit1 && phraseOk ? 1 : 0;
+  cell.precision3 += r.hit3 && phraseOk ? 1 : 0;
+  if (r.phrasesHit !== null) {
+    cell.phrase_n += 1;
+    cell.phrase_hit += r.phrasesHit ? 1 : 0;
+  }
 }
 
 function finalize(cell: CellMetrics): CellMetrics {
@@ -173,6 +184,8 @@ function finalize(cell: CellMetrics): CellMetrics {
     n: cell.n,
     precision1: cell.precision1 / cell.n,
     precision3: cell.precision3 / cell.n,
+    phrase_n: cell.phrase_n,
+    phrase_hit: cell.phrase_n === 0 ? 0 : cell.phrase_hit / cell.phrase_n,
   };
 }
 
@@ -236,6 +249,11 @@ export function formatEvalReport(summary: EvalSummary): string {
   lines.push(
     `Overall across all modes: P@1 ${pct(summary.overall.precision1)}, P@3 ${pct(summary.overall.precision3)} (n=${summary.overall.n})`,
   );
+  if (summary.overall.phrase_n > 0) {
+    lines.push(
+      `Phrase-hit rate (expected_phrases): ${pct(summary.overall.phrase_hit)} (n=${summary.overall.phrase_n})`,
+    );
+  }
   lines.push("");
   return lines.join("\n");
 }
