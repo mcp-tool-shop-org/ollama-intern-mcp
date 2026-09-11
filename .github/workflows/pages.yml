@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   build:
+    name: Build site (Astro)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -58,6 +59,7 @@ jobs:
           path: site/dist
 
   deploy:
+    name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15

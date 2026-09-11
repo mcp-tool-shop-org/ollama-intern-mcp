@@ -1,0 +1,21 @@
+# The template chooser screen. Both issue templates carry a "do NOT open a
+# public issue for security bugs" notice, but each notice lives inside an HTML
+# comment in the template BODY — a reporter only sees it AFTER picking a
+# template. This file is the surface GitHub renders on the chooser itself, and
+# the only place blank_issues_enabled and contact links can be set, so the
+# private advisory route SECURITY.md documents is offered before a reporter can
+# type a vulnerability into a public box.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/mcp-tool-shop-org/ollama-intern-mcp/security/advisories/new
+    about: >-
+      Security bugs go through a private GitHub security advisory, never a
+      public issue. The advisory stays private until a fix is ready; we
+      acknowledge within 72 hours. See SECURITY.md.
+  - name: Handbook — usage, tiers, envelope, tool reference
+    url: https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/
+    about: >-
+      Install, Claude Code config, model pulls, every tool grouped by tier, and
+      the envelope/tier contract. Check here before filing a usage question.
