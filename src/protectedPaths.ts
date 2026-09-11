@@ -54,13 +54,19 @@ function isCaseInsensitiveFs(): boolean {
 
 /**
  * Normalize a path for comparison: forward slashes, collapsed `.`/`./`,
- * no leading `./`, Win32 trailing dots/spaces stripped per segment, lowercase
- * on case-insensitive filesystems.
+ * no leading `./`, Win32 ADS suffixes + trailing dots/spaces stripped per
+ * segment, lowercase on case-insensitive filesystems.
  *
  * On Windows, CreateFile strips trailing spaces and dots unless a `\\?\`
  * prefix is used — so `SECURITY.md.` and `SECURITY.md ` are the same file as
  * `SECURITY.md`, and `memory./x` lands on `memory/x`. Canonicalize before
  * matching so confirm_write cannot be skipped via those aliases.
+ *
+ * On Windows, NTFS Alternate Data Streams ride after a colon (`file::$DATA`,
+ * `file:stream`). CreateFile opens `SECURITY.md::$DATA` as `SECURITY.md` and
+ * writes `SECURITY.md:hidden` as an ADS on that same file. Strip the ADS
+ * suffix from each segment (keeping a leading `X:` drive prefix) so
+ * confirm_write covers the file the OS will open.
  *
  * On Windows (NTFS) and macOS (APFS) — case-insensitive — input is lowercased so
  * callers comparing against canonical lowercase patterns honor the platform's
@@ -73,12 +79,53 @@ export function normalizePath(p: string): string {
   if (process.platform === "win32") {
     n = n
       .split("/")
-      .map((seg) => (seg === "." || seg === ".." ? seg : seg.replace(/[ .]+$/, "")))
+      .map(canonicalizeWin32Segment)
       .join("/")
       .replace(/\/{2,}/g, "/");
   }
   if (isCaseInsensitiveFs()) n = n.toLowerCase();
   return n;
+}
+
+function canonicalizeWin32Segment(seg: string): string {
+  if (seg === "." || seg === "..") return seg;
+  // Drive prefix `C:` (and `C:foo` without a slash) is not an ADS.
+  const drive = /^[A-Za-z]:/.exec(seg);
+  const prefix = drive ? drive[0] : "";
+  let rest = drive ? seg.slice(prefix.length) : seg;
+  // ADS: first colon starts the stream (`::$DATA`, `:stream`, `:stream:$DATA`).
+  const colon = rest.indexOf(":");
+  if (colon !== -1) rest = rest.slice(0, colon);
+  return prefix + rest.replace(/[ .]+$/, "");
+}
+
+/** True when a Win32 path segment looks like an 8.3 short name (`SECURI~1.MD`). */
+function isWin83TildeSegment(seg: string): boolean {
+  return /^[^.]{1,6}~\d(?:\.[^.]{0,3})?$/i.test(seg);
+}
+
+function splitBaseExt(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return { base: name.replace(/^\./, ""), ext: "" };
+  return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
+}
+
+function win83Stem(name: string): { prefix: string; ext: string } {
+  const { base, ext } = splitBaseExt(name);
+  const cleanBase = base.replace(/[^A-Za-z0-9]/g, "");
+  const cleanExt = ext.replace(/[^A-Za-z0-9]/g, "");
+  return {
+    prefix: cleanBase.slice(0, 6).toLowerCase(),
+    ext: cleanExt.slice(0, 3).toLowerCase(),
+  };
+}
+
+function win83MatchesLongName(shortSeg: string, longName: string): boolean {
+  if (!isWin83TildeSegment(shortSeg)) return false;
+  const m = /^([^.]{1,6})~(\d)(?:\.([^.]{0,3}))?$/i.exec(shortSeg);
+  if (!m) return false;
+  const stem = win83Stem(longName);
+  return m[1].toLowerCase() === stem.prefix && (m[3] ?? "").toLowerCase() === stem.ext;
 }
 
 export interface ProtectedMatch {
@@ -102,8 +149,24 @@ export function matchesProtectedPath(
       if (n.startsWith(pat) || n.includes("/" + pat)) {
         return { protected: true, rule };
       }
+      // Win32 8.3: `MEMORY~1/x.md` is the same directory as `memory/`.
+      if (process.platform === "win32") {
+        const dir = pat.slice(0, -1);
+        const dirBase = dir.includes("/") ? dir.slice(dir.lastIndexOf("/") + 1) : dir;
+        const segs = n.split("/").filter(Boolean);
+        if (segs.some((seg) => win83MatchesLongName(seg, dirBase))) {
+          return { protected: true, rule };
+        }
+      }
     } else if (n === pat || n.endsWith("/" + pat)) {
       return { protected: true, rule };
+    } else if (process.platform === "win32") {
+      // Win32 8.3: `SECURI~1.MD` is the same file as `SECURITY.md`.
+      const base = n.includes("/") ? n.slice(n.lastIndexOf("/") + 1) : n;
+      const patBase = pat.includes("/") ? pat.slice(pat.lastIndexOf("/") + 1) : pat;
+      if (win83MatchesLongName(base, patBase)) {
+        return { protected: true, rule };
+      }
     }
   }
   return { protected: false };

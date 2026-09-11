@@ -294,6 +294,50 @@ describe("ollama_batch_proof_check — leading-dash files[] / argv -- terminator
 });
 
 // ═══════════════════════════════════════════════════════════════
+// F-e9384c2c: files[] must sit under spawn cwd or allowed_roots.
+// Leading-dash coverage is not enough — an absolute path elsewhere or
+// a `..` escape must SCHEMA_INVALID with zero spawns. Mutate
+// assertFileContained off and these rows go RED.
+// ═══════════════════════════════════════════════════════════════
+
+describe("ollama_batch_proof_check — files[] root containment (F-e9384c2c)", () => {
+  const FILE_CHECKS = ["eslint", "pytest", "ruff"] as const;
+
+  it.each(FILE_CHECKS)("%s refuses an absolute path outside cwd/allowed_roots and spawns nothing", async (check) => {
+    let spawned = 0;
+    __setSpawner(async () => {
+      spawned += 1;
+      return fakeOk();
+    });
+    const root = process.cwd();
+    const outside = resolve("/tmp/outside.ts");
+    await expect(
+      handleBatchProofCheck(
+        { checks: [check], files: [outside], cwd: root, allowed_roots: [root] },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+    expect(spawned, `${check} must not spawn for a files[] path outside the proof roots`).toBe(0);
+  });
+
+  it.each(FILE_CHECKS)("%s refuses a `..` escape outside cwd/allowed_roots and spawns nothing", async (check) => {
+    let spawned = 0;
+    __setSpawner(async () => {
+      spawned += 1;
+      return fakeOk();
+    });
+    const root = process.cwd();
+    await expect(
+      handleBatchProofCheck(
+        { checks: [check], files: ["../other/file.ts"], cwd: root, allowed_roots: [root] },
+        makeCtx(),
+      ),
+    ).rejects.toMatchObject({ code: "SCHEMA_INVALID" });
+    expect(spawned, `${check} must not spawn for a files[] .. escape`).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // H7: SECURITY.md #8 claims batch_proof_check validates cwd against
 // allowed_roots. The check did not exist — a caller could pass an
 // attacker-controlled cwd and eslint/pytest would execute config from

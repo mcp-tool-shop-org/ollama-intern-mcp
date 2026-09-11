@@ -28,8 +28,8 @@
  */
 
 import { z } from "zod";
-import { resolveUniqueArtifactPaths, writeArtifactPair } from "./artifactWrite.js";
-import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { resolveUniqueArtifactPaths, writeArtifactPair, resolvePackArtifactDir, assertPackArtifactWriteAllowed } from "./artifactWrite.js";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { stat } from "node:fs/promises";
 
@@ -56,7 +56,7 @@ import {
   type RepoBriefResult,
 } from "../repoBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
-import { normalizeCorpusQuery } from "../_helpers.js";
+import { normalizeCorpusQuery, allowlistPathsMatch } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -73,6 +73,14 @@ export const repoPackSchema = z.object({
   corpus_query: z.string().min(1).optional().describe("Corpus query (defaults to 'repo architecture and surfaces')."),
   title: z.string().min(1).max(120).optional().describe("Short human title — used in the artifact header and filename slug. Defaults to the repo thesis head."),
   artifact_dir: z.string().min(1).optional().describe("Directory to write the repo.md + repo.json artifact pair. Defaults to ~/.ollama-intern/artifacts/repo/."),
+  allowed_roots: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path."),
+  confirm_write: z
+    .boolean()
+    .optional()
+    .describe("Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft."),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional(),
   max_key_surfaces: z.number().int().min(1).max(20).optional(),
   max_risk_areas: z.number().int().min(1).max(10).optional(),
@@ -206,15 +214,8 @@ export function coerceOnboardingFacts(data: unknown): OnboardingFacts {
   };
 }
 
-function posixNorm(p: string): string {
-  return normalize(p).replace(/\\/g, "/");
-}
-
 function pathsEquivalent(a: string, b: string): boolean {
-  const na = posixNorm(a);
-  const nb = posixNorm(b);
-  if (na === nb) return true;
-  return na.endsWith("/" + nb) || nb.endsWith("/" + na);
+  return allowlistPathsMatch(a, b);
 }
 
 function isUnderRoot(child: string, root: string): boolean {
@@ -669,7 +670,12 @@ async function handleRepoPackInner(
 
   // Step 4 — artifact write.
   await ctx.logger.log(packStepEvent({ pack: "repo", step: "artifact_write", step_index: 4, total_steps: TOTAL_STEPS }));
-  const artifactDir = input.artifact_dir ?? defaultArtifactDir();
+  const artifactDir = resolvePackArtifactDir({
+    artifact_dir: input.artifact_dir,
+    allowed_roots: input.allowed_roots,
+    defaultDir: defaultArtifactDir(),
+  });
+  assertPackArtifactWriteAllowed([artifactDir], input.confirm_write);
   const when = new Date();
   const thesisHead = brief.repo_thesis.split(/[.\n]/)[0]?.trim();
   const baseSlug = buildSlug({ title: input.title, thesisHead, when });
@@ -678,6 +684,7 @@ async function handleRepoPackInner(
   // the same minute-resolution slug. Uniquify (-2, -3, …) BEFORE building the
   // artifact object that embeds slug + paths.
   const { slug, mdPath, jsonPath } = await resolveUniqueArtifactPaths(artifactDir, baseSlug);
+  assertPackArtifactWriteAllowed([mdPath, jsonPath], input.confirm_write);
 
   const writeStart = Date.now();
   const title = input.title ?? (thesisHead && thesisHead.length > 0 ? thesisHead : "repo");

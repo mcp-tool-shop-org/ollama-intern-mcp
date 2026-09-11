@@ -154,6 +154,88 @@ export async function loadCorpus(name: string): Promise<CorpusFile | null> {
       false,
     );
   }
+  return validateCorpusShape(name, path, parsed);
+}
+
+function validateCorpusShape(
+  name: string,
+  filePath: string,
+  parsed: Partial<CorpusFile>,
+): CorpusFile {
+  const hint = `Re-index to rewrite: ollama_corpus_index({ name: "${name}", paths: [<your source paths>] }). The file is corrupt or truncated.`;
+  if (typeof parsed.name !== "string" || parsed.name.length === 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" is missing a name. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (typeof parsed.model_version !== "string" || parsed.model_version.length === 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" is missing model_version. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (!Number.isFinite(parsed.chunk_chars) || !Number.isFinite(parsed.chunk_overlap)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" has invalid chunk_chars/chunk_overlap. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  const stats = parsed.stats;
+  if (
+    stats === null ||
+    typeof stats !== "object" ||
+    Array.isArray(stats) ||
+    !Number.isFinite(stats.documents) ||
+    !Number.isFinite(stats.chunks) ||
+    !Number.isFinite(stats.total_chars)
+  ) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" is missing stats. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (parsed.titles === null || typeof parsed.titles !== "object" || Array.isArray(parsed.titles)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" is missing titles. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  if (!Array.isArray(parsed.chunks)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `Corpus "${name}" has invalid chunks. File: ${filePath}`,
+      hint,
+      false,
+    );
+  }
+  for (const c of parsed.chunks) {
+    if (
+      !c ||
+      typeof c !== "object" ||
+      typeof c.id !== "string" ||
+      typeof c.path !== "string" ||
+      typeof c.text !== "string" ||
+      !Array.isArray(c.vector)
+    ) {
+      throw new InternError(
+        "SCHEMA_INVALID",
+        `Corpus "${name}" has invalid chunks. File: ${filePath}`,
+        hint,
+        false,
+      );
+    }
+  }
   return parsed as CorpusFile;
 }
 

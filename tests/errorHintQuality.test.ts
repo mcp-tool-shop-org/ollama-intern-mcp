@@ -109,17 +109,26 @@ describe("error hint quality", () => {
 
     // OLLAMA_UNREACHABLE has two flavors: a reachability outage (point at
     // OLLAMA_HOST / `ollama serve`) and a definitive 4xx refusal that keeps
-    // the same error code but must not claim Ollama is down.
+    // the same error code but must not claim Ollama is down. Split the grep
+    // so restoring the pre-fix 4xx 'ollama serve' hint cannot satisfy both.
     const unreach = byCode.get("OLLAMA_UNREACHABLE") ?? [];
     expect(unreach.length).toBeGreaterThan(0);
-    for (const h of unreach) {
-      const outage = /OLLAMA_HOST|ollama serve/i.test(h);
-      const refused = /HTTP/.test(h) && /refus/i.test(h);
+    const refusedHints = unreach.filter((h) => /HTTP/.test(h) && /refus/i.test(h));
+    expect(
+      refusedHints.length,
+      "expected at least one OLLAMA_UNREACHABLE hint that names an HTTP refusal",
+    ).toBeGreaterThan(0);
+    for (const h of refusedHints) {
       expect(
-        outage || refused,
-        `OLLAMA_UNREACHABLE hint should mention OLLAMA_HOST / 'ollama serve' or name an HTTP refusal — got: ${h}`,
-      ).toBe(true);
+        /ollama serve/i.test(h),
+        `HTTP-refusal OLLAMA_UNREACHABLE hint must not mention 'ollama serve' — got: ${h}`,
+      ).toBe(false);
     }
+    const outageHints = unreach.filter((h) => /OLLAMA_HOST|ollama serve/i.test(h));
+    expect(
+      outageHints.length,
+      "expected at least one reachability-outage OLLAMA_UNREACHABLE hint (OLLAMA_HOST / ollama serve)",
+    ).toBeGreaterThan(0);
 
     // OLLAMA_MODEL_MISSING has two flavors (H3): the LOCAL hint says `ollama
     // pull` + names the profile path; the CLOUD hint names the cloud model env

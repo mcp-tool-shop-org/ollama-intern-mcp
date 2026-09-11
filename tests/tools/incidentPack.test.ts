@@ -104,13 +104,23 @@ const BRIEF_OUT = JSON.stringify({
 });
 
 let tempArtifactDir: string;
+let origArtifactDir: string | undefined;
+const MODULE_ORIG_ARTIFACT_DIR = process.env.INTERN_ARTIFACT_DIR;
 
 beforeEach(async () => {
   tempArtifactDir = await mkdtemp(join(tmpdir(), "intern-pack-artifact-"));
+  origArtifactDir = process.env.INTERN_ARTIFACT_DIR;
+  process.env.INTERN_ARTIFACT_DIR = tempArtifactDir;
 });
 
 afterEach(async () => {
-  await rm(tempArtifactDir, { recursive: true, force: true });
+  const toRestoreArt = origArtifactDir ?? MODULE_ORIG_ARTIFACT_DIR;
+  try {
+    if (toRestoreArt === undefined) delete process.env.INTERN_ARTIFACT_DIR;
+    else process.env.INTERN_ARTIFACT_DIR = toRestoreArt;
+  } finally {
+    await rm(tempArtifactDir, { recursive: true, force: true });
+  }
 });
 
 // ── Pipeline + artifact tests ───────────────────────────────

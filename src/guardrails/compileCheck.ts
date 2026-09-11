@@ -72,6 +72,15 @@ async function runChecker(
     // tsc writes diagnostics to STDOUT, most other checkers to STDERR.
     // Merge both so the tail is useful regardless of the tool's habits.
     const diagnostics = [stderr, stdout].filter(Boolean).join("\n");
+    if (isCheckerUnavailable(exitCode, diagnostics)) {
+      return {
+        compiles: false,
+        checker: `${command} ${baseArgs.join(" ")}`.trim(),
+        stderr_tail: tail(diagnostics, STDERR_TAIL_CHARS),
+        skipped: true,
+        skip_reason: "checker unavailable",
+      };
+    }
     return {
       compiles: exitCode === 0,
       checker: `${command} ${baseArgs.join(" ")}`.trim(),
@@ -90,12 +99,22 @@ async function runChecker(
   }
 }
 
+function isCheckerUnavailable(exitCode: number, diagnostics: string): boolean {
+  // Unix command-not-found; Windows cmd.exe missing-binary (9009).
+  if (exitCode === 127 || exitCode === 9009) return true;
+  const text = diagnostics.toLowerCase();
+  if (text.includes("is not recognized as an internal or external command")) return true;
+  if (text.includes("command not found")) return true;
+  if (/\benoent\b/.test(text)) return true;
+  return false;
+}
+
 function runProcess(
   cmd: string,
   args: string[],
   timeoutMs: number,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     // shell:true on Windows is required to resolve .cmd shims (npx, tsc).
     // Safe here because args are never user-controlled: cmd/baseArgs are hardcoded
     // above, and the only dynamic arg is a filename produced by mkdtemp + join,
@@ -103,14 +122,19 @@ function runProcess(
     const proc = spawn(cmd, args, { shell: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
+    let settled = false;
     const timer = setTimeout(() => proc.kill("SIGKILL"), timeoutMs);
     proc.stdout?.on("data", (d) => (stdout += d.toString()));
     proc.stderr?.on("data", (d) => (stderr += d.toString()));
     proc.on("error", (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      resolve({ code: -1, stdout, stderr: stderr + String(err) });
+      reject(err);
     });
     proc.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve({ code: code ?? -1, stdout, stderr });
     });

@@ -21,15 +21,108 @@
  *      that points at a missing or torn `.md`.
  */
 import { access, mkdir, open } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { atomicWriteFile } from "../../corpus/atomicWrite.js";
 import { InternError } from "../../errors.js";
+import { assertWriteAllowed } from "../../guardrails/writeConfirm.js";
 
 export interface ArtifactPaths {
   slug: string;
   mdPath: string;
   jsonPath: string;
+}
+
+/** Operator artifact cap — INTERN_ARTIFACT_DIR, else ~/.ollama-intern/artifacts. */
+export function internArtifactRoot(): string {
+  return process.env.INTERN_ARTIFACT_DIR ?? join(homedir(), ".ollama-intern", "artifacts");
+}
+
+function hasParentSegment(p: string): boolean {
+  return p.split(/[/\\]/).includes("..");
+}
+
+function isUnderRoot(child: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(child));
+  if (rel === "") return true;
+  if (rel.startsWith("..")) return false;
+  if (isAbsolute(rel)) return false;
+  return rel.split(/[/\\]/)[0] !== "..";
+}
+
+/** Absolute, no `..` — same lexical gate as artifact export. */
+function safeAbsDir(p: string, fieldName: string): string {
+  if (!isAbsolute(p)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `${fieldName} must be absolute: ${p}`,
+      "Pass an absolute directory — pack artifact writes never resolve against a working directory.",
+      false,
+    );
+  }
+  if (hasParentSegment(p)) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `${fieldName} contains parent traversal: ${p}`,
+      "Paths must resolve cleanly without '..' segments, even if they would collapse to a safe location.",
+      false,
+    );
+  }
+  return normalize(p);
+}
+
+/**
+ * Resolve the directory a pack will mkdir/write into.
+ *
+ * When `artifact_dir` is omitted, the pack default (under the intern
+ * artifact root) is used. When the caller supplies it, the path must be
+ * absolute, must not contain `..`, and must sit under INTERN_ARTIFACT_DIR
+ * (or ~/.ollama-intern/artifacts) OR a caller-declared allowed_roots list
+ * — export's dual-declaration write law.
+ */
+export function resolvePackArtifactDir(opts: {
+  artifact_dir: string | undefined;
+  allowed_roots: string[] | undefined;
+  defaultDir: string;
+}): string {
+  if (opts.artifact_dir === undefined) {
+    return opts.defaultDir;
+  }
+  const dir = safeAbsDir(opts.artifact_dir, "artifact_dir");
+  const internRoot = internArtifactRoot();
+  if (isUnderRoot(dir, internRoot)) {
+    return dir;
+  }
+  const roots = opts.allowed_roots ?? [];
+  if (roots.length === 0) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `artifact_dir is not under INTERN_ARTIFACT_DIR (${internRoot}): ${dir}`,
+      "Point artifact_dir inside INTERN_ARTIFACT_DIR (or ~/.ollama-intern/artifacts), or declare allowed_roots containing this directory — the same dual-declaration ollama_artifact_export_to_path requires.",
+      false,
+    );
+  }
+  const normalizedRoots = roots.map((r) => safeAbsDir(r, "allowed_roots entry"));
+  if (!normalizedRoots.some((root) => isUnderRoot(dir, root))) {
+    throw new InternError(
+      "SCHEMA_INVALID",
+      `artifact_dir is not under INTERN_ARTIFACT_DIR or any allowed_root: ${dir}`,
+      "Point artifact_dir inside INTERN_ARTIFACT_DIR (or ~/.ollama-intern/artifacts), or under a declared allowed_roots entry.",
+      false,
+    );
+  }
+  return dir;
+}
+
+/** Draft confirm_write / protected-path gate on pack write targets. */
+export function assertPackArtifactWriteAllowed(
+  paths: string[],
+  confirm_write: boolean | undefined,
+): void {
+  for (const target_path of paths) {
+    assertWriteAllowed({ target_path, confirm_write });
+  }
 }
 
 async function pathExists(path: string): Promise<boolean> {

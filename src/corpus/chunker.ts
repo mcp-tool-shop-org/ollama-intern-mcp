@@ -42,6 +42,19 @@ export const DEFAULT_CHUNK: ChunkOptions = {
   chunk_overlap: 100,
 };
 
+/**
+ * Single geometry clamp used by chunk(), chunkDocument(), and the indexer.
+ * Window is at least 100 chars; overlap is in [0, floor(size/2)]. Non-finite
+ * inputs fall back to the defaults so recorded geometry cannot lie about the
+ * windows that actually land on disk (F-1dd13bab).
+ */
+export function clampChunkGeometry(opts: ChunkOptions): ChunkOptions {
+  const size = Math.max(100, Number.isFinite(opts.chunk_chars) ? opts.chunk_chars : DEFAULT_CHUNK.chunk_chars);
+  const rawOverlap = Number.isFinite(opts.chunk_overlap) ? opts.chunk_overlap : 0;
+  const overlap = Math.max(0, Math.min(rawOverlap, Math.floor(size / 2)));
+  return { chunk_chars: size, chunk_overlap: overlap };
+}
+
 export interface ChunkedDocument {
   title: string | null;
   chunks: Chunk[];
@@ -60,9 +73,7 @@ interface RawChunk {
  * so existing tests can exercise window math directly.
  */
 export function chunk(text: string, opts: ChunkOptions = DEFAULT_CHUNK): RawChunk[] {
-  const size = Math.max(100, Number.isFinite(opts.chunk_chars) ? opts.chunk_chars : DEFAULT_CHUNK.chunk_chars);
-  const rawOverlap = Number.isFinite(opts.chunk_overlap) ? opts.chunk_overlap : 0;
-  const overlap = Math.max(0, Math.min(rawOverlap, Math.floor(size / 2)));
+  const { chunk_chars: size, chunk_overlap: overlap } = clampChunkGeometry(opts);
   if (text.length === 0) return [];
   if (text.length <= size) {
     return [{ index: 0, char_start: 0, char_end: text.length, text }];
@@ -177,6 +188,7 @@ export function chunkDocument(
   opts: ChunkOptions = DEFAULT_CHUNK,
 ): ChunkedDocument {
   if (text.length === 0) return { title: null, chunks: [] };
+  const geom = clampChunkGeometry(opts);
 
   const segments: Segment[] = [];
   let title: string | null = null;
@@ -295,10 +307,12 @@ export function chunkDocument(
   }
 
   // Size-split oversized segments; never cross heading boundaries.
+  // Use the same clamped window chunk() uses so short segments don't skip
+  // a split that longer ones apply (F-1dd13bab).
   const chunks: Chunk[] = [];
   let idx = 0;
   for (const seg of segments) {
-    if (seg.content.length <= opts.chunk_chars || seg.type === "code") {
+    if (seg.content.length <= geom.chunk_chars || seg.type === "code") {
       chunks.push({
         index: idx++,
         char_start: seg.char_start,
@@ -309,7 +323,7 @@ export function chunkDocument(
       });
       continue;
     }
-    const sub = chunk(seg.content, opts);
+    const sub = chunk(seg.content, geom);
     for (const s of sub) {
       chunks.push({
         index: idx++,

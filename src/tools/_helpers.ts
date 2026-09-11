@@ -6,6 +6,7 @@
  * briefs module, which is already evidence-focused.
  */
 
+import { posix } from "node:path";
 import { InternError } from "../errors.js";
 
 /**
@@ -78,4 +79,39 @@ export function normalizeCorpusQuery(
     );
   }
   return cleaned;
+}
+
+/**
+ * Posix-normalize a path for allowlist comparison: backslashes become
+ * slashes, `.` / `..` collapse, a leading `./` is stripped.
+ */
+export function posixNormPath(p: string): string {
+  let n = posix.normalize(p.replace(/\\/g, "/"));
+  while (n.startsWith("./")) n = n.slice(2);
+  return n;
+}
+
+function posixIsAbsolute(p: string): boolean {
+  return p.startsWith("/") || p.startsWith("//") || /^[A-Za-z]:\//.test(p);
+}
+
+/**
+ * Allowlist membership for model-cited paths vs caller/diff paths.
+ *
+ * Exact posix-normalized equality always matches. A separator-safe suffix
+ * matches only when the shorter side contains a path separator (rel vs abs
+ * of the same file) AND the longer side is absolute. Bare filenames
+ * (`package.json`) must equal exactly — `node_modules/evil/package.json`
+ * must not inherit membership from a git-diff basename, and
+ * `evil/src/index.ts` must not inherit from `src/index.ts`.
+ */
+export function allowlistPathsMatch(a: string, b: string): boolean {
+  const na = posixNormPath(a);
+  const nb = posixNormPath(b);
+  if (na === nb) return true;
+  if (na.length === 0 || nb.length === 0) return false;
+  const [shorter, longer] = na.length <= nb.length ? [na, nb] : [nb, na];
+  if (!shorter.includes("/")) return false;
+  if (!longer.endsWith("/" + shorter)) return false;
+  return posixIsAbsolute(longer);
 }

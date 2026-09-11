@@ -16,6 +16,8 @@ description: "Runs the full repo ONBOARDING job: corpus_search (if corpus given)
 | `corpus_query` | string | no | — | Corpus query (defaults to 'repo architecture and surfaces'). |
 | `title` | string | no | — | Short human title — used in the artifact header and filename slug. Defaults to the repo thesis head. |
 | `artifact_dir` | string | no | — | Directory to write the repo.md + repo.json artifact pair. Defaults to ~/.ollama-intern/artifacts/repo/. |
+| `allowed_roots` | string[] | no | — | Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path. |
+| `confirm_write` | boolean | no | — | Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft. |
 | `per_file_max_chars` | integer | no | — |  |
 | `max_key_surfaces` | integer | no | — |  |
 | `max_risk_areas` | integer | no | — |  |
@@ -59,6 +61,18 @@ The JSON Schema below is generated from the same zod schema the server validates
       "description": "Directory to write the repo.md + repo.json artifact pair. Defaults to ~/.ollama-intern/artifacts/repo/.",
       "type": "string",
       "minLength": 1
+    },
+    "allowed_roots": {
+      "description": "Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "confirm_write": {
+      "description": "Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft.",
+      "type": "boolean"
     },
     "per_file_max_chars": {
       "type": "integer",

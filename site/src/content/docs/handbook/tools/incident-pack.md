@@ -17,6 +17,8 @@ description: "Runs the full incident job end-to-end: triage_logs → corpus_sear
 | `corpus_query` | string | no | — | Corpus query (defaults to the log head). |
 | `title` | string | no | — | Short human title — used in the artifact header and filename slug. |
 | `artifact_dir` | string | no | — | Directory to write the incident.md + incident.json artifact pair. Defaults to ~/.ollama-intern/artifacts/incident/. |
+| `allowed_roots` | string[] | no | — | Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path. |
+| `confirm_write` | boolean | no | — | Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft. |
 | `per_file_max_chars` | integer | no | — |  |
 | `max_hypotheses` | integer | no | — |  |
 
@@ -57,6 +59,18 @@ The JSON Schema below is generated from the same zod schema the server validates
       "description": "Directory to write the incident.md + incident.json artifact pair. Defaults to ~/.ollama-intern/artifacts/incident/.",
       "type": "string",
       "minLength": 1
+    },
+    "allowed_roots": {
+      "description": "Absolute directories artifact_dir may live under when it is not inside INTERN_ARTIFACT_DIR. Same dual-declaration as ollama_artifact_export_to_path.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "confirm_write": {
+      "description": "Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft.",
+      "type": "boolean"
     },
     "per_file_max_chars": {
       "type": "integer",
