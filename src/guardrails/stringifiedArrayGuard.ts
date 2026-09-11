@@ -169,11 +169,19 @@ export function strictStringArray(
     .transform((v, ctx): string[] => {
       if (typeof v === "string") {
         // Log to stderr so MCP host captures the diagnostic event even
-        // though the handler never runs. Tagged for grep.
+        // though the handler never runs. Tagged for grep — the bracketed
+        // `[ollama-intern:stringified-array-guard]` form is pinned by
+        // tests/guardrails/stringifiedArrayGuard.test.ts, so the rule name
+        // stays inside the tag rather than moving to the product's
+        // `ollama-intern: ` prose prefix.
+        //
+        // A bare `field=?` was unrecoverable for the operator reading it:
+        // it named neither the schema key nor the fact that the key was
+        // never declared. Callers that omit `fieldName` now say so.
         // eslint-disable-next-line no-console
         console.error(
           `[ollama-intern:stringified-array-guard] field=${
-            fieldName ?? "?"
+            fieldName ?? "(unnamed field)"
           } received=string looks_like_json_array=${
             v.trim().startsWith("[") && v.trim().endsWith("]")
           }`,

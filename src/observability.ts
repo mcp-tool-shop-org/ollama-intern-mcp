@@ -12,6 +12,7 @@ import { appendFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Envelope, Residency } from "./envelope.js";
+import { formatBytes } from "./format.js";
 import type { DegradeReason } from "./routing.js";
 import type { Tier } from "./tiers.js";
 import { getRunContext } from "./runContext.js";
@@ -173,6 +174,48 @@ export type LogEvent = CorrelationFields &
       }
   );
 
+/** The `kind` discriminant of every LogEvent variant. */
+export type LogEventKind = LogEvent["kind"];
+
+/**
+ * Exhaustiveness seam for LOG_EVENT_KINDS. `Record<LogEventKind, true>`
+ * fails to compile in BOTH directions — a new LogEvent variant with no
+ * entry here, or an entry naming a kind the union dropped. That is what
+ * keeps the runtime roster below honest.
+ */
+const LOG_EVENT_KIND_COVERAGE: Record<LogEventKind, true> = {
+  call: true,
+  timeout: true,
+  fallback: true,
+  backend_fallback: true,
+  cloud_egress: true,
+  guardrail: true,
+  prewarm: true,
+  "prewarm:in_progress_request": true,
+  "semaphore:wait": true,
+  pack_step: true,
+};
+
+/**
+ * Every `kind` an NDJSON event can carry — the single source of truth for
+ * `log_tail`'s `filter_kind` roster (its tool description, its zod
+ * `.describe()`, and the validation that rejects an unknown kind instead
+ * of silently returning zero events).
+ *
+ * Hand-maintained rosters had diverged three ways: the tool description
+ * omitted `backend_fallback` and `cloud_egress` — the latter being the
+ * event that records data LEAVING the machine, so an operator auditing
+ * egress had no documented filter for it — while the zod `.describe()`
+ * listed `backend_fallback` but dropped `guardrail` and both `prewarm`
+ * kinds. Derive both surfaces from this tuple and they cannot drift.
+ *
+ * Typed as a non-empty tuple so it drops straight into `z.enum(...)`.
+ */
+export const LOG_EVENT_KINDS = Object.keys(LOG_EVENT_KIND_COVERAGE) as [
+  LogEventKind,
+  ...LogEventKind[],
+];
+
 export interface Logger {
   log(event: LogEvent): Promise<void>;
 }
@@ -282,7 +325,7 @@ export class NdjsonLogger implements Logger {
         await appendFile(this.path, JSON.stringify(notice) + "\n", "utf8");
         // eslint-disable-next-line no-console
         console.error(
-          `ollama-intern: rotated observability log ${this.path} (exceeded ${this.rotateBytes} bytes). Previous generation: ${this.path}.1. log_stats can read the new file; truncate the .1 if disk is tight.`,
+          `ollama-intern: rotated observability log ${this.path} (exceeded ${formatBytes(this.rotateBytes)}). Previous generation: ${this.path}.1. log_stats can read the new file; truncate the .1 if disk is tight.`,
         );
       }
       await appendFile(this.path, JSON.stringify(enriched) + "\n", "utf8");

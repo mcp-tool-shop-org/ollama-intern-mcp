@@ -8,6 +8,7 @@
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { InternError } from "./errors.js";
+import { formatBytes } from "./format.js";
 
 export interface LoadedSource {
   path: string;
@@ -63,8 +64,8 @@ export async function loadSources(
       if (st.size > maxBytes) {
         throw new InternError(
           "SOURCE_FILE_TOO_LARGE",
-          `Source file exceeds the ${maxBytes}-byte cap (${st.size} bytes): ${p}`,
-          `This tool reads whole files into memory and only uses the first ${perFileMax} chars, so a huge file is wasteful and can OOM the server. Split the file, point at a smaller excerpt, or run 'ollama_corpus_index' to search a large corpus without loading it whole.`,
+          `Source file exceeds the ${formatBytes(maxBytes)} cap (${formatBytes(st.size)}): ${p}`,
+          `This tool reads whole files into memory and only uses the first ${perFileMax.toLocaleString("en-US")} chars, so a huge file is wasteful and can OOM the server. Split the file, point at a smaller excerpt, or run 'ollama_corpus_index' to search a large corpus without loading it whole.`,
           false,
         );
       }

@@ -317,9 +317,10 @@ function suggestColonForm(value: string): string | null {
  * when the value is unset (the env-override merge falls back to the
  * profile default). Throws `InternError('CONFIG_INVALID', ...)`
  * synchronously on a regex-failing value — the operator sees the
- * failure at startup with a hint that names the variable, shows the
- * bad value, the valid pattern, and (where reasonable) a most-likely-
- * typo suggestion via `suggestColonForm`.
+ * failure at startup with a message naming the variable and the bad
+ * value, and a hint that leads with the most-likely-typo suggestion
+ * (via `suggestColonForm`) where one exists, then the accepted
+ * character set, with the raw pattern last as reference.
  *
  * `OLLAMA_MODEL_NAME_RE` is the sole gate. Its negative lookahead
  * rejects the `<name>-<digits><letter>` dash-for-colon typo
@@ -332,11 +333,19 @@ function validateEnvModel(varName: string, value: string | undefined): void {
   if (value === undefined || value === "") return;
   if (OLLAMA_MODEL_NAME_RE.test(value)) return;
   const suggested = suggestColonForm(value);
-  const suggestion = suggested ? ` Did you mean '${suggested}'?` : "";
+  const suggestion = suggested ? `Did you mean '${suggested}'? ` : "";
+  // main() and runCliDoctor render this as `ollama-intern: <message>\n
+  // hint: <hint>`, so message + hint are read as ONE blob. Printing
+  // OLLAMA_MODEL_NAME_RE.source in both halves buried the one actionable
+  // piece — the colon-form suggestion — between two copies of a 55-char
+  // regex. No sibling validator here dumps a pattern (resolvePrewarm
+  // enumerates its words, positiveIntEnv says "positive integer"), so the
+  // message states the fact, the hint leads with the fix, and the regex
+  // goes last where it is reference material rather than an obstacle.
   throw new InternError(
     "CONFIG_INVALID",
-    `Invalid model name in ${varName}: '${value}' does not match ${OLLAMA_MODEL_NAME_RE.source}`,
-    `Fix the ${varName} env var.${suggestion} Valid pattern: ${OLLAMA_MODEL_NAME_RE.source} (lowercase letters/digits/dots/underscores/hyphens, optional ':tag').`,
+    `Invalid model name in ${varName}: '${value}'`,
+    `${suggestion}Fix the ${varName} env var: lowercase letters/digits/dots/underscores/hyphens, optional ':tag' (e.g. 'hermes3:8b'). (pattern: ${OLLAMA_MODEL_NAME_RE.source})`,
     false,
   );
 }
