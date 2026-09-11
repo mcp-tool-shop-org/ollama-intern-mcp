@@ -68,8 +68,35 @@ const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAYS_MS = [200, 400, 800];
 const RETRY_JITTER_PCT = 0.2;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      const err = new Error("Aborted");
+      err.name = "AbortError";
+      reject(err);
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      const err = new Error("Aborted");
+      err.name = "AbortError";
+      reject(err);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function abortedAsTimeout(): InternError {
+  return new InternError(
+    "OLLAMA_TIMEOUT",
+    "Ollama request aborted",
+    "Tier timeout fired — see fallback in envelope. Increase the tier's timeout via INTERN_TIER_*_TIMEOUT_MS if the cause is cold-load.",
+    true,
+  );
 }
 
 /**
@@ -529,20 +556,23 @@ export class HttpOllamaClient implements OllamaClient {
         // Definitive — no retry.
         if (err instanceof InternError) throw err;
         if (err instanceof Error && err.name === "AbortError") {
-          throw new InternError(
-            "OLLAMA_TIMEOUT",
-            "Ollama request aborted",
-            "Tier timeout fired — see fallback in envelope. Increase the tier's timeout via INTERN_TIER_*_TIMEOUT_MS if the cause is cold-load.",
-            true,
-          );
+          throw abortedAsTimeout();
         }
         if (!isTransient(err)) break;
         attempt++;
         if (attempt >= RETRY_MAX_ATTEMPTS) break;
-        // Respect an abort signal between attempts — don't sleep if the
-        // caller's tier timeout already fired.
-        if (signal?.aborted) break;
-        await sleep(testBackoffMs ?? backoffDelayMs(attempt - 1));
+        // Abortable backoff: a tier/cloud timer that fires during the 200–800ms
+        // sleep must surface as OLLAMA_TIMEOUT, not wait out the delay then map
+        // lastErr (often TransientHttpError) to OLLAMA_UNREACHABLE.
+        if (signal?.aborted) throw abortedAsTimeout();
+        try {
+          await sleep(testBackoffMs ?? backoffDelayMs(attempt - 1), signal);
+        } catch (sleepErr) {
+          if (sleepErr instanceof Error && sleepErr.name === "AbortError") {
+            throw abortedAsTimeout();
+          }
+          throw sleepErr;
+        }
       }
     }
     // All attempts exhausted (or single definitive non-Intern failure that
@@ -653,12 +683,15 @@ export class HttpOllamaClient implements OllamaClient {
           false,
         );
       }
-      // Other 4xx — definitive.
+      // Other 4xx — definitive rejection, not a reachability failure.
+      // retryable=false: the same payload will be refused again. Keep
+      // OLLAMA_UNREACHABLE for the error-code surface (no new ErrorCode) but
+      // the hint must not claim Ollama is down — status named, request rejected.
       throw new InternError(
         "OLLAMA_UNREACHABLE",
         `Ollama returned ${res.status}: ${text}`,
-        "Check that Ollama is running ('ollama serve') and reachable at OLLAMA_HOST (default http://127.0.0.1:11434).",
-        true,
+        `Request rejected with HTTP ${res.status}. The request was refused by the server; retrying the same payload will fail the same way. This is not an Ollama outage.`,
+        false,
       );
     }
     // F-002 — guard JSON parse on 200 OK responses. A corp proxy /

@@ -8,6 +8,8 @@
  * path here, bump PROTECTED_PATHS_VERSION, and the whole system picks it up.
  */
 
+import { posix } from "node:path";
+
 export const PROTECTED_PATHS_VERSION = 1;
 
 export interface ProtectedPathRule {
@@ -51,8 +53,14 @@ function isCaseInsensitiveFs(): boolean {
 }
 
 /**
- * Normalize a path for comparison: forward slashes, no leading ./, lowercase on
- * case-insensitive filesystems.
+ * Normalize a path for comparison: forward slashes, collapsed `.`/`./`,
+ * no leading `./`, Win32 trailing dots/spaces stripped per segment, lowercase
+ * on case-insensitive filesystems.
+ *
+ * On Windows, CreateFile strips trailing spaces and dots unless a `\\?\`
+ * prefix is used — so `SECURITY.md.` and `SECURITY.md ` are the same file as
+ * `SECURITY.md`, and `memory./x` lands on `memory/x`. Canonicalize before
+ * matching so confirm_write cannot be skipped via those aliases.
  *
  * On Windows (NTFS) and macOS (APFS) — case-insensitive — input is lowercased so
  * callers comparing against canonical lowercase patterns honor the platform's
@@ -60,7 +68,15 @@ function isCaseInsensitiveFs(): boolean {
  */
 export function normalizePath(p: string): string {
   let n = p.replace(/\\/g, "/");
-  if (n.startsWith("./")) n = n.slice(2);
+  n = posix.normalize(n);
+  while (n.startsWith("./")) n = n.slice(2);
+  if (process.platform === "win32") {
+    n = n
+      .split("/")
+      .map((seg) => (seg === "." || seg === ".." ? seg : seg.replace(/[ .]+$/, "")))
+      .join("/")
+      .replace(/\/{2,}/g, "/");
+  }
   if (isCaseInsensitiveFs()) n = n.toLowerCase();
   return n;
 }

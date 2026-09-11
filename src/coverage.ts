@@ -63,7 +63,10 @@ function signalTokensFor(source: LoadedSource, maxTokens: number = 12): string[]
   // Always include the filename stem — it's often the strongest coverage signal
   // ("commandui" from "commandui.md" will appear in any summary that covers it).
   const stem = basename(source.path, extname(source.path)).toLowerCase();
-  if (stem && !ranked.includes(stem)) ranked.unshift(stem);
+  // Same gate as body tokens: short stems ("app", "main", "util") are not
+  // distinctive coverage proof. If nothing remains, detectCoverage uses the
+  // existing "could not be verified" omitted path.
+  if (stem && isSignalToken(stem) && !ranked.includes(stem)) ranked.unshift(stem);
   return ranked;
 }
 
