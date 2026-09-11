@@ -18,11 +18,12 @@
  * CorrelationOp enum stays tight.
  */
 
+import { constants as fsConstants } from "node:fs";
 import { realpath, lstat, open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { OllamaClient } from "../ollama.js";
-import { chunkDocument, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
+import { chunkDocument, clampChunkGeometry, DEFAULT_CHUNK, type ChunkOptions, type ChunkType } from "./chunker.js";
 import { CORPUS_SCHEMA_VERSION, loadCorpus, saveCorpus, type CorpusChunk, type CorpusFile } from "./storage.js";
 import { MANIFEST_SCHEMA_VERSION, loadManifest, saveManifest, clearCompletedMarker, type CorpusManifest, assertSafePath } from "./manifest.js";
 import { withCorpusLock } from "./lock.js";
@@ -149,15 +150,37 @@ export async function sha256File(path: string): Promise<{ hash: string; mtime: s
   // realpath(path) to point at e.g. /etc/shadow.
   const realPath = await realpath(path);
   assertSafePath(realPath);
-  // Open the real path ONCE and do the size-cap check, the read, and the
-  // mutation re-check all against the same file handle (same inode). A
-  // path-based stat()-then-readFile() is a TOCTOU: the path could be
-  // swapped to a 100GB file between the size check and the read, bypassing
-  // the cap (CodeQL js/file-system-race). Pinning to one fd closes that —
-  // fh.stat() reports the bytes we are actually about to read.
-  const fh = await open(realPath, "r");
+  // Pin identity immediately before open. A last-component swap to a
+  // symlink/junction after realpath/assertSafePath would otherwise make a
+  // follow-on open("r") read a target outside allowed roots (F-cb180768).
+  const lstReal = await lstat(realPath);
+  if (lstReal.isSymbolicLink()) {
+    throw new InternError(
+      "SYMLINK_NOT_ALLOWED",
+      `Refusing to index symlink: ${path}`,
+      "Pass the real file path, not a symlink. Symlinks are rejected to avoid size-cap bypass and traversal into unintended targets.",
+      false,
+    );
+  }
+  // Open the real path ONCE (O_NOFOLLOW when the platform has it) and do
+  // the size-cap check, the read, and the mutation re-check all against
+  // the same file handle (same inode). A path-based stat()-then-readFile()
+  // is a TOCTOU: the path could be swapped to a 100GB file between the
+  // size check and the read, bypassing the cap (CodeQL js/file-system-race).
+  // Pinning to one fd closes that — fh.stat() reports the bytes we are
+  // actually about to read. ino/dev must still match the pre-open lstat
+  // so a follow that O_NOFOLLOW couldn't prevent is aborted.
+  const fh = await openPinnedRead(realPath, path);
   try {
     const stBefore = await fh.stat();
+    if (stBefore.ino !== lstReal.ino || stBefore.dev !== lstReal.dev) {
+      throw new InternError(
+        "SOURCE_PATH_NOT_FOUND",
+        `File identity changed during open (TOCTOU): ${path}`,
+        "The path was replaced between the allow-root check and the read. Re-run the index.",
+        true,
+      );
+    }
     if (stBefore.size > MAX_FILE_BYTES) {
       throw new InternError(
         "SOURCE_FILE_TOO_LARGE",
@@ -192,7 +215,7 @@ export async function indexCorpus(params: IndexParams): Promise<IndexReport> {
   return withCorpusLock(params.name, () => indexCorpusBody(params));
 }
 
-function assertChunkGeometry(chunk_chars: number, chunk_overlap: number): void {
+function assertChunkGeometry(chunk_chars: number, chunk_overlap: number): ChunkOptions {
   if (!Number.isFinite(chunk_chars) || !Number.isFinite(chunk_overlap)) {
     throw new InternError(
       "SCHEMA_INVALID",
@@ -201,6 +224,35 @@ function assertChunkGeometry(chunk_chars: number, chunk_overlap: number): void {
       false,
     );
   }
+  return clampChunkGeometry({ chunk_chars, chunk_overlap });
+}
+
+/**
+ * Open for hashing without following a last-component symlink that appeared
+ * after realpath. Falls back to a plain read open when O_NOFOLLOW is missing
+ * or rejected by the platform; callers pin ino/dev against the pre-open lstat.
+ */
+async function openPinnedRead(realPath: string, lexicalPath: string) {
+  const nofollow = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0;
+  if (nofollow !== 0) {
+    try {
+      return await open(realPath, fsConstants.O_RDONLY | nofollow);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ELOOP") {
+        throw new InternError(
+          "SYMLINK_NOT_ALLOWED",
+          `Refusing to index symlink: ${lexicalPath}`,
+          "Pass the real file path, not a symlink. Symlinks are rejected to avoid size-cap bypass and traversal into unintended targets.",
+          false,
+        );
+      }
+      if (code !== "EINVAL" && code !== "ENOTSUP" && code !== "EOPNOTSUPP") {
+        throw err;
+      }
+    }
+  }
+  return open(realPath, "r");
 }
 
 /**
@@ -209,11 +261,10 @@ function assertChunkGeometry(chunk_chars: number, chunk_overlap: number): void {
  */
 async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
   const t0 = Date.now();
-  const opts: ChunkOptions = {
-    chunk_chars: params.chunk_chars ?? DEFAULT_CHUNK.chunk_chars,
-    chunk_overlap: params.chunk_overlap ?? DEFAULT_CHUNK.chunk_overlap,
-  };
-  assertChunkGeometry(opts.chunk_chars, opts.chunk_overlap);
+  const opts: ChunkOptions = assertChunkGeometry(
+    params.chunk_chars ?? DEFAULT_CHUNK.chunk_chars,
+    params.chunk_overlap ?? DEFAULT_CHUNK.chunk_overlap,
+  );
 
   // Load existing corpus (if any) to reuse unchanged chunks.
   // An out-of-date schema version throws SCHEMA_INVALID from loadCorpus —
@@ -314,6 +365,10 @@ async function indexCorpusBody(params: IndexParams): Promise<IndexReport> {
       continue;
     }
     const pathKey = canonicalFsPath(absPath);
+    // params.paths is a bag: identical strings or win32 case-aliases of the
+    // same file must index once (first absolute spelling wins). Reuse/stale
+    // maps already compare canonically; the index loop did not (F-2078e84a).
+    if (seenPaths.has(pathKey)) continue;
     seenPaths.set(pathKey, absPath);
     let fileInfo: { hash: string; mtime: string; content: string };
     try {
