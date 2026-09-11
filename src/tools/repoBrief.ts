@@ -28,7 +28,7 @@ import {
   readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
-import { normalizeCorpusQuery } from "./_helpers.js";
+import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "./_helpers.js";
 
 export const repoBriefSchema = z.object({
   source_paths: z
@@ -43,8 +43,13 @@ export const repoBriefSchema = z.object({
   corpus_query: z
     .string()
     .min(1)
+    // Bound in the SCHEMA so the client's picker renders the limit — the
+    // runtime normalizeCorpusQuery re-checks the fence/newline-stripped
+    // form as defence-in-depth. Without this the caller learned the cap
+    // only from a mid-run SCHEMA_INVALID.
+    .max(MAX_CORPUS_QUERY_CHARS, `corpus_query must be ${MAX_CORPUS_QUERY_CHARS} characters or fewer`)
     .optional()
-    .describe("Query used to pull chunks from the corpus. Defaults to 'repo architecture and surfaces' when unspecified."),
+    .describe("Query used to pull chunks from the corpus. Defaults to 'repo architecture and surfaces' when unspecified." + CORPUS_QUERY_CAP_NOTE),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_key_surfaces: z.number().int().min(1).max(20).optional().describe("Cap on key_surfaces (default 8)."),
   max_risk_areas: z.number().int().min(1).max(10).optional().describe("Cap on risk_areas (default 5)."),

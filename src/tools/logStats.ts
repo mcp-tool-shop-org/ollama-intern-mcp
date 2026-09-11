@@ -46,6 +46,12 @@ export const logStatsSchema = z.object({
 
 export type LogStatsInput = z.infer<typeof logStatsSchema>;
 
+/** Nearest-rank percentiles over a set of elapsed_ms samples. Null when none. */
+export interface ElapsedPercentiles {
+  p50: number | null;
+  p95: number | null;
+}
+
 export interface ToolStats {
   calls: number;
   tokens_in: number;
@@ -54,9 +60,15 @@ export interface ToolStats {
   cloud_calls: number;
   /** Calls that WANTED cloud but were served local (degraded). */
   degraded_calls: number;
-  /** Nearest-rank percentiles over this tool's elapsed_ms samples. Null when no samples. */
-  p50_elapsed_ms: number | null;
-  p95_elapsed_ms: number | null;
+  /**
+   * Nearest-rank percentiles over this tool's elapsed_ms samples. Null when
+   * no samples. Same nested shape as the top-level `elapsed_ms` rollup on
+   * purpose — one payload must not render the same concept two ways, and a
+   * client building p50/p95 columns reads the same key path for the summary
+   * row and every tool row. Nesting also leaves room for p99 without a
+   * third spelling.
+   */
+  elapsed_ms: ElapsedPercentiles;
 }
 
 export interface LogStatsResult {
@@ -90,7 +102,7 @@ export interface LogStatsResult {
   /** TIER degradation events (orthogonal to backend fallback — see routing.ts). */
   tier_events: { timeouts: number; fallbacks: number };
   /** Nearest-rank percentiles over ALL call elapsed_ms samples. Null when no samples. */
-  elapsed_ms: { p50: number | null; p95: number | null };
+  elapsed_ms: ElapsedPercentiles;
 }
 
 function defaultLogPath(): string {
@@ -236,8 +248,7 @@ export async function handleLogStats(
       tokens_out: 0,
       cloud_calls: 0,
       degraded_calls: 0,
-      p50_elapsed_ms: null,
-      p95_elapsed_ms: null,
+      elapsed_ms: { p50: null, p95: null },
     });
     perTool.calls += 1;
 
@@ -293,8 +304,8 @@ export async function handleLogStats(
   result.elapsed_ms.p95 = percentile(allElapsed, 0.95);
   for (const [tool, samples] of perToolElapsed) {
     samples.sort((a, b) => a - b);
-    result.by_tool[tool].p50_elapsed_ms = percentile(samples, 0.5);
-    result.by_tool[tool].p95_elapsed_ms = percentile(samples, 0.95);
+    result.by_tool[tool].elapsed_ms.p50 = percentile(samples, 0.5);
+    result.by_tool[tool].elapsed_ms.p95 = percentile(samples, 0.95);
   }
 
   const cloudIntended = result.backend.cloud_calls + result.backend.degraded_calls;

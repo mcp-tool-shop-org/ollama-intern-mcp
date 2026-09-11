@@ -93,7 +93,7 @@ async function loadIncidentArtifact(
     throw new InternError(
       "ARTIFACT_NOT_FOUND",
       `Artifact "${slug}" is not an incident_pack (pack=${artifact.pack}).`,
-      "hypothesis_drill only supports incident_pack artifacts. Use ollama_artifact_list with pack_filter to find the right identity.",
+      "hypothesis_drill only supports incident_pack artifacts. Run ollama_artifact_list({ pack: 'incident_pack' }) to find an incident slug.",
       false,
     );
   }

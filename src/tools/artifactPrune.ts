@@ -6,7 +6,7 @@
  * with `dry_run: false`.
  *
  * Scans the canonical artifact root (or INTERN_ARTIFACT_DIR) and matches on
- * `older_than_days` (against file mtime) and `pack_type` (which subdir).
+ * `older_than_days` (against file mtime) and `pack` (which subdir).
  * Matching files always come in .md + .json pairs — both get deleted together.
  */
 
@@ -19,7 +19,7 @@ import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
 import { InternError } from "../errors.js";
-import { metadataFromArtifact } from "./artifacts/scan.js";
+import { KNOWN_PACKS, metadataFromArtifact, type PackName } from "./artifacts/scan.js";
 import type { RunContext } from "../runContext.js";
 
 export const artifactPruneSchema = z.object({
@@ -30,10 +30,12 @@ export const artifactPruneSchema = z.object({
     .max(3650)
     .optional()
     .describe("Only match artifacts older than N days (by file mtime). Omit for no age filter."),
-  pack_type: z
-    .enum(["incident", "change", "repo", "all"])
+  pack: z
+    .enum([...KNOWN_PACKS, "all"] as unknown as [PackName | "all", ...Array<PackName | "all">])
     .optional()
-    .describe("Limit prune to one pack directory. Default 'all' scans incident + change + repo."),
+    .describe(
+      "Limit prune to a single pack — same field name and same values as artifact_list / artifact_read / artifact_diff, so an identity round-trips between them. Omit (or pass 'all') to scan every pack.",
+    ),
   dry_run: z
     .boolean()
     .optional()
@@ -43,7 +45,13 @@ export const artifactPruneSchema = z.object({
 export type ArtifactPruneInput = z.infer<typeof artifactPruneSchema>;
 
 export interface PruneMatch {
-  pack: "incident" | "change" | "repo";
+  /**
+   * Long-form pack name, matching ArtifactMetadata.pack — feed it straight
+   * back to artifact_read/artifact_diff. The short strings ("incident",
+   * "repo", "change") stay where they belong: the on-disk directory names,
+   * mapped by PACK_SUBDIR below.
+   */
+  pack: PackName;
   slug: string;
   age_days: number;
   bytes: number;
@@ -68,6 +76,17 @@ function artifactRoot(): string {
   return process.env.INTERN_ARTIFACT_DIR ?? join(homedir(), ".ollama-intern", "artifacts");
 }
 
+/**
+ * Pack identity → on-disk subdir. The short strings are a storage detail,
+ * not a caller-facing vocabulary; canonicalPackDirs() in artifacts/scan.ts
+ * builds the same mapping for the read-side tools.
+ */
+const PACK_SUBDIR: Record<PackName, string> = {
+  incident_pack: "incident",
+  repo_pack: "repo",
+  change_pack: "change",
+};
+
 async function listJsonFiles(dir: string): Promise<string[]> {
   if (!existsSync(dir)) return [];
   try {
@@ -89,11 +108,10 @@ export async function handleArtifactPrune(
 ): Promise<Envelope<ArtifactPruneResult>> {
   const startedAt = Date.now();
   const dryRun = input.dry_run ?? true;
-  const packType = input.pack_type ?? "all";
+  const packFilter = input.pack ?? "all";
   const root = artifactRoot();
 
-  const packs: Array<"incident" | "change" | "repo"> =
-    packType === "all" ? ["incident", "change", "repo"] : [packType];
+  const packs: PackName[] = packFilter === "all" ? [...KNOWN_PACKS] : [packFilter];
 
   const now = Date.now();
   const matches: PruneMatch[] = [];
@@ -101,7 +119,7 @@ export async function handleArtifactPrune(
   const skipped: Array<{ path: string; reason: string }> = [];
 
   for (const pack of packs) {
-    const dir = join(root, pack);
+    const dir = join(root, PACK_SUBDIR[pack]);
     let jsons: string[];
     try {
       jsons = await listJsonFiles(dir);

@@ -44,6 +44,7 @@ import {
 } from "../_runContext.js";
 import { InternError } from "../../errors.js";
 import { assembleEvidence } from "../briefs/common.js";
+import { renderEvidenceMarkdown } from "../briefs/evidence.js";
 import { handleTriageLogs, type TriageLogsResult } from "../triageLogs.js";
 import {
   synthesizeIncidentBrief,
@@ -51,7 +52,7 @@ import {
   type IncidentBriefResult,
 } from "../incidentBrief.js";
 import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
-import { normalizeCorpusQuery } from "../_helpers.js";
+import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -63,7 +64,16 @@ export const incidentPackSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
     .optional()
     .describe("Optional named corpus for background context (e.g. 'doctrine', 'memory')."),
-  corpus_query: z.string().min(1).optional().describe("Corpus query (defaults to the log head)."),
+  corpus_query: z
+    .string()
+    .min(1)
+    // Bound in the SCHEMA so the client's picker renders the limit — the
+    // runtime normalizeCorpusQuery re-checks the fence/newline-stripped
+    // form as defence-in-depth. A pack that refuses at char 201 halfway
+    // through a multi-step run must have shown the cap up front.
+    .max(MAX_CORPUS_QUERY_CHARS, `corpus_query must be ${MAX_CORPUS_QUERY_CHARS} characters or fewer`)
+    .optional()
+    .describe("Corpus query (defaults to the log head)." + CORPUS_QUERY_CAP_NOTE),
   title: z.string().min(1).max(120).optional().describe("Short human title — used in the artifact header and filename slug."),
   artifact_dir: z.string().min(1).optional().describe("Directory to write the incident.md + incident.json artifact pair. Defaults to ~/.ollama-intern/artifacts/incident/."),
   allowed_roots: z
@@ -74,8 +84,11 @@ export const incidentPackSchema = z.object({
     .boolean()
     .optional()
     .describe("Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft."),
-  per_file_max_chars: z.number().int().min(1000).max(200_000).optional(),
-  max_hypotheses: z.number().int().min(1).max(10).optional(),
+  // Forwarded verbatim to the brief step, so these carry the SAME meanings
+  // and the SAME defaults as the ollama_incident_brief siblings — describe them
+  // identically rather than shipping bare `number` fields with no unit.
+  per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
+  max_hypotheses: z.number().int().min(1).max(10).optional().describe("Cap on root-cause hypotheses in the output (default 5)."),
 });
 
 export type IncidentPackInput = z.infer<typeof incidentPackSchema>;
@@ -236,13 +249,11 @@ function renderMarkdown(args: {
   if (b.evidence.length === 0) {
     lines.push(`_No evidence items._`);
   } else {
+    // Clip at the item's own per-kind cap (and mark the clip) rather than a
+    // flat display literal — keeps this half of the pair in step with the
+    // .json sibling. See briefs/evidence.ts renderEvidenceMarkdown.
     for (const e of b.evidence) {
-      lines.push(`**[${e.id}]** \`${e.kind}\` — \`${e.ref}\``);
-      lines.push("");
-      lines.push("```");
-      lines.push(e.excerpt.slice(0, 400));
-      lines.push("```");
-      lines.push("");
+      for (const line of renderEvidenceMarkdown(e)) lines.push(line);
     }
   }
 

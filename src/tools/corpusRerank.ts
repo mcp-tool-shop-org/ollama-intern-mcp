@@ -20,7 +20,6 @@ import { stat } from "node:fs/promises";
 import type { Envelope } from "../envelope.js";
 import { buildEnvelope } from "../envelope.js";
 import { callEvent } from "../observability.js";
-import { resolveTier } from "../tiers.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
 
@@ -145,7 +144,6 @@ export async function handleCorpusRerank(
   ctx: RunContext,
 ): Promise<Envelope<CorpusRerankResult>> {
   const startedAt = Date.now();
-  const model = resolveTier("embed", ctx.tiers);
 
   // Redundant belt-and-suspenders check — the schema refine() already
   // enforces this, but the runtime check produces a typed error code
@@ -201,8 +199,8 @@ export async function handleCorpusRerank(
 
   const envelope = buildEnvelope<CorpusRerankResult>({
     result: { hits: ranked, rerank_by: input.rerank_by },
-    tier: "embed",
-    model,
+    tier: "instant", // no model call; "instant" is the cheapest tier we report
+    model: "",
     hardwareProfile: ctx.hardwareProfile,
     tokensIn: 0,
     tokensOut: 0,

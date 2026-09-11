@@ -33,7 +33,7 @@ import {
   readObjectArray,
   type AssembledEvidence,
 } from "./briefs/common.js";
-import { normalizeCorpusQuery } from "./_helpers.js";
+import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "./_helpers.js";
 
 export const changeBriefSchema = z.object({
   diff_text: z.string().min(1).optional().describe("Unified-diff text (e.g. `git diff` output). Split per file on `diff --git` markers into numbered evidence items."),
@@ -49,8 +49,13 @@ export const changeBriefSchema = z.object({
   corpus_query: z
     .string()
     .min(1)
+    // Bound in the SCHEMA so the client's picker renders the limit — the
+    // runtime normalizeCorpusQuery re-checks the fence/newline-stripped
+    // form as defence-in-depth. Without this the caller learned the cap
+    // only from a mid-run SCHEMA_INVALID.
+    .max(MAX_CORPUS_QUERY_CHARS, `corpus_query must be ${MAX_CORPUS_QUERY_CHARS} characters or fewer`)
     .optional()
-    .describe("Query used to pull chunks from the corpus. Defaults to a digest of the diff/path heads."),
+    .describe("Query used to pull chunks from the corpus. Defaults to a digest of the diff/path heads." + CORPUS_QUERY_CAP_NOTE),
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_breakpoints: z.number().int().min(1).max(12).optional().describe("Cap on likely_breakpoints (default 6)."),
   max_validation_checks: z.number().int().min(1).max(15).optional().describe("Cap on validation_checks (default 8)."),

@@ -24,7 +24,9 @@ import type { RepoPackArtifact } from "../packs/repoPack.js";
 import type { ChangePackArtifact } from "../packs/changePack.js";
 
 // Top-N defaults keep snippets compact. Full artifact is always available
-// via artifact_read for callers who want the whole thing.
+// via artifact_read for callers who want the whole thing — and when a cap
+// actually bites, the rendered fragment says so (clippedNote below) rather
+// than leaving the reader to assume the brief produced only this much.
 const MAX_HYPOTHESES = 3;
 const MAX_SURFACES = 5;
 const MAX_CHECKS = 5;
@@ -33,6 +35,23 @@ const MAX_KEY_SURFACES = 5;
 
 function sourceLine(pack: string, slug: string, createdAt: string): string {
   return `_Source: ${pack} artifact \`${slug}\` (generated ${createdAt})._`;
+}
+
+/**
+ * Marker line for a list this renderer clipped, or null when it didn't.
+ *
+ * Every Top-N cap above sits BELOW the default of the tool that produced
+ * the artifact (incident_brief max_hypotheses defaults to 5 against a cap
+ * of 3; repo_brief max_key_surfaces and max_read_next both default to 8
+ * against 5), so a default pack run ALWAYS drops content here. These
+ * fragments are made to be pasted somewhere permanent — a postmortem
+ * reader must not see three bullets under "Root cause (likely)" and take
+ * that for everything the brief produced. Wording follows codeMap's
+ * max_files note: say how many were dropped and how to see the rest.
+ */
+function clippedNote(total: number, shown: number, pack: string, slug: string): string | null {
+  if (total <= shown) return null;
+  return `_… and ${total - shown} more — see artifact_read({ pack: '${pack}', slug: '${slug}' })._`;
 }
 
 /**
@@ -47,6 +66,7 @@ export function renderIncidentNote(artifact: IncidentPackArtifact): string {
   const nextChecks = Array.isArray(b.next_checks) ? b.next_checks : [];
   const title = artifact.title ?? "(untitled incident)";
   const jsonPath = artifact.artifact?.json_path ?? "(unknown path)";
+  const slug = artifact.slug ?? "(unknown slug)";
   const lines: string[] = [];
 
   lines.push(`# Incident: ${title}`);
@@ -67,6 +87,8 @@ export function renderIncidentNote(artifact: IncidentPackArtifact): string {
       const text = h?.hypothesis ?? "(no hypothesis text)";
       lines.push(`- [${conf}] ${text}`);
     }
+    const note = clippedNote(hypotheses.length, MAX_HYPOTHESES, "incident_pack", slug);
+    if (note) lines.push(note);
   }
   lines.push("");
 
@@ -78,6 +100,8 @@ export function renderIncidentNote(artifact: IncidentPackArtifact): string {
     for (const s of surfaces.slice(0, MAX_SURFACES)) {
       lines.push(`- ${s?.surface ?? "(unnamed surface)"}`);
     }
+    const note = clippedNote(surfaces.length, MAX_SURFACES, "incident_pack", slug);
+    if (note) lines.push(note);
   }
   lines.push("");
 
@@ -91,10 +115,12 @@ export function renderIncidentNote(artifact: IncidentPackArtifact): string {
       const check = c?.check ?? "(no check text)";
       lines.push(`${i + 1}. ${check}${why}`);
     });
+    const note = clippedNote(nextChecks.length, MAX_CHECKS, "incident_pack", slug);
+    if (note) lines.push(note);
   }
   lines.push("");
 
-  lines.push(sourceLine("incident_pack", artifact.slug ?? "(unknown slug)", artifact.generated_at ?? "(unknown time)"));
+  lines.push(sourceLine("incident_pack", slug, artifact.generated_at ?? "(unknown time)"));
   return lines.join("\n");
 }
 
@@ -110,6 +136,7 @@ export function renderOnboardingSection(artifact: RepoPackArtifact): string {
   const readNext = Array.isArray(b.read_next) ? b.read_next : [];
   const thesis = typeof b.repo_thesis === "string" ? b.repo_thesis.trim() : "";
   const jsonPath = artifact.artifact?.json_path ?? "(unknown path)";
+  const slug = artifact.slug ?? "(unknown slug)";
   const lines: string[] = [];
 
   lines.push(`## What this repo is`);
@@ -138,6 +165,8 @@ export function renderOnboardingSection(artifact: RepoPackArtifact): string {
       const why = typeof s?.why === "string" && s.why.trim().length > 0 ? ` — ${s.why.trim()}` : "";
       lines.push(`- **${surface}**${why}`);
     }
+    const note = clippedNote(keySurfaces.length, MAX_KEY_SURFACES, "repo_pack", slug);
+    if (note) lines.push(note);
   }
   lines.push("");
 
@@ -152,6 +181,8 @@ export function renderOnboardingSection(artifact: RepoPackArtifact): string {
       const file = r?.file ?? "(unnamed file)";
       lines.push(`${i + 1}. \`${file}\`${why}`);
     });
+    const note = clippedNote(readNext.length, MAX_READ_NEXT, "repo_pack", slug);
+    if (note) lines.push(note);
   }
   lines.push("");
 
@@ -166,7 +197,7 @@ export function renderOnboardingSection(artifact: RepoPackArtifact): string {
     lines.push("");
   }
 
-  lines.push(sourceLine("repo_pack", artifact.slug ?? "(unknown slug)", artifact.generated_at ?? "(unknown time)"));
+  lines.push(sourceLine("repo_pack", slug, artifact.generated_at ?? "(unknown time)"));
   return lines.join("\n");
 }
 

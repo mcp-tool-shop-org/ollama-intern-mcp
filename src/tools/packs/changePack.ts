@@ -44,6 +44,7 @@ import {
 } from "../_runContext.js";
 import { InternError } from "../../errors.js";
 import { assembleEvidence } from "../briefs/common.js";
+import { renderEvidenceMarkdown } from "../briefs/evidence.js";
 import { loadSources, formatSourcesBlock } from "../../sources.js";
 import { handleTriageLogs, type TriageLogsResult } from "../triageLogs.js";
 import {
@@ -53,7 +54,12 @@ import {
 } from "../changeBrief.js";
 import { handleExtract, type ExtractResult } from "../extract.js";
 import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
-import { normalizeCorpusQuery, allowlistPathsMatch } from "../_helpers.js";
+import {
+  normalizeCorpusQuery,
+  allowlistPathsMatch,
+  MAX_CORPUS_QUERY_CHARS,
+  CORPUS_QUERY_CAP_NOTE,
+} from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -66,7 +72,16 @@ export const changePackSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, "Corpus names must match [a-zA-Z0-9_-]+")
     .optional()
     .describe("Optional named corpus for architecture/doctrine context. Pulled in only when you need it to sharpen impact — this pack is about the delta, not a repo tour."),
-  corpus_query: z.string().min(1).optional().describe("Corpus query (defaults to the head of diff_text or first source path)."),
+  corpus_query: z
+    .string()
+    .min(1)
+    // Bound in the SCHEMA so the client's picker renders the limit — the
+    // runtime normalizeCorpusQuery re-checks the fence/newline-stripped
+    // form as defence-in-depth. A pack that refuses at char 201 halfway
+    // through a multi-step run must have shown the cap up front.
+    .max(MAX_CORPUS_QUERY_CHARS, `corpus_query must be ${MAX_CORPUS_QUERY_CHARS} characters or fewer`)
+    .optional()
+    .describe("Corpus query (defaults to the head of diff_text or first source path)." + CORPUS_QUERY_CAP_NOTE),
   title: z.string().min(1).max(120).optional().describe("Short human title — used in the artifact header and filename slug. Defaults to the change_summary head."),
   artifact_dir: z.string().min(1).optional().describe("Directory to write the change.md + change.json artifact pair. Defaults to ~/.ollama-intern/artifacts/change/."),
   allowed_roots: z
@@ -77,9 +92,12 @@ export const changePackSchema = z.object({
     .boolean()
     .optional()
     .describe("Required when the artifact pair would land on a protected path (.git/, SECURITY.md, memory/, ...). Same gate as ollama_draft."),
-  per_file_max_chars: z.number().int().min(1000).max(200_000).optional(),
-  max_breakpoints: z.number().int().min(1).max(12).optional(),
-  max_validation_checks: z.number().int().min(1).max(15).optional(),
+  // Forwarded verbatim to the brief step, so these carry the SAME meanings
+  // and the SAME defaults as the ollama_change_brief siblings — describe them
+  // identically rather than shipping bare `number` fields with no unit.
+  per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
+  max_breakpoints: z.number().int().min(1).max(12).optional().describe("Cap on likely_breakpoints (default 6)."),
+  max_validation_checks: z.number().int().min(1).max(15).optional().describe("Cap on validation_checks (default 8)."),
 });
 
 export type ChangePackInput = z.infer<typeof changePackSchema>;
@@ -433,13 +451,11 @@ function renderMarkdown(args: {
   if (b.evidence.length === 0) {
     lines.push(`_No evidence items._`);
   } else {
+    // Clip at the item's own per-kind cap (and mark the clip) rather than a
+    // flat display literal — keeps this half of the pair in step with the
+    // .json sibling. See briefs/evidence.ts renderEvidenceMarkdown.
     for (const e of b.evidence) {
-      lines.push(`**[${e.id}]** \`${e.kind}\` — \`${e.ref}\``);
-      lines.push("");
-      lines.push("```");
-      lines.push(e.excerpt.slice(0, 400));
-      lines.push("```");
-      lines.push("");
+      for (const line of renderEvidenceMarkdown(e)) lines.push(line);
     }
   }
 
