@@ -17,6 +17,7 @@ import { loadSources, formatSourcesBlock } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { parseModelJsonObject, readObjectArray } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
+import { modelClassBackendField } from "./_helpers.js";
 
 export const refactorPlanSchema = z.object({
   files: strictStringArray({ min: 1, max: 20, fieldName: "files" }).describe(
@@ -40,6 +41,11 @@ export const refactorPlanSchema = z.object({
     .describe(
       "Planning bias. 'safety' (default) sequences conservative phases with heavy tests-first. 'speed' compresses phases. 'parallelism' prefers splitting work across agents/files when possible.",
     ),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type RefactorPlanInput = z.infer<typeof refactorPlanSchema>;
@@ -133,6 +139,7 @@ export async function handleRefactorPlan(
     tool: "ollama_refactor_plan",
     tier: "workhorse",
     ctx,
+    backend: input.backend,
     think: true,
     build: (_tier, model) => ({
       model,

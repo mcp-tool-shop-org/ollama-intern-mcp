@@ -40,6 +40,7 @@ import {
 } from "../corpus/searcher.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { modelClassBackendField } from "./_helpers.js";
 
 export const corpusAnswerSchema = z.object({
   corpus: z
@@ -95,6 +96,11 @@ export const corpusAnswerSchema = z.object({
         "question, zero hits, below min_top_score) do NOT invoke any " +
         "model; the envelope still surfaces `model_requested` when set.",
     ),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type CorpusAnswerInput = z.infer<typeof corpusAnswerSchema>;
@@ -415,6 +421,7 @@ export async function handleCorpusAnswer(
     tool: "ollama_corpus_answer",
     tier: "deep",
     ctx,
+    backend: input.backend,
     think: true,
     modelOverride: input.model,
     build: (_tier, model) => ({

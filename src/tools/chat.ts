@@ -18,6 +18,7 @@ import { getRoutingInfo, setRouteDirective } from "../routing.js";
 import { cloudMayServe } from "../profiles.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { backendField } from "./_helpers.js";
 
 export const chatSchema = z.object({
   messages: z
@@ -43,19 +44,10 @@ export const chatSchema = z.object({
         "fallback. Use for receipt-backed orchestration that requires explicit " +
         "model identity (e.g., research-os reviewer profiles).",
     ),
-  backend: z
-    .enum(["cloud", "local"])
-    .optional()
-    .describe(
-      "Optional per-call backend directive (v2.9). 'cloud' escalates THIS " +
-        "call to Ollama Cloud — works in cloud standby (OLLAMA_API_KEY set, " +
-        "OLLAMA_CLOUD_PRIMARY unset) and cloud-primary modes; errors with " +
-        "CLOUD_NOT_CONFIGURED when no cloud is configured (never silently " +
-        "runs local while claiming escalation). 'local' pins the call to " +
-        "the local backend (zero egress) even under cloud-primary. Omit " +
-        "for the mode default. Escalated calls disclose egress loudly and " +
-        "carry backend provenance on the envelope.",
-    ),
+  // F2c: the describe text now lives in _helpers.backendField, shared
+  // verbatim with the twelve tools that gained the knob in v2.9.2. chat
+  // shipped it first; it is no longer the only tool that has it.
+  backend: backendField,
 });
 
 export type ChatInput = z.infer<typeof chatSchema>;

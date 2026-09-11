@@ -72,9 +72,14 @@ export type VerifyConfidence = (typeof CONFIDENCES)[number];
  * Disjoint vendor families — DeepSeek / Moonshot / Z.ai — per the
  * cross-family doctrine: same-family judges over-rate mechanically.
  * Roster checked against ollama.com/search?c=cloud 2026-07-06; cloud ids
- * are VOLATILE (rotate/retire server-side) — when a juror 404s, re-check
- * the live roster and pass a current trio via `panel`. A retired juror
- * degrades visibly (excluded seat + degraded envelope), never silently.
+ * are VOLATILE (rotate/retire server-side) — when a juror 404s, read the
+ * live roster from `ollama_doctor` (cloud.models_available) and pass a
+ * current trio via `panel`. A retired juror degrades visibly (excluded seat
+ * + degraded envelope), never silently. Doctor now validates the CONFIGURED
+ * tier models against that roster (cloud.models_missing), so this trio's rot
+ * is detectable before the panel runs instead of as three excluded seats
+ * after — but note doctor checks the TIER models, not this default panel:
+ * a juror id is only proved live by appearing in cloud.models_available.
  */
 export const DEFAULT_VERIFY_PANEL: readonly string[] = [
   "deepseek-v4-pro:cloud",
@@ -159,7 +164,12 @@ export const verifyClaimsSchema = z.object({
       "Optional juror override — Ollama Cloud model ids (1–5). Default is a " +
         "3-model disjoint-family flagship trio; keep families disjoint from " +
         "the claim author or the panel inherits its bias. Cloud ids rotate " +
-        "server-side — check ollama.com/search?c=cloud when a juror 404s.",
+        "server-side — run ollama_doctor and read cloud.models_available for " +
+        "the LIVE roster your key can reach (cloud.models_missing already " +
+        "names any configured tier model that has rotated out). That is an " +
+        "in-product answer; a browser trip to ollama.com/search?c=cloud is " +
+        "no longer required, and doctor sees the roster BEFORE the panel " +
+        "runs rather than after three seats are excluded.",
     ),
   min_refute_votes: z
     .number()

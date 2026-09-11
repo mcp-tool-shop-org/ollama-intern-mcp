@@ -52,7 +52,13 @@ import {
   type IncidentBriefResult,
 } from "../incidentBrief.js";
 import { strictStringArray } from "../../guardrails/stringifiedArrayGuard.js";
-import { normalizeCorpusQuery, MAX_CORPUS_QUERY_CHARS, CORPUS_QUERY_CAP_NOTE } from "../_helpers.js";
+import {
+  normalizeCorpusQuery,
+  MAX_CORPUS_QUERY_CHARS,
+  CORPUS_QUERY_CAP_NOTE,
+  packSynthesisBackendField,
+  assertCloudEscalationConfigured,
+} from "../_helpers.js";
 
 // ── Schema ──────────────────────────────────────────────────
 
@@ -89,6 +95,13 @@ export const incidentPackSchema = z.object({
   // identically rather than shipping bare `number` fields with no unit.
   per_file_max_chars: z.number().int().min(1000).max(200_000).optional().describe("Chars per source file (default 20k)."),
   max_hypotheses: z.number().int().min(1).max(10).optional().describe("Cap on root-cause hypotheses in the output (default 5)."),
+  // F2c (v2.9.2): per-STEP cloud escalation. A pack is a mixed-cost
+  // pipeline — see packSynthesisBackendField for why this reaches the
+  // synthesis step alone. Forwarded into briefInput below, nowhere else.
+  backend: packSynthesisBackendField({
+    synthesisStep: "the brief synthesis step (ollama_incident_brief, Deep tier)",
+    localSteps: "the triage pass (Instant tier), evidence assembly and the artifact write",
+  }),
 });
 
 export type IncidentPackInput = z.infer<typeof incidentPackSchema>;
@@ -336,6 +349,10 @@ async function handleIncidentPackInner(
   input: IncidentPackInput,
   ctx: RunContext,
 ): Promise<Envelope<IncidentPackResult>> {
+  // F2c: refuse an unservable escalation BEFORE the first step runs —
+  // a pack does local work ahead of its synthesis step, and the runner's
+  // own gate would only fire after the caller had already paid for it.
+  assertCloudEscalationConfigured({ tool: "ollama_incident_pack", backend: input.backend, cloudConfigured: ctx.cloud !== undefined });
   const packStartedAt = Date.now();
   const steps: StepEntry[] = [];
   let tokensIn = 0;
@@ -408,6 +425,10 @@ async function handleIncidentPackInner(
     corpus_query: corpusQuery,
     per_file_max_chars: input.per_file_max_chars,
     max_hypotheses: input.max_hypotheses,
+    // F2c: the ONLY step a pack-level backend directive reaches. The
+    // triage/extract steps and the artifact write are not escalated —
+    // they resolve their own backend from the mode default.
+    backend: input.backend,
   };
   const briefStart = Date.now();
   const briefEnv = await synthesizeIncidentBrief(briefInput, ctx, assembled);

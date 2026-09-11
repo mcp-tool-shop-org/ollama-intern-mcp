@@ -25,6 +25,7 @@ import { loadSources, formatSourcesBlock } from "../sources.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { parseModelJsonObject, readArray, readObjectArray } from "./briefs/common.js";
 import type { RunContext } from "../runContext.js";
+import { modelClassBackendField, modelClassWeakNote } from "./_helpers.js";
 
 export const multiFileRefactorProposeSchema = z.object({
   files: strictStringArray({ min: 1, max: 20, fieldName: "files" }).describe(
@@ -44,6 +45,11 @@ export const multiFileRefactorProposeSchema = z.object({
     .max(200_000)
     .optional()
     .describe("Chars to read per file (default 60_000)."),
+  // F2c (v2.9.2): per-call cloud escalation. Optional and absent-by-
+  // default — omitting it is byte-identical to pre-escalation behavior.
+  // The runner owns the CLOUD_NOT_CONFIGURED refusal and the budget sum;
+  // this field only states the caller's intent.
+  backend: modelClassBackendField,
 });
 
 export type MultiFileRefactorProposeInput = z.infer<typeof multiFileRefactorProposeSchema>;
@@ -176,10 +182,11 @@ export async function handleMultiFileRefactorPropose(
   const body = formatSourcesBlock(sources);
   const validFileSet = new Set(input.files);
 
-  return runTool<MultiFileRefactorProposeResult>({
+  const envelope = await runTool<MultiFileRefactorProposeResult>({
     tool: "ollama_multi_file_refactor_propose",
     tier: "workhorse",
     ctx,
+    backend: input.backend,
     think: true,
     build: (_tier, model) => ({
       model,
@@ -241,4 +248,15 @@ export async function handleMultiFileRefactorPropose(
       return result;
     },
   });
+
+  // F3 (v2.9.2): isWeak() reads thin MODEL OUTPUT and the tool has no
+  // coverage_notes field, so the envelope's warnings[] is the honest
+  // channel for the same "it may be the model, not the input" signal the
+  // briefs now carry. Suppressed when the call was already cloud-served.
+  const modelClassNote = modelClassWeakNote(envelope, envelope.result.weak);
+  if (modelClassNote) {
+    envelope.warnings = [...(envelope.warnings ?? []), modelClassNote];
+  }
+
+  return envelope;
 }
