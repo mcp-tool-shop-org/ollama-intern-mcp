@@ -30,6 +30,14 @@ import { describe, it, expect, beforeAll } from "vitest";
  *
  * v2.7.0: bumped 470_000 → 528_000 for the opt-in Ollama Cloud routing code
  * (new dist/routing.js + cloud additions across client/runner/index/profiles).
+ * v2.10.0: bumped 650_000 → 724_000. Two intentional causes, measured:
+ * hermes.config.example.yaml finally ships (~1.8 kB — it was missing from the
+ * files allowlist, which is why `init` failed on every npm install), and the
+ * eight READMEs grew with the v2.10.0 release section. The translations are
+ * the bulk of this tarball (~420 kB of it): .npmignore tries to exclude them
+ * but npm force-includes anything matching README*, so they ship regardless.
+ * That is worth revisiting as a size decision, but it is long-standing
+ * behavior and not something this release changed.
  *
  * v2.9 line (F1+F2): bumped 528_000 → 590_000 for the cloud feature pass —
  * dist/tools/verifyClaims.js (the cross-family verification atom, +schema
@@ -42,7 +50,7 @@ import { describe, it, expect, beforeAll } from "vitest";
  * manifest handling. Measured 649_444 on a clean build (`npm pack --dry-run
  * --ignore-scripts`, 2026-09-11).
  */
-export const BASELINE_PACKED_BYTES = 650_000;
+export const BASELINE_PACKED_BYTES = 724_000;
 export const BASELINE_TOLERANCE = 0.10;
 
 type PackEntry = { path: string; size: number; mode: number };

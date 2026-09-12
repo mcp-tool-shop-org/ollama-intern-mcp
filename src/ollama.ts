@@ -786,7 +786,7 @@ export class HttpOllamaClient implements OllamaClient {
    * `probe()` already hits — this one keeps the body.
    *
    * Returns the de-duplicated ids exactly as the backend spells them
-   * (`hermes3:8b`, `qwen3-coder-next:cloud`). Entries carry `name` and
+   * (`hermes3:8b`, `mistral-large-3:675b-cloud`). Entries carry `name` and
    * `model`; both are collected because the cloud host and older local
    * Ollama builds have not always populated the same one, and a catalog
    * check that silently misses half the list is worse than no check.

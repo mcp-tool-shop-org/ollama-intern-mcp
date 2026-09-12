@@ -451,7 +451,7 @@ describeOrSkip("CLI surface — src/index.ts:runCli", () => {
       // the correct current default + the standby semantics named.
       expect(r.stdout).toContain("OLLAMA_API_KEY");
       expect(r.stdout).toMatch(/standby/i);
-      expect(r.stdout).toContain("qwen3-coder-next:cloud");
+      expect(r.stdout).toContain("mistral-large-3:675b-cloud");
       expect(r.stdout).not.toContain("minimax-m3");
     } finally {
       await rm(dir, { recursive: true, force: true });

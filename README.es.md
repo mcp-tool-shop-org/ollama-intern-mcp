@@ -10,81 +10,97 @@
   <a href="https://github.com/mcp-tool-shop-org/ollama-intern-mcp/actions"><img alt="CI" src="https://github.com/mcp-tool-shop-org/ollama-intern-mcp/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/"><img alt="Landing Page" src="https://img.shields.io/badge/landing-page-8b5cf6"></a>
+  <a href="https://www.npmjs.com/package/ollama-intern-mcp"><img alt="npm" src="https://img.shields.io/npm/v/ollama-intern-mcp?color=cb3837&logo=npm"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
+  <a href="#ollama-cloud"><img alt="Ollama Cloud: 600B-class, optional" src="https://img.shields.io/badge/Ollama%20Cloud-600B--class%20optional-0ea5e9"></a>
 </p>
 
 > **El becario local para Claude Code.** <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> herramientas diseñadas para tareas específicas, resúmenes basados en evidencia, artefactos duraderos.
 
-Un servidor MCP que proporciona a Claude Code un **becario local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / de trabajo intensivo / Profundo / Integrado); el nivel escribe un archivo que puedes abrir la semana que viene.
+Un servidor MCP que proporciona a Claude Code un **becario local** con reglas, niveles, un escritorio y un archivador. Claude elige la _herramienta_; la herramienta elige el _nivel_ (Instantáneo / De trabajo intensivo / Profundo / Integrado); el nivel escribe un archivo que puedes abrir la semana que viene.
 
-**También ejecuta [Hermes Agent](https://github.com/NousResearch/hermes-agent) en `hermes3:8b`** — validado de principio a fin el 19 de abril de 2026. La configuración predeterminada es `hermes3:8b`; `qwen3:*` es la alternativa. Consulta [Uso con Hermes](#use-with-hermes) más abajo.
+**También ejecuta [Hermes Agent](https://github.com/NousResearch/hermes-agent) en `hermes3:8b`** — validado de extremo a extremo el 19 de abril de 2026. La escala predeterminada es `hermes3:8b`; `qwen3:*` es la vía alternativa. Consulte [Uso con Hermes](#use-with-hermes) a continuación.
 
-**Requisitos de hardware:** ~6 GB de VRAM para `hermes3:8b`, o ~16 GB de RAM para la inferencia en CPU. Consulta [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums) para obtener información detallada.
+**Requisitos de hardware:** ~6 GB de VRAM para `hermes3:8b`, o ~16 GB de RAM para la inferencia en CPU. Consulte [handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums) para obtener información detallada.
 
-**¿No usas Claude?** El directorio [`examples/`](./examples/) contiene un cliente MCP mínimo de Node.js y Python que puedes ejecutar a través de stdio. Consulta también [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
+**¿No estás usando Claude?** El directorio [`examples/`](./examples/) tiene un cliente MCP mínimo de Node.js y Python que puedes ejecutar a través de stdio. Consulte también [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/).
 
-**Prioridad local:** cero transferencia de datos a través de la red hasta que decidas activarla. Sin telemetría. Nada "autónomo". Cada llamada muestra su proceso. El enrutamiento opcional a [Ollama Cloud](#ollama-cloud-optional) permite utilizar modelos de clase 600B con las mismas herramientas cuando el hardware local es el cuello de botella, con una reversión automática al modo local.
+**Prioridad local** — cero salida de red hasta que decidas activarla. Sin telemetría. Nada "autónomo". Cada llamada muestra su proceso.
+
+**¿No tienes una GPU lo suficientemente potente? [Ollama Cloud](#ollama-cloud) ejecuta todas las <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> herramientas en modelos de la clase 600B.** La mayoría de las personas no pueden alojar un modelo de vanguardia en su propia tarjeta; esa es la verdadera limitación de la IA local, y esta solución la supera. La misma superficie `/api/*`, las mismas herramientas diseñadas para tareas específicas, los mismos parámetros; las incrustaciones permanecen locales; cualquier fallo en la nube vuelve automáticamente a tu perfil local. Escala **una** llamada (`backend: "cloud"`) o enruta cada llamada generativa (`OLLAMA_CLOUD_PRIMARY=1`), y cada parámetro te indica qué backend la atendió. Desactivado hasta que establezcas una clave.
 
 ---
 
-## Nuevo en la versión 2.9.0
+## Nuevo en la v2.10.0
 
-**La función de nube — un proceso de verificación entre familias, escalamiento a la nube bajo demanda y la economía para verlo.** El comportamiento con prioridad local no cambia: sin una clave configurada, el comportamiento es idéntico al de la versión 2.8.0 (cero transferencia de datos, sin comprobación inicial en la nube).
+**La versión que prioriza la honestidad en la nube.** La v2.9.0 incluyó la escalada a la nube por llamada y este archivo README anunciaba "escala una revisión de alta importancia a un modelo de 600B", pero la entrada `backend` existía en exactamente **una** de las 44 herramientas, y era `ollama_chat`, que su propia descripción califica como último recurso. Cada tarea de revisión estaba asignada a un modelo local de 8B. La prioridad local no ha cambiado: no tener una clave sigue significando cero salida de red y ninguna sonda de inicio, las incrustaciones nunca abandonan el sistema y cada nueva opción tiene por defecto el comportamiento actual.
 
-- **`ollama_verify_claims` — verificación entre familias.** `ollama_code_review` *genera* los resultados; esto *los evalúa*. Ejecuta un panel insignia de Ollama Cloud de una familia diferente (deepseek / kimi / glm por defecto) sobre tus afirmaciones + evidencia y devuelve CONFIRMADO / REFUTADO / NECESITA_REVISIÓN para cada afirmación. La agregación se basa en el principio de que la disidencia única nunca decide (≥2 para refutar, ≥2 para confirmar), cada jurado está verificado con un modelo servido localmente (se excluye y no se cuenta un modelo local alternativo o sustituto) y las entradas de las afirmaciones están estructuradas sin razonamiento. El límite honesto está documentado: una confirmación es evidencia de respaldo, no prueba; es fiable para señalar errores graves, pero menos eficaz con los errores sutiles de un modelo de vanguardia.
-- **Escalamiento a la nube por llamada + modo de espera.** Establece `OLLAMA_API_KEY` *solo* (sin `OLLAMA_CLOUD_PRIMARY`) y estarás en **modo de espera**: prioridad local, cero transferencia de datos, sin comprobación inicial, hasta que una sola llamada active el modo con `backend:'cloud'`. Escala una revisión de alto riesgo a un modelo de 600B sin cambiar todas las llamadas al modo nube. La primera escalada revela la transferencia de datos de forma clara en el momento en que ocurre; ahora, una anulación de `model` por llamada se aplica literalmente al intento en la nube.
-- **`ollama_log_stats` — las métricas económicas prometidas en el eslogan.** Un resumen sin LLM de tus recibos NDJSON: división entre nube y local, tasa de reversión de nube a local, tokens por herramienta, p50/p95 de latencia, limitado por una ventana `since`.
-- **Herramienta de diagnóstico para CI + herramientas legibles por máquina.** `doctor --json --fail-unhealthy` proporciona a las canalizaciones una puerta de enlace real (con un indicador `healthy` compatible con la nube), y ahora cada herramienta incluye anotaciones MCP `readOnlyHint`/`destructiveHint`/`title`, para que los clientes obtengan la experiencia de usuario de permisos correcta. Además, `init --claude` crea un archivo `.mcp.json` listo para pegar.
-
-Más detalles en [CHANGELOG.md](./CHANGELOG.md).
-
-## Nuevo en la versión 2.8.0
-
-**Mayor fiabilidad, durabilidad y seguridad — 25 correcciones, todas ellas probadas primero y verificadas entre familias.** El comportamiento con prioridad local no cambia y no se eliminó ningún contrato de herramienta; las llamadas existentes siguen funcionando. Las mejoras más importantes son:
-
-- **No más pérdida silenciosa de datos del corpus.** Un error de lectura transitorio durante `ollama_corpus_refresh` (un bloqueo de archivos de Windows, una retención de un antivirus, una ventana de guardado de un editor) solía clasificar el archivo como "faltante" y **eliminar permanentemente su contenido indexado**. Ahora solo se elimina un archivo que realmente no existe; un error transitorio conserva la ruta, lo marca para reintentar y preserva sus fragmentos.
-- **Concurrencia que respeta sus límites.** Un tiempo de espera de nivel ahora puede cancelar una llamada que aún está en cola para obtener un permiso (antes se quedaba bloqueada mucho después del límite mientras los recibos indicaban otra cosa), y `ollama_chat` finalmente se enruta a través de la unión de tiempo de espera/nivel, por lo que una generación local atascada no puede detener todas las herramientas y realmente llega a la nube en el modo con prioridad en la nube.
-- **Nube que se degrada en lugar de fallar.** Un ID de modelo de nube retirado ahora vuelve al modo local con una razón clara `cloud_model_missing` y una indicación específica de la nube en lugar de un fallo total; el interruptor automático no puede bloquearse permanentemente; un modelo persistentemente faltante deja de realizar una solicitud a la nube en cada llamada.
-- **Superficie de seguridad que coincide con su documentación.** `ollama_batch_proof_check` ahora realmente aplica la contención del directorio de trabajo (con una nueva restricción de entorno del operador `INTERN_BATCH_PROOF_ALLOWED_ROOTS` que un llamador no puede ampliar), los sanitizadores de inyección de prompts obtuvieron cobertura + un límite honestamente divulgado, y el protector de ruta protegido no distingue entre mayúsculas y minúsculas en macOS.
-- **Artefactos y recibos honestos.** Las escrituras de paquetes son atómicas y nunca sobrescriben silenciosamente; los sobre de lotes degradados informan del nivel que se utilizó realmente; el detector de escritura interrumpida detecta las escrituras incompletas en cualquier modificación; los ID de fragmento ya no entran en conflicto entre archivos con contenido idéntico. La auditoría de dependencias es completamente clara (0 vulnerabilidades).
+- **La escalada por llamada ahora llega a 15 herramientas, no a 1.** `backend: "cloud"` es una entrada opcional en `research`, `summarize_deep`, `code_review`, `code_citation`, `corpus_answer`, `hypothesis_drill`, `multi_file_refactor_propose`, `refactor_plan`, los tres resúmenes, los tres paquetes y `chat`. Omitirla y el comportamiento será idéntico a la v2.9.x. **Los paquetes escalan solo su paso de síntesis** —el ensamblaje de evidencia, la clasificación y la escritura de artefactos permanecen locales— y rechazan una escalada que no se pueda atender *antes* de realizar cualquier trabajo local.
+- **`INTERN_CLOUD_STANDBY_TIERS` — declara la política una sola vez.** Indica qué niveles (`instant|workhorse|deep`) escalarán en modo de espera sin una directiva por llamada. Vacío por defecto. Una directiva `backend` por llamada sigue teniendo prioridad en ambas direcciones. `embed` se rechaza al cargar la configuración *y* en la capa de enrutamiento: las incrustaciones siempre permanecen locales.
+- **`doctor --cloud-check` — demuestra que la clave realmente funciona.** La sonda anterior accedía a `/api/tags`, que devuelve 200 para una clave no válida, por lo que la autenticación solo podía leer "no verificada". Esto ejecuta una generación de 8 tokens y devuelve `ok` / `failed` / `unverified` / `unreachable` —cuatro estados que se mantienen distintos a propósito, porque un error 404 en un ID de modelo no es un problema de clave y no debería hacer que busques una. También informa de cada ID de nube configurado como presente o NO EN EL CATÁLOGO con una sugerencia del ID activo más cercano, para que se encuentre un ID retirado antes de que pagues por una llamada degradada.
+- **Corregido: `init` estaba roto en cada instalación de npm.** `hermes.config.example.yaml` nunca llegó al archivo tar publicado, por lo que el binario informaba de su propio error de "error de empaquetado" a cualquiera que lo instalara desde npm. Ahora se incluye y el CI instala y ejecuta el archivo tar empaquetado para que no pueda volver a ocurrir.
+- **Las puntuaciones de recuperación finalmente son comparables.** `CorpusHit.score` contenía cuatro escalas incomparables bajo un solo campo: el modo híbrido predeterminado llegaba a `0.0328`, mientras que `corpus_min_evidence_score` se documentaba como "0–1", por lo que un límite natural de `0.1` eliminaba silenciosamente cada fragmento del corpus. Las puntuaciones fusionadas se vuelven a escalar a 0–1 y cada resultado contiene `score_scale`.
 
 Más detalles en [CHANGELOG.md](./CHANGELOG.md).
 
-## Nuevo en la versión 2.7.0
+## Nuevo en la v2.9.0
 
-**Enrutamiento opcional de Ollama Cloud: primario en la nube, con respaldo local.** Para activarlo, utilice una clave y un indicador, y las capas generativas se dirigirán a un modelo en la nube de clase 600B; los embeddings permanecerán locales; un mecanismo de seguridad volverá al perfil local en caso de cualquier fallo en la nube. **Desactivado por defecto: sin transferencia de datos a menos que configure tanto `OLLAMA_API_KEY` como `OLLAMA_CLOUD_PRIMARY=1`.** Mejora menor y aditiva: los usuarios de versiones anteriores a v2.7.0 (y aquellos que no activen la función) verán un comportamiento idéntico. Consulte [Ollama Cloud (opcional)](#ollama-cloud-optional).
+**La actualización de las funciones de la nube: una vía de verificación entre familias, escalada a la nube bajo demanda y la economía para verlo.** La prioridad local no ha cambiado: sin una clave establecida, el comportamiento es idéntico a la v2.8.0 (cero salida de red, sin sonda de inicio en la nube).
 
-- **Primario en la nube con una red de seguridad.** Un `RoutingOllamaClient` intenta primero utilizar la nube y, si se produce un tiempo de espera / error 5xx / 429 / problema de red, vuelve al perfil local. Las claves incorrectas (401/403) se detectan claramente mediante un mecanismo de seguridad persistente en lugar de degradarse silenciosamente para siempre; también se detecta un ID de modelo en la nube retirado o con errores tipográficos (404).
-- **Nunca una degradación silenciosa.** Cada mensaje incluye `backend` (`cloud`|`local`), `degraded` y `degrade_reason`, por lo que siempre sabrá cuándo se utilizó el modelo local en lugar del modelo principal. Un evento NDJSON `backend_fallback` hace visible la tasa de cambio de nube a local en `ollama_log_tail`.
+- **`ollama_verify_claims`: verificación entre diferentes modelos.** `ollama_code_review` *genera* resultados; esto *valida* los resultados. Ejecuta un panel principal de Ollama Cloud con modelos de diferentes familias (deepseek / kimi / glm por defecto) sobre sus afirmaciones y pruebas, y devuelve por cada afirmación: CONFIRMADA / REFUTADA / NECESITA REVISIÓN. La agregación se basa en el principio de que la disidencia individual no es decisiva (≥2 para refutar, ≥2 para confirmar); cada evaluador utiliza un modelo verificado (se excluye un modelo local de respaldo o sustituto, y nunca se tiene en cuenta); y las entradas de las afirmaciones están estructuradas para eliminar cualquier razonamiento. El límite de honestidad está documentado: una afirmación CONFIRMADA es una evidencia de apoyo, no una prueba — es fiable para señalar errores graves, pero menos eficaz para detectar errores sutiles en un modelo de vanguardia.
+- **Escalado en la nube por llamada + modo de espera.** Configure `OLLAMA_API_KEY` *solo* (sin `OLLAMA_CLOUD_PRIMARY`) y estará en **modo de espera**: modelo local principal, sin transferencia de datos, sin sonda de inicio, hasta que una sola llamada active la opción con `backend:'cloud'`. Escale una revisión de alta importancia a un modelo de 600B sin cambiar todas las llamadas a la nube. La primera escalada revela la transferencia de datos de forma clara en el momento en que ocurre; una anulación `model` por llamada ahora se aplica a la solicitud de la nube de forma literal.
+- **`ollama_log_stats`: la economía medida que promete el eslogan.** Un resumen sin LLM de sus recibos NDJSON: división entre nube y local, tasa de respaldo de nube a local, tokens por herramienta, p50/p95 de latencia, limitado por una ventana `since`.
+- **Herramienta de diagnóstico para CI + herramientas legibles por máquina.** `doctor --json --fail-unhealthy` proporciona a las canalizaciones una puerta de enlace real (con una bandera `healthy` que tiene en cuenta la nube), y cada herramienta ahora incluye anotaciones MCP `readOnlyHint`/`destructiveHint`/`title` para que los clientes obtengan la interfaz de usuario de permisos correcta. Además, `init --claude` crea un fragmento listo para pegar `.mcp.json`.
+
+Todos los detalles en [CHANGELOG.md](./CHANGELOG.md).
+
+## Novedades en la v2.8.0
+
+**Mayor fiabilidad, durabilidad y seguridad: 25 correcciones, todas ellas con pruebas iniciales y verificación entre diferentes modelos.** El comportamiento predeterminado es local y no se ha eliminado ningún contrato de herramienta; las llamadas existentes siguen funcionando. Las ventajas son significativas:
+
+- **Ya no se produce la pérdida silenciosa de datos del corpus.** Un error de lectura transitorio durante `ollama_corpus_refresh` (un bloqueo de archivos de Windows, una retención de un antivirus, una ventana de guardado de un editor) solía clasificar el archivo como "faltante" y **eliminar permanentemente su contenido indexado**. Ahora, solo se elimina un archivo que realmente no existe; un error transitorio conserva la ruta, lo marca para que se reintente y preserva sus fragmentos.
+- **Concurrencia que respeta sus límites.** Un tiempo de espera de nivel ahora puede cancelar una llamada que aún está en cola para obtener un permiso (antes, se quedaba bloqueada mucho después del límite, mientras que los recibos indicaban lo contrario), y `ollama_chat` finalmente se enruta a través del límite de tiempo de espera/nivel, de modo que una generación local bloqueada no pueda detener todas las herramientas y, de hecho, llegue a la nube en el modo de nube principal.
+- **La nube se degrada en lugar de dejar de funcionar.** Un ID de modelo de nube retirado ahora vuelve a un modelo local con una razón clara `cloud_model_missing` y una sugerencia específica de la nube en lugar de una interrupción total; el interruptor automático no puede bloquearse permanentemente; un modelo que falta persistentemente deja de realizar solicitudes de ida y vuelta a la nube en cada llamada.
+- **Superficie de seguridad que coincide con su documentación.** `ollama_batch_proof_check` ahora realmente aplica la contención de cwd (con una nueva restricción de entorno del operador `INTERN_BATCH_PROOF_ALLOWED_ROOTS` que un llamador no puede ampliar), los sanitizadores de inyección de prompts han ganado cobertura y tienen un límite honestamente divulgado, y la protección de la ruta es insensible a mayúsculas y minúsculas en macOS.
+- **Artefactos y recibos honestos.** Las escrituras de paquetes son atómicas y nunca se sobrescriben silenciosamente; los sobres de lotes degradados informan del nivel que se utilizó realmente; el detector de escrituras interrumpidas detecta las escrituras incompletas en cualquier modificación; los ID de fragmentos ya no entran en conflicto entre archivos con contenido idéntico. La auditoría de dependencias es completamente clara (0 vulnerabilidades).
+
+Todos los detalles en [CHANGELOG.md](./CHANGELOG.md).
+
+## Novedades en la v2.7.0
+
+**Enrutamiento opcional a Ollama Cloud: nube principal, respaldo local.** Active la opción con una clave y una bandera, y los niveles generativos se enrutarán a un modelo de nube de clase 600B; las incrustaciones permanecen locales; un interruptor automático vuelve a su perfil local en caso de fallo de la nube. **Desactivado por defecto: sin transferencia de datos a menos que configure tanto `OLLAMA_API_KEY` como `OLLAMA_CLOUD_PRIMARY=1`.** Mejora menor aditiva: las llamadas anteriores a la v2.7.0 (y cualquier persona que no active la opción) verán un comportamiento idéntico. Consulte [Ollama Cloud](#ollama-cloud).
+
+- **Nube principal con una red de seguridad.** Una `RoutingOllamaClient` intenta primero la nube y vuelve al perfil local en caso de tiempo de espera / 5xx / 429 / problema de red. Las claves incorrectas (401/403) se muestran claramente a través de un interruptor automático persistente en lugar de degradarse silenciosamente para siempre; un ID de modelo de nube retirado o con errores tipográficos (404) también se muestra.
+- **Nunca una degradación silenciosa.** Cada sobre obtiene `backend` (`cloud`|`local`), `degraded` y `degrade_reason` para que siempre sepa cuándo obtuvo el modelo local en lugar del modelo grande. Un evento NDJSON `backend_fallback` hace que la tasa de respaldo de nube a local sea visible en `ollama_log_tail`.
 - **`ollama_doctor` informa sobre la autenticación y la accesibilidad de la nube** como un bloque distinto; `ollama-intern-mcp doctor` muestra una sección `Cloud (primary)`.
-- El modelo predeterminado en la nube era `minimax-m3:cloud` en el lanzamiento v2.7.0 *(desde entonces se ha cambiado a `qwen3-coder-next:cloud`: un valor predeterminado que devuelve respuestas vacías en las herramientas con un límite de `num_predict`; consulte la [tabla de variables de entorno](#cloud-env-vars))*; puede anularlo por capa con `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
+- El modelo de nube predeterminado era `minimax-m3:cloud` en el lanzamiento de la v2.7.0 *(desde que se volvió a fijar a `qwen3-coder-next:cloud`: un valor predeterminado reflexivo devolvía respuestas vacías en herramientas con límites de `num_predict`; consulte la [tabla de entornos](#cloud-env-vars))*; anule por nivel con `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
 
-## Nuevo en v2.6.0
+## Novedades en la v2.6.0
 
-Anulación del presupuesto por llamada y por capa en `ollama_extract`. Mejora menor y aditiva: los usuarios de versiones anteriores a v2.6.0 no se verán afectados. Entrada detallada en [CHANGELOG.md](./CHANGELOG.md).
+Anulación del presupuesto de nivel por llamada en `ollama_extract`. Mejora menor aditiva: las llamadas anteriores a la v2.6.0 no se ven afectadas. Entrada detallada en [CHANGELOG.md](./CHANGELOG.md).
 
-- **Campo del esquema `tier_budget_ms_override?: number` en `ollama_extract`** (opcional, con un límite de `[1, 600000]` ms). Cuando está presente, aplica la anulación a cada capa visitada por el ejecutor, de modo que el mecanismo interno `runWithTimeoutAndFallback` en `src/guardrails/timeouts.ts:61` respete el presupuesto proporcionado por el operador en lugar del valor predeterminado del perfil. La cascada (motor principal → instantáneo al alcanzar el tiempo de espera) sigue activándose; la anulación rige cada salto de la cascada de forma uniforme.
-- **Por qué existe esto.** El wrapper R-018 de research-os (v0.12.1) envolvió `callTool` de MCP con `Promise.race` y descubrió que el presupuesto del wrapper no alcanzaba la capa interna: `DEV_RTX5080_TIMEOUTS.instant = 15_000` continuó activando `TIER_TIMEOUT` a los 15000 ms, independientemente del presupuesto de 180000 ms del wrapper. v2.6.0 proporciona el presupuesto autoritativo en el lado de MCP para que la bandera `--planner-timeout-ms` del operador (research-os) controle finalmente los tiempos de espera de las capas internas según lo previsto.
-- **Se conserva el comportamiento predeterminado.** Si se omite el campo, se aplican los valores predeterminados del perfil de forma idéntica. Los usuarios de versiones anteriores a v2.6.0 no notarán ningún cambio.
-- **Se conserva la expresión regular `R-010 fallback-cause`.** El mensaje de error `TIER_TIMEOUT` en el lado del servidor sigue coincidiendo con `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/`, por lo que la visibilidad del asesor de IA aguas abajo funciona tanto en las rutas de anulación como en las predeterminadas.
-- Utilizado por research-os v0.13.0 (integración acumulativa del cliente R-019 + R-020 + R-021) en un lanzamiento coordinado entre varios repositorios.
+- **`tier_budget_ms_override?: number` schema field on `ollama_extract`** (optional, bounded `[1, 600000]` ms). When present, applies the override to every tier visited by the runner so the inner `runWithTimeoutAndFallback` machinery at `src/guardrails/timeouts.ts:61` honors the operator-supplied budget instead of the profile default. The cascade (workhorse → instant on timeout) still fires; the override governs each cascade hop uniformly.
+- **Why this exists.** The research-os R-018 wrapper (v0.12.1) wrapped MCP `callTool` with `Promise.race` and found the wrapper's budget did not reach the inner tier — `DEV_RTX5080_TIMEOUTS.instant = 15_000` continued to fire `TIER_TIMEOUT` at 15000ms regardless of a 180000ms wrapper budget. v2.6.0 supplies the MCP-side authoritative budget so the operator's `--planner-timeout-ms` flag (research-os) finally controls inner-tier timeouts as designed.
+- **Default behavior preserved.** Field omitted = profile defaults govern byte-identically. Pre-v2.6.0 callers see zero change.
+- **R-010 fallback-cause regex preserved.** Server-side `TIER_TIMEOUT` error message still matches `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/` so AI-advisor visibility downstream works on override and default paths alike.
+- Consumed by research-os v0.13.0 (cumulative R-019 client wire-up + R-020 + R-021) in a coordinated multi-repo release.
 
-### Histórico: entregas de v2.4.0
+### Histórico: entregables de v2.4.0
 
-Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) para obtener la entrada completa de v2.4.0 (control por capa de `num_ctx` en el sistema de perfiles).
+Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) para obtener la entrada completa de v2.4.0 (control por nivel `num_ctx` en el sistema de perfiles).
 
-## Nuevo en v2.4.0
+## Novedades en v2.4.0
 
-Control por capa de `num_ctx` (tamaño de la ventana de contexto) en el sistema de perfiles. Mejora menor y aditiva: los usuarios de v2.3.0 no se verán afectados. Entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
+Control por nivel `num_ctx` (ventana de contexto) en el sistema de perfiles. Mejora menor aditiva: los usuarios de v2.3.0 no se verán afectados. Entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md).
 
-- **Nuevo mapa `TierConfig.num_ctx`:** opcional `{ instant?, workhorse?, deep?, embed? }` en el perfil. Cuando se establece para una capa, el servidor MCP coloca `options.num_ctx = <value>` en cada solicitud de generación/chat de Ollama dirigida a esa capa (inicial + de respaldo). Cuando no está establecido, la solicitud omite por completo `num_ctx`, por lo que Ollama utiliza su valor predeterminado cargado con el modelo; se conserva exactamente el comportamiento de v2.3.0.
-- **Nuevo campo en el mensaje: `num_ctx_used?: number`:** presente solo cuando el servidor MCP realmente envió `num_ctx`. Ausente cuando la solicitud permitió que Ollama eligiera. No infiera un valor predeterminado: el servidor MCP no consulta a Ollama para obtener el valor efectivo.
-- **Valores predeterminados del perfil:** `dev-rtx5080` / `dev-rtx5080-qwen3` se envían con `instant: 4096`, `workhorse: 8192`, `deep`/`embed` NO ESTABLECIDOS. Dimensionados para mantener `hermes3:8b` residente en los 16 GB de VRAM de la RTX 5080 para herramientas rápidas. `m5-max` deja todas las capas SIN ESTABLECER: no hay problemas de desbordamiento con 128 GB de memoria unificada.
-- **Cierra el diagnóstico de la Fase 1 de v0.8.0:** `hermes3:8b` con el contexto predeterminado de 32K en RTX 5080 se derramó a la CPU y comenzó a provocar tiempos de espera en las llamadas `ollama_extract`. v2.4.0 evita esto en la capa del perfil.
+- **Mapa `TierConfig.num_ctx` (nuevo)**: `{ instant?, workhorse?, deep?, embed? }` opcional en el perfil. Cuando se establece para un nivel, el servidor MCP coloca `options.num_ctx = <value>` en cada solicitud de generación/chat de Ollama enrutada a ese nivel (inicial + de respaldo). Cuando no se establece, la solicitud omite `num_ctx` por completo, por lo que Ollama utiliza su valor predeterminado cargado en el modelo; se conserva exactamente el comportamiento de v2.3.0.
+- **Nuevo campo de envoltorio `num_ctx_used?: number`**: presente solo cuando el servidor MCP realmente envió `num_ctx`. Ausente cuando la solicitud permitió que Ollama eligiera. No infiera un valor predeterminado: el servidor MCP no consulta a Ollama para obtener el valor efectivo.
+- **Valores predeterminados del perfil**: `dev-rtx5080` / `dev-rtx5080-qwen3` se envían con `instant: 4096`, `workhorse: 8192`, `deep`/`embed` NO ESTABLECIDOS. Dimensionados para mantener `hermes3:8b` residente en los 16 GB de VRAM de la RTX 5080 para herramientas rápidas. `m5-max` deja cada nivel NO ESTABLECIDO: los 128 GB de memoria unificada no tienen problemas de desbordamiento.
+- **Cierra el diagnóstico de la fase 1 de v0.8.0**: `hermes3:8b` en el contexto predeterminado de 32K en la RTX 5080 se desbordó a la CPU y comenzó a provocar tiempos de espera en las llamadas del motor principal `ollama_extract`. v2.4.0 evita esto en la capa del perfil.
 
-### Control por capa de `num_ctx` (nuevo en v2.4.0)
+### Control por nivel `num_ctx` (novedad en v2.4.0)
 
-Perfil (fragmento de `src/profiles.ts`):
+Perfil (extracto de `src/profiles.ts`):
 
 ```ts
 "dev-rtx5080": {
@@ -104,7 +120,7 @@ Perfil (fragmento de `src/profiles.ts`):
 }
 ```
 
-Mensaje en una llamada a la capa "workhorse" (por ejemplo, `ollama_extract`):
+Envoltorio en una llamada al nivel del motor principal (por ejemplo, `ollama_extract`):
 
 ```jsonc
 {
@@ -116,23 +132,23 @@ Mensaje en una llamada a la capa "workhorse" (por ejemplo, `ollama_extract`):
 }
 ```
 
-En `m5-max` (o cualquier perfil que deje una capa sin establecer), `num_ctx_used` está ausente del mensaje y la solicitud al cable de Ollama no incluye el campo `num_ctx`: Ollama utiliza su valor predeterminado cargado con el modelo.
+En `m5-max` (o cualquier perfil que deje un nivel sin establecer), `num_ctx_used` está ausente del envoltorio y la solicitud de red a Ollama no incluye el campo `num_ctx`; Ollama utiliza su valor predeterminado cargado en el modelo.
 
-Los operadores ajustan seleccionando o editando el perfil; no hay una entrada `num_ctx` por llamada en los esquemas de las herramientas. Si una llamada futura revela la necesidad, el patrón sigue a la anulación de `model` de v2.3.0.
+Los operadores ajustan seleccionando/editando el perfil; no hay una entrada `num_ctx` por llamada en los esquemas de herramientas. Si una llamada futura revela la necesidad, el patrón sigue la anulación `model` de v2.3.0.
 
-### Histórico: entregas de v2.3.0
+### Histórico: entregables de v2.3.0
 
 Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) para obtener la entrada completa de v2.3.0 (anulación del modelo por llamada).
 
-## Nuevo en v2.3.0
+## Novedades en v2.3.0
 
-Anulación del modelo por llamada en todas las herramientas atómicas basadas en LLM. Mejora menor y aditiva: los usuarios de v2.2.0 no se verán afectados. Entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
+Anulación del modelo por llamada en las herramientas atómicas basadas en LLM. Mejora menor aditiva: los usuarios de v2.2.0 no se verán afectados. Entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md).
 
-- **Parámetro opcional `model: string` en 8 herramientas de atomización** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. El primer intento en el nivel de la herramienta se ejecuta con el modelo especificado por quien realiza la llamada; si se agota el tiempo, la cascada existente de `TIER_FALLBACK` resuelve el modelo del nivel más económico (NO el que especificó quien realizó la llamada). Las herramientas compuestas/breves/de agrupación NO aceptan deliberadamente `model`; los átomos tienen control por llamada, las herramientas compuestas utilizan los valores predeterminados del nivel.
-- **Nuevo campo de envoltorio `model_requested?: string`** — presente solo cuando se proporcionó el parámetro de anulación. Los programas que tienen en cuenta la calibración comparan `model_requested` con `model` para detectar una sustitución: `if (env.model_requested && env.model !== env.model_requested) { /* sustitución */ }`. Las entradas vacías o que solo contienen espacios generan un error de `ZodError` durante el análisis del esquema, en lugar de realizar una sustitución silenciosa.
-- **Corrección de errores: desviación de `src/version.ts`.** La constante `VERSION` en tiempo de ejecución ahora se lee desde `package.json` cuando se carga el módulo; las versiones v2.1.0 y v2.2.0 mostraban la cadena de identidad obsoleta `"2.0.0"`. El nuevo archivo `tests/version.test.ts` bloquea `VERSION === pkg.version`.
+- **Entrada `model: string` opcional en 8 herramientas atómicas**: `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`. El primer intento en el nivel de la herramienta se realiza con el modelo especificado por el llamante; en caso de tiempo de espera, la cascada `TIER_FALLBACK` existente resuelve el modelo del nivel más económico (NO la anulación del llamante). Las herramientas compuestas/breves/de empaquetado NO aceptan deliberadamente `model`; las herramientas atómicas obtienen control por llamada, las herramientas compuestas utilizan los valores predeterminados del nivel.
+- **Nuevo campo de envoltorio `model_requested?: string`**: presente solo cuando se proporcionó la anulación. Los llamantes con conocimiento de la calibración comparan `model_requested` con `model` para detectar la sustitución de respaldo: `if (env.model_requested && env.model !== env.model_requested) { /* substitution */ }`. Las entradas vacías o que solo contienen espacios en blanco generan `ZodError` en el análisis del esquema, no una conmutación silenciosa.
+- **Corrección de errores: deriva `src/version.ts`.** La constante de tiempo de ejecución `VERSION` ahora se lee de `package.json` en el momento de la carga del módulo; v2.1.0 y v2.2.0 se enviaron informando la cadena de identidad obsoleta `"2.0.0"`. La nueva `tests/version.test.ts` bloquea `VERSION === pkg.version`.
 
-### Anulación del modelo por llamada (nuevo en v2.3.0)
+### Anulación del modelo por llamada (novedad en v2.3.0)
 
 ```jsonc
 {
@@ -158,34 +174,34 @@ Envoltorio:
 }
 ```
 
-Si el nivel principal o profundo hubiera excedido el tiempo límite y la llamada hubiera pasado al nivel instantáneo, `env.model` sería el modelo resuelto del nivel instantáneo y `env.fallback_from` sería `"workhorse"`; `env.model_requested` seguiría siendo `"hermes3:8b"`, y `env.model !== env.model_requested` es la señal de sustitución. La anulación NO se aplica deliberadamente al nivel más económico; el modelo elegido puede que no se ajuste en absoluto a la función de ese nivel.
+Si el nivel del motor principal o el nivel profundo hubieran agotado el tiempo y la llamada hubiera realizado una cascada al nivel instantáneo, `env.model` sería el modelo resuelto del nivel instantáneo y `env.fallback_from` sería `"workhorse"`; `env.model_requested` seguiría siendo `"hermes3:8b"`, y `env.model !== env.model_requested` es la señal de sustitución. La anulación no se incluye deliberadamente en el nivel más económico; el modelo elegido puede que ni siquiera se ajuste al papel de ese nivel.
 
-### Histórico: entregas de v2.2.0
+### Histórico: entregables de v2.2.0
 
-Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para obtener la entrada completa de v2.2.0 (pertinencia limitada al marco + abstención estructurada).
+Consulte [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) para obtener la entrada completa de v2.2.0 (temporalidad limitada al marco + abstención estructurada).
 
-## Nuevo en v2.2.0
+## Novedades en v2.2.0
 
-Contrato del rol de trabajador de evidencia local: pertinencia limitada al marco y abstención estructurada. Mejora menor aditiva: los programas de v2.1.0 no se modifican. Entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md).
+Rol del trabajador de evidencia local: temporalidad limitada al marco y abstención estructurada. Mejora menor aditiva: los usuarios de v2.1.0 no se verán afectados. Entradas detalladas en [CHANGELOG.md](./CHANGELOG.md) y [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md).
 
-- **Extracción limitada al marco** en `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` — parámetro opcional `frame: string` + salidas estructuradas `frame_alignment`/`on_topic`/`frame_addressed`. En lugar de parafrasear las fuentes que no están relacionadas con el tema, se marcan.
-- **Abstención estructurada** en `ollama_research` — campos `weak`/`abstained`/`sources_address_question`. Un archivo `citations[]` vacío con un `answer` no vacío ya no se considera un éxito silencioso.
-- **Umbral de pertinencia** en `ollama_corpus_answer` — parámetro opcional `min_top_score`. Por debajo del umbral, la herramienta interrumpe el proceso con `abstained: true` y omite la síntesis. El `score` por cita ahora es visible en cada cita.
-- **Preservación de la puntuación de recuperación** a través de evidencia breve — `corpusHitsToEvidence` conserva `score` (y el parámetro `corpus_min_evidence_score` filtra en el momento del ensamblaje en `incident_brief`/`repo_brief`/`change_brief`).
-- **Límites del rango de líneas de cita** — `guardrails/citations.ts` rechaza los rangos fuera de límites en `ollama_research`, lo que coincide con la postura existente en `ollama_code_citation`.
-- **Se corrigieron los documentos del contrato del operador** — se corrigió `chunk_id`/`chunk_index` en el archivo README, se reescribió "validado en el lado del servidor", se calificó la sección de las leyes de la evidencia y se anotó el eslogan de marketing.
+- **Extracción delimitada por un marco** en `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` — entrada `frame: string` opcional + salidas estructuradas `frame_alignment` / `on_topic` / `frame_addressed`. En lugar de parafrasear las fuentes que no están relacionadas con el tema en el esquema, se marcan como tales.
+- **Abstención estructurada** en `ollama_research` — campos `weak` / `abstained` / `sources_address_question`. Un `citations[]` vacío con un `answer` no vacío ya no se considera un éxito silencioso.
+- **Umbral de relevancia** en `ollama_corpus_answer` — `min_top_score` opcional. Por debajo del umbral, la herramienta interrumpe el proceso con `abstained: true` y omite la síntesis. La relevancia por cita `score` ahora es visible en cada cita.
+- **Preservación de la puntuación de recuperación** a través de pruebas concisas — `corpusHitsToEvidence` contiene `score` (y los filtros de ajuste `corpus_min_evidence_score` en el momento del ensamblaje en `incident_brief` / `repo_brief` / `change_brief`).
+- **Límites del rango de líneas de cita** — `guardrails/citations.ts` rechaza los rangos que están fuera de los límites en `ollama_research`, lo que coincide con la postura existente en `ollama_code_citation`.
+- **Documentación del contrato del operador corregida** — corrección de README `chunk_id`/`chunk_index`, se reescribe "validado en el lado del servidor", se califica la sección de Leyes de la evidencia y se anota el eslogan de marketing.
 
 ### Regresión de la semilla: la verificación
 
-Se verifica el contrato del fragmento con respecto al fallo literal de fresh-pack de research-os: arxiv 2112.10422 (Temporizadores estándar cosmológicos) en el marco de la sección 01 *"¿Qué significa la custodia de la evidencia en los flujos de trabajo de investigación profunda de LLM locales frente a los basados en la nube?"* — 9 de 9 pruebas del contrato de LLM simulado confirman que ahora se contiene la fuente que no está relacionada con el tema (`frame_alignment.on_topic = false` en extract; `off_topic: true` en classify; `frame_addressed: false` en summarize_deep; `abstained: true` en corpus_answer con `min_top_score` establecido).
+Se verifica el contrato del fragmento con respecto al fallo literal del paquete "research-os" recién creado: arxiv 2112.10422 (Temporizadores estándar cosmológicos) en el marco de la sección 01 *"¿Qué significa la custodia de la evidencia en los flujos de trabajo de investigación profunda de LLM basados en la nube frente a los locales?"* — 9 de 9 pruebas de contrato de LLM simulado confirman que la fuente que no está relacionada con el tema ahora está contenida (`frame_alignment.on_topic = false` en la extracción; `off_topic: true` en la clasificación; `frame_addressed: false` en el resumen profundo; `abstained: true` en la respuesta del corpus con `min_top_score` configurado).
 
-### Histórico: entregas de v2.1.0
+### Histórico: entregables de la v2.1.0
 
-Consulte [CHANGELOG.md](./CHANGELOG.md) para obtener la entrada completa de v2.1.0 (éxito de la función: 13 nuevas herramientas + 4 mejoras + eliminación de la restricción).
+Consulte [CHANGELOG.md](./CHANGELOG.md) para obtener la entrada completa de la v2.1.0 (aprobación de funciones: 13 nuevas herramientas + 4 mejoras + eliminación de restricciones).
 
 ---
 
-## Arquitectura en resumen
+## Arquitectura de un vistazo
 
 ```mermaid
 flowchart LR
@@ -207,7 +223,7 @@ flowchart LR
   MCP --> NDJSON
 ```
 
-Cada llamada a una herramienta de Claude entra en el servidor MCP a través de stdio JSON-RPC. El servidor valida la llamada con respecto al esquema [zod](https://zod.dev) de la herramienta, ejecuta las protecciones configuradas (validación de citas, eliminación de frases prohibidas, aplicación de rutas protegidas, umbrales de confianza) y luego enruta a un renderizador determinista (nivel de artefactos) o a una llamada HTTP de Ollama (todos los demás niveles). El daemon de Ollama nunca ve las rutas proporcionadas por el usuario; solo el nivel del modelo y la solicitud preparada. Cada llamada agrega un evento estructurado al registro NDJSON en `~/.ollama-intern/log.ndjson`, donde `ollama_log_tail` y su shell pueden leerlo.
+Cada llamada a una herramienta de Claude entra en el servidor MCP a través de stdio JSON-RPC. El servidor valida la llamada con respecto al esquema [zod](https://zod.dev) de la herramienta, ejecuta las barreras de seguridad configuradas (validación de citas, eliminación de frases prohibidas, aplicación de rutas protegidas, umbrales de confianza) y, a continuación, la dirige a un renderizador determinista (nivel de artefacto) o a una llamada HTTP de Ollama (en todos los demás niveles). El daemon de Ollama nunca ve las rutas proporcionadas por el usuario; solo el nivel del modelo y la solicitud preparada. Cada llamada agrega un evento estructurado al registro NDJSON en `~/.ollama-intern/log.ndjson`, donde `ollama_log_tail` y su shell pueden leerlo.
 
 ---
 
@@ -225,7 +241,7 @@ Cada llamada a una herramienta de Claude entra en el servidor MCP a través de s
 }
 ```
 
-Devuelve un envoltorio que apunta a un archivo en el disco:
+Devuelve un sobre que apunta a un archivo en el disco:
 
 ```jsonc
 {
@@ -247,13 +263,13 @@ Devuelve un envoltorio que apunta a un archivo en el disco:
 }
 ```
 
-→ `weak: false` significa que se ensamblaron ≥2 elementos de evidencia; NO significa que las hipótesis estén verificadas. Consulte [Leyes de la evidencia](#evidence-laws) a continuación.
+→ `weak: false` significa que se ensamblaron ≥2 elementos de evidencia; NO significa que se hayan validado las hipótesis. Consulte [Leyes de la evidencia](#evidence-laws) a continuación.
 
-Ese archivo Markdown es el resultado del trabajo del becario: encabezados, bloque de evidencia con identificadores citados, `next_checks` investigativos, banner `weak: true` si la evidencia es escasa. Es determinista: el renderizador es código, no una solicitud. (El renderizador es determinista; el *contenido* de las hipótesis y los elementos es generativo; léalos como un borrador, no como algo verificado). Ábralo mañana, compárelo la semana que viene, expórtelo a un manual con `ollama_artifact_export_to_path`.
+Ese archivo Markdown es el resultado del trabajo del becario: encabezados, bloque de evidencia con identificadores de citas, investigación `next_checks`, banner `weak: true` si la evidencia es escasa. Es determinista: el renderizador es código, no una solicitud. (El renderizador es determinista; el *contenido* de las hipótesis y las superficies es generativo; léalos como un borrador, no como algo verificado). Ábralo mañana, compárelo la semana que viene, expórtelo a un manual con `ollama_artifact_export_to_path`.
 
-Todos los competidores en esta categoría comienzan con "ahorrar tokens". Nosotros comenzamos con _aquí está el archivo que escribió el becario_.
+Todos los competidores de esta categoría comienzan con "ahorrar tokens". Nosotros comenzamos con _aquí está el archivo que escribió el becario_.
 
-### Segundo ejemplo: cree un corpus y luego pregúntele
+### Segundo ejemplo: cree un corpus y, a continuación, hágale preguntas
 
 ```jsonc
 // 1. Build a persistent, searchable corpus over your project.
@@ -271,13 +287,13 @@ Todos los competidores en esta categoría comienzan con "ahorrar tokens". Nosotr
 // → { answer: "...", citations: [{chunk_index, path}...], weak: false }
 ```
 
-El servidor valida la identidad de la cita y que cada `chunk_index` esté dentro del rango de los resultados obtenidos. NO prueba que cada afirmación generada esté respaldada semánticamente por el contenido del fragmento citado; esa es la responsabilidad del modelo, y una recuperación deficiente aún puede producir respuestas con formato de cita. Consulta completa en [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
+El servidor valida la identidad de la cita y que cada `chunk_index` está dentro del rango de los resultados recuperados. NO prueba que cada afirmación generada esté respaldada semánticamente por el contenido del fragmento citado; esa es la responsabilidad del modelo, y una recuperación deficiente aún puede producir respuestas con formato de cita. Explicación completa en [handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/).
 
 ---
 
 ## Extracción delimitada por un marco (nuevo en la v2.2.0)
 
-`ollama_extract`, `ollama_classify`, `ollama_summarize_fast` y `ollama_summarize_deep` aceptan una entrada opcional `frame: string`. El parámetro `frame` especifica la pregunta a la que se le pide al origen que responda; se indica al modelo que se abstenga en lugar de emitir contenido verdadero pero fuera de tema cuando el origen no aborda el marco.
+`ollama_extract`, `ollama_classify`, `ollama_summarize_fast` y `ollama_summarize_deep` aceptan una entrada `frame: string` opcional. El marco nombra la pregunta a la que se le pide a la fuente que responda; se indica al modelo que se abstenga en lugar de emitir contenido verdadero pero que no esté relacionado con el tema cuando la fuente no aborde el marco.
 
 ```jsonc
 {
@@ -291,47 +307,47 @@ El servidor valida la identidad de la cita y que cada `chunk_index` esté dentro
 // → result includes frame_alignment: { on_topic: boolean, reason: string, unaddressed_aspects: string[] }
 ```
 
-Si se omite `frame`, el comportamiento no cambia con respecto a la v2.1.0. Cuando se proporciona, `frame_alignment.on_topic = false` indica que los campos extraídos pueden ser verdaderos para la fuente, pero no relevantes para el marco; trate esto como lo mismo que un resumen con `weak: true`: útil, pero verifique antes de promoverlo a evidencia posterior.
+Si se omite `frame`, el comportamiento no cambia con respecto a la v2.1.0. Cuando se proporciona, `frame_alignment.on_topic = false` indica que los campos extraídos pueden ser verdaderos para la fuente, pero no relevantes para el marco; trate eso de la misma manera que un breve resumen `weak: true`: útil, pero verifique antes de promoverlo a la evidencia posterior.
 
 ---
 
-## Acuerdo de abstención (nuevo en la v2.2.0)
+## Contrato de abstención (nuevo en la v2.2.0)
 
-`ollama_research` devuelve campos de abstención estructurados: `weak: boolean`, `abstained: boolean`, `sources_address_question: boolean | null`. Una lista de `citations[]` vacía con una `answer` no vacía ya no se considera silencio; `abstained: true` indica que el modelo se negó a sintetizar porque las rutas proporcionadas por el llamante no abordaban la pregunta. Considere la abstención como un éxito, no como un fracaso: es la herramienta negándose a "lavar" una recuperación deficiente para producir resultados autorizados.
+`ollama_research` devuelve campos de abstención estructurados: `weak: boolean`, `abstained: boolean`, `sources_address_question: boolean | null`. Un `citations[]` vacío con un `answer` no vacío ya no se considera un éxito; `abstained: true` indica que el modelo se negó a sintetizar porque las rutas proporcionadas por el llamante no abordaban la pregunta. Trate la abstención como un éxito, no como un fracaso: es la herramienta que se niega a manipular una recuperación deficiente en una salida autorizada.
 
-`ollama_corpus_answer` acepta un umbral de relevancia opcional `min_top_score: number` (de 0,0 a 1,0). Cuando la puntuación de recuperación más alta para una consulta cae por debajo de `min_top_score`, la herramienta interrumpe el proceso con `abstained: true` y omite la síntesis, evitando el modo de falla "5 fragmentos fuera de tema con una puntuación de 0,21 aún generan una respuesta completa" que la regla `weak: true` de la v2.1.0 no detectaba (`weak: true` solo se activaba cuando `hits.length < 2`). Combine esto con el campo `score` por cita recién incluido en cada cita para auditar directamente la calidad de la recuperación desde el sobre.
+`ollama_corpus_answer` acepta un umbral de relevancia `min_top_score: number` opcional (0.0–1.0). Cuando la puntuación de recuperación más alta para una consulta cae por debajo de `min_top_score`, la herramienta interrumpe el proceso con `abstained: true` y omite la síntesis, lo que evita el modo de fallo "5 fragmentos que no están relacionados con el tema con una puntuación de 0.21 aún generan una respuesta completa" que la regla de la v2.1.0 `weak: true` no detectaba (`weak: true` solo se activaba en `hits.length < 2`). Combine esto con el campo de relevancia por cita `score` que ahora se muestra en cada cita para auditar directamente la calidad de la recuperación a partir del sobre.
 
 ---
 
-## ¿Qué hay aquí? — Cuatro niveles, <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> herramientas
+## ¿Qué hay aquí? Cuatro niveles, <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> herramientas
 
-**Orientado al trabajo** significa que cada herramienta especifica un trabajo que se le asignaría a un becario: clasificar esto, extraer aquello, priorizar estos registros, redactar esta nota de lanzamiento, organizar este incidente. La entrada de la herramienta es la especificación del trabajo; la salida es el resultado final. No hay una función genérica `run_model` / `chat_with_llm` en la parte superior.
+**Definido por el trabajo** significa que cada herramienta nombra un trabajo que le encomendaría a un becario: clasifique esto, extraiga aquello, clasifique estos registros, redacte esta nota de lanzamiento, empaquete este incidente. La entrada de la herramienta es la especificación del trabajo; la salida es el resultado. No hay una primitiva genérica `run_model` / `chat_with_llm` en la parte superior.
 
-| Nivel | Cantidad | Qué contiene |
+| Nivel | Recuento | Qué hay aquí |
 |---|---|---|
-| **Atoms** | 31 | Funciones básicas orientadas al trabajo. **Originales 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 agregadas en la v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operaciones); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactorización); `artifact_prune`, `hypothesis_drill` (artefacto/resumen); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 átomo de revisión:** `code_review` (hallazgos estructurados de la revisión de solicitudes de extracción, herramienta principal; solo para revisión). **+2 en la v2.9:** `verify_claims` (un panel insignia de nube inter-familiar adjudica las afirmaciones; requiere la nube) y `log_stats` (agrega los recibos NDJSON en métricas económicas: división entre nube/local, tasa de respaldo, p50/p95 por herramienta; no se realiza ninguna llamada al modelo). Los átomos con capacidad por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
-| **Briefs** | 3 | Resúmenes estructurados de operadores respaldados por evidencia. `incident_brief`, `repo_brief`, `change_brief`. Cada afirmación cita un ID de evidencia; los datos desconocidos se eliminan en el lado del servidor. La evidencia débil muestra `weak: true` en lugar de una narrativa falsa. |
-| **Packs** | 3 | Trabajos compuestos de canalización fija que escriben Markdown + JSON duraderos en `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renderizadores deterministas: no se realizan llamadas al modelo en el formato del artefacto. |
-| **Artifacts** | 7 | Superficie de continuidad sobre las salidas del paquete. `artifact_list` / `read` / `diff` / `export_to_path`, más tres fragmentos deterministas: `incident_note`, `onboarding_section`, `release_note`. |
+| **Atoms** | 31 | Primitivas diseñadas para tareas específicas. **Original 15:** `classify`, `extract`, `triage_logs`, `summarize_fast` / `deep`, `draft`, `research`, `corpus_search` / `answer` / `index` / `refresh` / `list`, `embed_search`, `embed`, `chat`. **+13 añadidas en v2.1.0:** `doctor`, `log_tail`, `batch_proof_check` (operaciones); `code_map`, `code_citation`, `multi_file_refactor_propose`, `refactor_plan` (refactorización); `artifact_prune`, `hypothesis_drill` (artefacto/resumen); `corpus_health`, `corpus_amend`, `corpus_amend_history`, `corpus_rerank` (corpus). **+1 átomo de revisión:** `code_review` (hallazgos estructurados de la revisión de PR, herramienta principal; solo para revisión). **+2 en v2.9:** `verify_claims` (panel insignia en la nube que abarca varias familias y que evalúa las afirmaciones; requiere la nube) y `log_stats` (agrega los recibos NDJSON en métricas económicas — división entre nube y local, tasa de respaldo, p50/p95 por herramienta; no se realiza ninguna llamada al modelo). Los átomos con capacidad de procesamiento por lotes (`classify`, `extract`, `triage_logs`) aceptan `items: [{id, text}]`. |
+| **Briefs** | 3 | Resúmenes estructurados basados en evidencia. `incident_brief`, `repo_brief`, `change_brief`. Cada afirmación cita un ID de evidencia; se eliminan los datos desconocidos en el lado del servidor. La evidencia débil muestra `weak: true` en lugar de una narrativa falsa. |
+| **Packs** | 3 | Trabajos compuestos de canalización fija que escriben Markdown y JSON duraderos en `~/.ollama-intern/artifacts/`. `incident_pack`, `repo_pack`, `change_pack`. Renderizadores deterministas: no se realizan llamadas al modelo en la forma del artefacto. |
+| **Artifacts** | 7 | Superficie de continuidad sobre los resultados del paquete. `artifact_list` / `read` / `diff` / `export_to_path`, más tres fragmentos deterministas: `incident_note`, `onboarding_section`, `release_note`. |
 
 Total: **31 átomos + 3 resúmenes + 3 paquetes + 7 herramientas de artefacto = <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->**.
 
-Líneas congeladas:
-- Átomos: la congelación se levantó en la v2.1.0 (31 hoy; +13 agregados en el lanzamiento de funciones de la v2.1.0, +1 `code_review` más tarde, +2 en la v2.9: `verify_claims`, `log_stats`). Los nuevos átomos aún requieren una justificación basada en auditorías, pruebas, una página del manual y una entrada en el registro de cambios; no se realizarán adiciones casuales.
+Líneas de congelación:
+- Átomos: la congelación se **levantó en v2.1.0** (31 en la actualidad; +13 se añadieron en la versión de características v2.1.0, +1 `code_review` más tarde, +2 en v2.9: `verify_claims`, `log_stats`). Los nuevos átomos aún requieren una justificación de auditoría, pruebas, una página del manual y una entrada en el archivo CHANGELOG; no se permiten adiciones casuales.
 - Paquetes congelados en 3. No hay nuevos tipos de paquetes.
-- Nivel de artefactos congelado en 7.
+- Nivel de artefacto congelado en 7.
 
-La referencia completa de las herramientas está disponible en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
+La referencia completa de las herramientas se encuentra en el [manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/).
 
 ---
 
 ## Instalación
 
-Requiere que [Ollama](https://ollama.com) se esté ejecutando localmente y que los modelos del nivel se hayan descargado (consulte [Descarga de modelos](#model-pulls) a continuación).
+Requiere que [Ollama](https://ollama.com) se esté ejecutando localmente y que se hayan descargado los modelos del nivel (consulte [Descarga de modelos](#model-pulls) a continuación).
 
 ### Claude Code (recomendado)
 
-La mayoría de los usuarios lo instalan agregándolo a la configuración del servidor Claude Code MCP; no se requiere una instalación global. Claude Code ejecuta el servidor bajo demanda mediante `npx`:
+La mayoría de los usuarios lo instalan agregándolo a la configuración del servidor Claude Code MCP; no se requiere una instalación global. Claude Code ejecuta el servidor bajo demanda a través de `npx`:
 
 ```json
 {
@@ -354,7 +370,7 @@ El mismo bloque, escrito en `~/Library/Application Support/Claude/claude_desktop
 
 ### Instalación global (avanzada)
 
-Solo es necesario si desea que el binario esté en su `PATH` para uso ad hoc fuera de Claude Code:
+Solo es necesario si desea que el binario esté en su `PATH` para su uso ocasional fuera de Claude Code:
 
 ```bash
 npm install -g ollama-intern-mcp
@@ -362,7 +378,7 @@ npm install -g ollama-intern-mcp
 
 ### Uso con Hermes
 
-Este MCP se validó de principio a fin con [Hermes Agent](https://github.com/NousResearch/hermes-agent) contra `hermes3:8b` en Ollama (19 de abril de 2026). Hermes es un agente externo que *se comunica* con la superficie primitiva congelada de este MCP; él se encarga de la planificación, nosotros del trabajo.
+Este MCP se validó de extremo a extremo con [Hermes Agent](https://github.com/NousResearch/hermes-agent) contra `hermes3:8b` en Ollama (19 de abril de 2026). Hermes es un agente externo que *llama* a la superficie de primitivas congeladas de este MCP; él se encarga de la planificación, nosotros del trabajo.
 
 Configuración de referencia ([hermes.config.example.yaml](hermes.config.example.yaml) en este repositorio):
 
@@ -392,20 +408,19 @@ mcp_servers:
       # only needed if you're pinning a different local model.
 ```
 
-**La estructura del mensaje es importante.** Los mensajes imperativos que invocan herramientas ("Llama a X con los argumentos...") son la prueba de integración; proporcionan a un modelo local de 8B suficiente base para generar `tool_calls` limpios. Los mensajes en forma de lista para múltiples tareas ("haz A, luego B, luego C") son puntos de referencia de capacidad para modelos más grandes; no interpretes un fallo en el formato de lista en un modelo de 8B como "la conexión está rota". Consulta [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) para obtener la guía completa de integración y las limitaciones conocidas del transporte (Ollama `/v1` en streaming + openai-SDK sin streaming).
+**La forma del mensaje es importante.** Los mensajes imperativos que invocan herramientas ("Llama a X con los argumentos...") son la prueba de integración; le brindan a un modelo local de 8B suficiente estructura para emitir un `tool_calls` limpio. Los mensajes de tareas múltiples en forma de lista ("haz A, luego B, luego C") son puntos de referencia de capacidad para modelos más grandes; no interprete un fallo en el formato de lista en un modelo de 8B como "el cableado está roto". Consulte [handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/) para obtener la guía de integración completa y las advertencias conocidas sobre la transmisión (transmisión de Ollama `/v1` y ajuste de no transmisión de openai-SDK).
 
 ### Descarga de modelos
 
-**Perfil predeterminado para desarrollo (RTX 5080 16 GB y similares):**
+**Perfil de desarrollo predeterminado (RTX 5080 16 GB y similares):**
 
 ```bash
 ollama pull hermes3:8b
 ollama pull nomic-embed-text
 export OLLAMA_MAX_LOADED_MODELS=2
-export OLLAMA_KEEP_ALIVE=-1
 ```
 
-**Alternativa Qwen 3 (mismo hardware, para las herramientas de Qwen):**
+**Alternativa Qwen 3 (el mismo hardware, para las herramientas de Qwen):**
 
 ```bash
 ollama pull qwen3:8b
@@ -414,7 +429,7 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=dev-rtx5080-qwen3
 ```
 
-**Perfil M5 Max (128 GB unificado):**
+**Perfil M5 Max (128 GB unificados):**
 
 ```bash
 ollama pull qwen3:14b
@@ -423,7 +438,9 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-Las variables de entorno por nivel (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) siguen anulando las selecciones del perfil para casos puntuales.
+Las variables de entorno por nivel (`INTERN_TIER_INSTANT`, `INTERN_TIER_WORKHORSE`, `INTERN_TIER_DEEP`, `INTERN_EMBED_MODEL`) aún anulan las selecciones del perfil para casos únicos.
+
+**Residencia.** En los perfiles de desarrollo, el servidor precalienta el modelo Instant al inicio con un `keep_alive` **limitado** (10 minutos) para que la primera llamada nunca sea "fría"; después de cualquier llamada real, la propia función de desalojo inactivo de Ollama (predeterminado de 5 minutos después de la última solicitud) se encarga de ello. Establezca `INTERN_PREWARM=off` para omitir por completo el precalentamiento de inicio; este es el modo correcto cuando la GPU se comparte con el entrenamiento o la representación: los modelos se cargan en el primer uso y se eliminan de la memoria por sí solos. Aumentar `OLLAMA_KEEP_ALIVE` es para las máquinas dedicadas a Ollama; `-1` fija cada modelo al que se accede en la VRAM hasta que se reinicia el servidor.
 
 ---
 
@@ -449,34 +466,36 @@ Cada herramienta devuelve la misma estructura:
 }
 ```
 
-`residency` proviene de `/api/ps` de Ollama. Cuando `evicted: true` o `size_vram < size`, el modelo se guarda en disco y la inferencia disminuye entre 5 y 10 veces; muestra esto al usuario para que sepa que debe reiniciar Ollama o reducir la cantidad de modelos cargados.
+`residency` proviene de `/api/ps` de Ollama. Cuando `evicted: true` o `size_vram < size`, el modelo se paginó al disco y la inferencia disminuyó de 5 a 10 veces; muestre esto al usuario para que sepa que debe reiniciar Ollama o reducir la cantidad de modelos cargados.
 
-En el modo [Ollama Cloud](#ollama-cloud-optional), el sobre también contiene `backend` (`"cloud"` | `"local"`) y, en caso de cambio a un entorno local desde la nube, `degraded: true` + `degrade_reason`. Estos campos **no están presentes** en la ruta predeterminada solo local, por lo que los consumidores existentes no se ven afectados. `residency` es `null` para las llamadas servidas desde la nube (la nube sin estado no tiene residencia de VRAM local).
+En el modo [Ollama Cloud](#ollama-cloud), el sobre también contiene `backend` (`"cloud"` | `"local"`) y, en caso de una reversión de la nube a local, `degraded: true` + `degrade_reason`. Estos campos están **ausentes** en la ruta local predeterminada, por lo que los consumidores existentes no se ven afectados. `residency` es `null` para las llamadas servidas en la nube (la nube sin estado no tiene residencia en la VRAM local).
 
-Cada llamada se registra como una línea NDJSON en `~/.ollama-intern/log.ndjson`. Filtra por `hardware_profile` para evitar que los números de desarrollo aparezcan en puntos de referencia publicables.
+Cada llamada se registra como una línea NDJSON en `~/.ollama-intern/log.ndjson`. Filtre por `hardware_profile` para evitar que los números de desarrollo aparezcan en los puntos de referencia publicables.
 
 ---
 
 ## Perfiles de hardware
 
-| Perfil | Instantáneo | De trabajo intensivo | Profundo | Incrustación |
+| Perfil | Instant | Principal | Profundo | Incrustación |
 |---|---|---|---|---|
-| **`dev-rtx5080` (predeterminado)** | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| **`dev-rtx5080`** (predeterminado) | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
 | `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
 | `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**El perfil `dev` predeterminado** agrupa los tres niveles de trabajo en `hermes3:8b`; esta es la ruta de integración validada para Hermes Agent. El uso del mismo modelo de arriba a abajo significa que solo hay una cosa que descargar, un costo de residencia y un conjunto de comportamientos que comprender. Los usuarios que prefieren Qwen 3 (con su sistema `THINK_BY_SHAPE`) pueden optar por `dev-rtx5080-qwen3`. `m5-max` es la escala de Qwen 3 diseñada para memoria unificada.
+**El perfil de desarrollo predeterminado** combina los tres niveles de trabajo en `hermes3:8b`: esta es la ruta de integración validada de Hermes Agent. El mismo modelo de arriba a abajo significa que solo hay una cosa que descargar, un costo de residencia y un conjunto de comportamientos que comprender. Los usuarios que prefieren Qwen 3 (con su `THINK_BY_SHAPE`) pueden optar por `dev-rtx5080-qwen3`. `m5-max` es la escala de Qwen 3, diseñada para la memoria unificada.
 
 ---
 
-## Ollama Cloud (opcional)
+## Ollama Cloud
 
-Los modelos locales de 8B son el cuello de botella de hardware que la mayoría de las personas encuentran. [Ollama Cloud](https://ollama.com/cloud) sirve modelos de clase 600B detrás de la **misma** superficie `/api/*`, por lo que puedes dirigir las herramientas más pesadas a un modelo mucho más potente y liberar VRAM local, al tiempo que mantienes el entorno local como una opción siempre activa.
+**Se ha eliminado el límite de hardware.** La mayoría de las máquinas pueden manejar localmente un modelo de 8B, y este es el cuello de botella que casi todos enfrentan: no es el presupuesto, ni el interés, sino la VRAM. [Ollama Cloud](https://ollama.com/cloud) ofrece modelos de la clase 600B detrás de la **misma** `/api/*` interfaz, por lo que las herramientas más potentes se ejecutan en un modelo de vanguardia y su VRAM vuelve a estar disponible para otras tareas. La ejecución local sigue siendo la opción predeterminada, por lo que se obtiene un límite superior sin perder la base.
 
-**Esto es opcional y está desactivado de forma predeterminada.** Sin establecer ninguna clave, el paquete permanece en modo local primero con **cero transferencia de datos**: cualquier persona que no active esta función no se verá afectada. Hay dos formas de activarlo:
+Nada cambia en la interfaz de la herramienta: las mismas <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> herramientas adaptadas a cada tarea, el mismo conjunto de parámetros, las mismas restricciones. Los embeddings nunca se envían a la nube (Ollama Cloud no ofrece modelos de embedding), por lo que los corpus permanecen completamente locales en cualquier caso.
 
-- **Principalmente en la nube** (abajo): establece tanto `OLLAMA_CLOUD_PRIMARY=1` como `OLLAMA_API_KEY`; los niveles generativos se dirigen a la nube con una opción de cambio a un entorno local.
-- **En espera en la nube** (v2.9): establece solo `OLLAMA_API_KEY`; todo permanece local (sigue sin haber transferencia de datos, ni siquiera una sonda de inicio) hasta que una sola llamada solicite explícitamente escalar con `backend: "cloud"`. Consulta [Cambio a la nube en espera y escalado por llamada](#cloud-standby--per-call-escalation) a continuación.
+**Activación opcional y desactivación por defecto.** Si no se establece ninguna clave, el paquete permanece en modo local-primero con **cero transferencia de datos**: cualquier usuario que no active la opción no se verá afectado. Hay dos formas de activar la opción:
+
+- **Cloud-primary** (below): set *both* `OLLAMA_CLOUD_PRIMARY=1` and `OLLAMA_API_KEY` — the generative tiers route to cloud with local fallback.
+- **Cloud standby** (v2.9): set **only** `OLLAMA_API_KEY` — everything stays local (still zero egress, not even a startup probe) until a single call explicitly asks to escalate with `backend: "cloud"`. See [Cloud standby & per-call escalation](#cloud-standby--per-call-escalation) below.
 
 ```json
 {
@@ -494,92 +513,92 @@ Los modelos locales de 8B son el cuello de botella de hardware que la mayoría d
 }
 ```
 
-> **La clave es una variable de entorno en tiempo de ejecución, no un secreto de CI.** Un secreto de GitHub Actions solo es visible dentro de las ejecuciones de CI; nunca llega al servidor en funcionamiento. Crea una clave en [ollama.com/settings/keys](https://ollama.com/settings/keys) y colócala en el bloque `env` del cliente MCP o en tu entorno de shell.
+> **La clave es una variable de entorno en tiempo de ejecución, no un secreto de CI.** Un secreto de GitHub Actions solo es visible dentro de las ejecuciones de CI; nunca llega al servidor en ejecución. Cree una clave en [ollama.com/settings/keys](https://ollama.com/settings/keys) y colóquela en el bloque `env` de su cliente MCP (o en su entorno de shell).
 
-**Cómo funciona el enrutamiento.** Cuando la nube está activada, los niveles generativos (instantáneo / de trabajo intensivo / profundo) se dirigen al modelo de la nube; **las incrustaciones siempre permanecen locales** (Ollama Cloud no sirve modelos de incrustación, por lo que las herramientas de corpus/incrustación no se ven afectadas). Un interruptor automático intenta primero conectarse a la nube y vuelve a tu perfil local en caso de tiempo de espera / errores 5xx / 429 / problemas de red. Una clave incorrecta (401/403) activa un interruptor *persistente* que muestra una advertencia clara en lugar de degradar silenciosamente el rendimiento. El perfil local (`INTERN_PROFILE`) es la escala de respaldo, así que mantén sus modelos descargados.
+**Cómo funciona el enrutamiento.** Cuando la nube está activada, las capas generativas (instantánea, de trabajo y profunda) se dirigen al modelo de la nube; **los embeddings siempre permanecen locales** (Ollama Cloud no ofrece modelos de embedding, por lo que las herramientas de corpus/embedding no se ven afectadas). Un interruptor de circuito intenta primero la conexión con la nube y, si se produce un tiempo de espera, un error 5xx, 429 o un error de red, vuelve a su perfil local. Una clave incorrecta (401/403) activa un interruptor *persistente* que muestra un mensaje claro en lugar de degradar el rendimiento de forma silenciosa. El perfil local (`INTERN_PROFILE`) es la opción de respaldo, por lo que mantenga sus modelos descargados.
 
-**Nunca se te reducirá el rendimiento de forma silenciosa.** Cada sobre informa qué backend atendió la llamada:
+**Nunca se degradará el rendimiento de forma silenciosa.** Cada solicitud informa qué backend atendió la llamada:
 
 ```ts
 { ...envelope, backend: "cloud" | "local", degraded?: true, degrade_reason?: "cloud_timeout" | "cloud_5xx" | "cloud_rate_limited" | "cloud_unreachable" | "cloud_auth_failed" | "circuit_open" }
 ```
 
-Una línea `backend_fallback` aparece en `~/.ollama-intern/log.ndjson` en cada cambio a un entorno local desde la nube (`ollama_log_tail --filter_kind backend_fallback`), y `ollama-intern-mcp doctor` muestra un bloque **Nube (principal | en espera)** con el modo, la capacidad de conexión y el estado de autenticación.
+Una línea `backend_fallback` aparece en `~/.ollama-intern/log.ndjson` en cada cambio de nube a local (`ollama_log_tail --filter_kind backend_fallback`), y `ollama-intern-mcp doctor` muestra un bloque **Nube (primaria | en espera)** con el modo, la accesibilidad y el estado de autenticación.
 
-### Cambio a la nube en espera y escalado por llamada
+### Nube en espera y escalado por llamada
 
-Establecer `OLLAMA_API_KEY` **sin** `OLLAMA_CLOUD_PRIMARY` activa el modo **en espera**: el enrutamiento permanece principalmente local y nada sale de la máquina, hasta que una llamada contenga `backend: "cloud"` (expuesto en `ollama_chat`, utilizado internamente por `ollama_verify_claims`). Esa única llamada se escala al modelo de la nube, con el mismo interruptor automático + mecanismo de cambio a un entorno local y la misma procedencia del sobre; todas las demás llamadas permanecen locales. La **primera** llamada escalada imprime una advertencia clara en stderr que indica el host y escribe una línea `cloud_egress` en el registro NDJSON; la transferencia de datos se revela en el momento en que ocurre, no solo aquí en la documentación.
+Establecer `OLLAMA_API_KEY` **sin** `OLLAMA_CLOUD_PRIMARY` activa el modo **en espera**: el enrutamiento permanece en modo local-primario y nada sale de la máquina, hasta que una llamada incluya `backend: "cloud"` (que se expone en `ollama_chat` y se utiliza internamente por `ollama_verify_claims`). Esa única llamada se escala al modelo de la nube, con el mismo interruptor y el mismo mecanismo de respaldo local, y con la misma procedencia de la solicitud; todas las demás llamadas permanecen locales. La **primera** llamada escalada imprime un mensaje de error en stderr que indica el host y escribe una línea `cloud_egress` en el registro NDJSON: la transferencia de datos se revela en el momento en que ocurre, no solo aquí en la documentación.
 
-Las reglas se aplican de forma automática:
+Las reglas, aplicadas mecánicamente:
 
-- Si no se proporciona una clave → `backend: "cloud"` falla con `CLOUD_NOT_CONFIGURED`. Nunca se utiliza silenciosamente el modelo local, aunque afirme haber realizado una escalada.
-- En modo de espera + sin directiva → local, sin transferencia de datos (el inicio tampoco comprueba el host en la nube).
-- Si se configura como principal en la nube, `backend: "local"` asigna una llamada al entorno local; es la opción inversa para evitar el uso de la nube.
-- Ahora, cada llamada puede anular el modelo y utilizar la configuración de la nube (anteriormente, esta configuración era reemplazada por el mapa de niveles a modelos en la nube), lo que permite a los orquestadores basados en recibos especificar el modelo exacto de la nube para cada llamada.
+- Sin clave → `backend: "cloud"` falla con `CLOUD_NOT_CONFIGURED`. **Nunca** se atenderá silenciosamente la solicitud con el modelo local, afirmando que se ha escalado.
+- Modo en espera + sin directiva → local, cero transferencia de datos (el inicio tampoco comprueba el host de la nube).
+- En modo de prioridad en la nube, `backend: "local"` fija una llamada en local: la vía de escape inversa.
+- Ahora, una anulación `model` por llamada sigue la ruta de la nube al pie de la letra (antes se modificaba con el mapa de capa a modelo de la nube), por lo que los orquestadores basados en recibos pueden especificar el modelo de la nube exacto por llamada.
 
-El producto estrella es **`ollama_verify_claims`**: evalúa las afirmaciones y los resultados utilizando un panel de 3 modelos diferentes alojados en la nube (el valor predeterminado es `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`). La agregación nunca se decide por una sola opinión disidente, se comprueban los modelos utilizados en cada evaluación y se utiliza un indicador honesto de "débil" cuando el panel tiene pocos miembros. Una confirmación del panel sobre las afirmaciones generadas por modelos avanzados es *evidencia de apoyo, no prueba*; el panel detecta de forma fiable errores graves y es menos eficaz para detectar errores sutiles. Consulte la [página del manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/).
+El principal usuario es **`ollama_verify_claims`**: arbitrar reclamaciones/hallazgos con un panel de 3 modelos de diferentes familias en la nube (por defecto `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`): agregación con la regla de que nunca se debe tomar una decisión basándose en la disidencia de un solo miembro, comprobación del modelo servido en cada jurado y una bandera `weak` honesta cuando el panel se reduce. Una confirmación del panel sobre reclamaciones autorizadas por modelos de vanguardia es *evidencia de apoyo, no prueba*: el panel detecta de forma fiable los errores graves y es menos eficaz con los errores sutiles. Consulte la [página del manual](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/).
 
-**Latencia frente a calidad.** Los modelos grandes alojados en la nube se ejecutan mucho más lentamente por token que un modelo local de 8B (segundos, no milisegundos); es una mejora de la calidad, no de la velocidad. Los niveles de la nube utilizan un intervalo de tiempo de espera generoso (30 segundos inmediatos / 120 segundos para el uso principal / 300 segundos en profundidad por defecto).
+**Latencia frente a calidad.** Los modelos grandes de la nube se ejecutan mucho más lentamente por token que un modelo de 8B local (segundos, no milisegundos): es una mejora de la calidad, no de la velocidad. Las capas de la nube utilizan un margen de tiempo de espera generoso (instantánea: 30 s / de trabajo: 120 s / profunda: 300 s por defecto).
 
 ### Variables de entorno de la nube
 
 | Variable | Valor predeterminado | Propósito |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(sin definir)_ | **El interruptor "principal en la nube".** `1`/`true`/`yes`/`on` dirige los niveles generativos a la nube. Si no se define con una clave, se activa el modo de **espera** (principal local, escalada por llamada). Si no se define sin una clave, solo se utiliza el entorno local, sin transferencia de datos. |
-| `OLLAMA_API_KEY` | _(sin definir)_ | Clave de acceso para Ollama Cloud. Establecerla activa el modo de **espera**; es **obligatoria** cuando `OLLAMA_CLOUD_PRIMARY` está habilitado (falla rápidamente al inicio si falta). |
+| `OLLAMA_CLOUD_PRIMARY` | _(no establecido)_ | **El interruptor de prioridad en la nube.** `1`/`true`/`yes`/`on` enruta las capas generativas a la nube. No establecido con una clave = **en espera** (prioridad local, solo escalado por llamada). No establecido sin clave = solo local, cero transferencia de datos. |
+| `OLLAMA_API_KEY` | _(no establecido)_ | Clave de autenticación para Ollama Cloud. Establecerla sola activa el modo **en espera**; **es obligatoria** cuando `OLLAMA_CLOUD_PRIMARY` está habilitado (falla rápidamente al inicio si falta). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Host base de la nube. |
-| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Modelo de la nube para los niveles inmediato, principal y profundo. Mantenga el valor predeterminado como **no reflexivo**; un modelo reflexivo aquí agotaría los presupuestos de salida corta en CoT (coloque los modelos de razonamiento más complejos en la opción de anulación profunda que se muestra a continuación). |
-| `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Anulación opcional solo para el nivel profundo, por ejemplo, `deepseek-v3.1:671b`. |
-| `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Tiempos de espera para los intentos en la nube por nivel. |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Modelo de la nube para las capas instantánea, de trabajo y profunda. Mantenga el valor predeterminado **no pensante**: un modelo pensante aquí agotará los presupuestos de salida corta en CoT (coloque los razonadores más potentes en la anulación de la capa profunda). |
+| `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Anulación opcional solo para la capa profunda, por ejemplo, `deepseek-v3.1:671b`. |
+| `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Tiempos de espera para los intentos de conexión con la nube por capa. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Límite de ventana de contexto para las llamadas a la nube (la nube cobra por el tiempo de GPU; el límite controla el coste). |
 
-> **Cambios en la disponibilidad del modelo.** Ollama rota o retira los identificadores de la nube en el lado del servidor. A partir del 7 de julio de 2026, `qwen3-coder-next:cloud` (valor predeterminado no reflexivo) y los modelos estrella reflexivos `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` están disponibles; consulte [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) antes de fijar un identificador. Un identificador retirado se degrada visiblemente (`cloud_model_missing`), pero nunca lo hace de forma silenciosa.
+> **La disponibilidad de los modelos cambia.** Ollama rota/retira los identificadores de la nube en el lado del servidor. A partir de 2026-07, `qwen3-coder-next:cloud` (el valor predeterminado no pensante) y los modelos insignia pensantes `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` están disponibles actualmente; consulte [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) antes de fijar un identificador. Un identificador retirado se degrada de forma visible (`cloud_model_missing`), nunca de forma silenciosa.
 
-**Nota sobre la privacidad.** El enrutamiento a Ollama Cloud envía las indicaciones a un tercero. La [política de privacidad](https://ollama.com/privacy) de Ollama establece que las indicaciones de la nube se procesan de forma transitoria, no se conservan más allá de la solicitud y no se utilizan para el entrenamiento; sin embargo, sigue siendo una transferencia de datos, por lo que es opcional y se informa al usuario. El modo solo local (el valor predeterminado) no envía nada fuera del sistema.
+**Nota sobre la privacidad.** El enrutamiento a Ollama Cloud envía las indicaciones a un tercero. La [política de privacidad](https://ollama.com/privacy) de Ollama establece que las indicaciones de la nube se procesan de forma transitoria, no se conservan más allá de la solicitud y no se utilizan para el entrenamiento, pero sigue siendo una salida de datos, por lo que es opcional y se informa al usuario. El modo solo local (el predeterminado) no envía nada fuera del sistema.
 
 ---
 
-## Leyes sobre las pruebas
+## Leyes sobre pruebas
 
-Estas reglas se aplican en el servidor, no en la indicación:
+Estas se aplican en el servidor, no en la indicación:
 
-- **Se requieren citas.** Cada afirmación breve cita un identificador de prueba.
-- **Los elementos desconocidos se eliminan en el lado del servidor.** Los modelos que citan identificadores que no están en el conjunto de pruebas tienen esos identificadores eliminados con una advertencia antes de devolver el resultado.
-- **Validación por ID, no por contenido.** El servidor comprueba que cada `evidence_ref` citado apunta a un identificador de prueba real en el conjunto ensamblado. No verifica que el texto de la afirmación se pueda derivar de la prueba citada; ese es el trabajo del modelo, y las pruebas débiles a veces contienen afirmaciones no respaldadas con referencias válidas. Utilice `weak: true` + notas de cobertura + el campo `excerpt` incluido para realizar una comprobación aleatoria.
-- **Débil es débil.** Las pruebas débiles marcan `weak: true` con notas de cobertura. Nunca se suavizan en una narrativa falsa.
-- **Investigativa, no prescriptiva.** Solo `next_checks` / `read_next` / `likely_breakpoints`. Las indicaciones prohíben "aplicar esta corrección".
-- **Renderizadores deterministas.** La forma del formato Markdown es código, no una indicación. `draft` se reserva para la prosa donde el estilo del modelo importa.
-- **Diferencias solo dentro del mismo paquete.** Se rechaza de forma contundente la comparación entre paquetes con `artifact_diff`; las cargas útiles permanecen distintas.
+- **Se requieren citas.** Cada afirmación breve cita un ID de prueba.
+- **Se eliminan los elementos desconocidos en el lado del servidor.** Los modelos que citan ID que no están en el conjunto de pruebas tienen esos ID eliminados con una advertencia antes de que se devuelva el resultado.
+- **Validación por ID, no por contenido.** El servidor verifica que cada `evidence_ref` citado apunte a un ID de prueba real en el conjunto ensamblado. NO verifica que el texto de la afirmación se pueda derivar de la prueba citada; ese es el trabajo del modelo, y a veces las afirmaciones débiles contienen afirmaciones no respaldadas con referencias válidas. Utilice `weak: true` + notas de cobertura + el campo `excerpt` incluido para realizar una verificación aleatoria.
+- **Débil es débil.** Las pruebas débiles marcan `weak: true` con notas de cobertura. Nunca se suavizan para crear una narrativa falsa.
+- **Investigativo, no prescriptivo.** Solo `next_checks` / `read_next` / `likely_breakpoints`. Las indicaciones prohíben "aplicar esta corrección".
+- **Renderizadores deterministas.** La forma del artefacto markdown es código, no una indicación. `draft` se reserva para la prosa donde la redacción del modelo es importante.
+- **Solo diferencias dentro del mismo paquete.** Se rechazan las `artifact_diff` entre paquetes; las cargas útiles permanecen distintas.
 
 ---
 
 ## Artefactos y continuidad
 
-Los paquetes se escriben en `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`. El nivel de artefactos le proporciona una superficie de continuidad sin convertir esto en una herramienta de gestión de archivos:
+Los paquetes escriben en `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)`. La capa de artefactos le brinda una superficie de continuidad sin convertir esto en una herramienta de administración de archivos:
 
-- `artifact_list`: índice solo con metadatos, filtrable por paquete, fecha y patrón de nombre.
-- `artifact_read`: lectura tipada por `{pack, slug}` o `{json_path}`.
-- `artifact_diff`: comparación estructurada dentro del mismo paquete; se muestra la inversión débil.
-- `artifact_export_to_path`: escribe un artefacto existente (con encabezado de procedencia) en una ruta `allowed_roots` declarada por el llamador. Rechaza los archivos existentes a menos que `overwrite: true`.
-- `artifact_incident_note_snippet`: fragmento de nota del operador.
-- `artifact_onboarding_section_snippet`: fragmento del manual.
-- `artifact_release_note_snippet`: fragmento BORRADOR de la nota de lanzamiento.
+- `artifact_list`: índice solo de metadatos, filtrable por paquete, fecha, comodín de nombre corto
+- `artifact_read`: lectura tipada por `{pack, slug}` o `{json_path}`
+- `artifact_diff`: comparación estructurada dentro del mismo paquete; se muestra la diferencia débil
+- `artifact_export_to_path`: escribe un artefacto existente (con encabezado de procedencia) en un `allowed_roots` declarado por el llamador. Rechaza los archivos existentes a menos que sea `overwrite: true`.
+- `artifact_incident_note_snippet`: fragmento de nota del operador
+- `artifact_onboarding_section_snippet`: fragmento del manual
+- `artifact_release_note_snippet`: fragmento de nota de lanzamiento DRAFT
 
-No se realizan llamadas al modelo en este nivel. Todo se renderiza a partir del contenido almacenado.
+No hay llamadas de modelo en esta capa. Todo se renderiza a partir del contenido almacenado.
 
 ---
 
 ## Modelo de amenazas y telemetría
 
-**Datos afectados:** rutas de archivo que el llamador proporciona explícitamente (`ollama_research`, herramientas de corpus), texto en línea y artefactos que el llamador solicita que se escriban en `~/.ollama-intern/artifacts/` o en una ruta `allowed_roots` declarada por el llamador.
+**Datos afectados:** rutas de archivo que el llamador proporciona explícitamente (`ollama_research`, herramientas de corpus), texto en línea y artefactos que el llamador solicita que se escriban en `~/.ollama-intern/artifacts/` o en un `allowed_roots` declarado por el llamador.
 
-**Datos que NO se modifican:** cualquier cosa fuera de `source_paths` / `allowed_roots`. Se rechaza `..` antes de la normalización. `artifact_export_to_path` rechaza los archivos existentes a menos que `overwrite: true`. Los borradores dirigidos a rutas protegidas (`memory/`, `.claude/`, `docs/canon/`, etc.) requieren un `confirm_write: true` explícito, aplicado en el servidor.
+**Datos NO afectados:** cualquier cosa fuera de `source_paths` / `allowed_roots`. `..` se rechaza antes de la normalización. `artifact_export_to_path` rechaza los archivos existentes a menos que sea `overwrite: true`. Los borradores dirigidos a rutas protegidas (`memory/`, `.claude/`, `docs/canon/`, etc.) requieren un `confirm_write: true` explícito, que se aplica en el lado del servidor.
 
-**Comunicación de red:** **desactivada por defecto.** De fábrica, el único tráfico saliente es hacia el punto final HTTP local de Ollama; no hay llamadas a la nube, ni señales de actualización, ni informes de fallos. **Excepción opcional:** si habilita [Ollama Cloud](#ollama-cloud-optional) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`), las indicaciones para los niveles generativos se envían a `ollama.com` a través de HTTPS con una clave Bearer. Esto es explícito, está declarado y está desactivado a menos que configure ambas variables; los embeddings nunca abandonan el sistema. Consulte [SECURITY.md](SECURITY.md) §11.
+**Salida de red:** **desactivada por defecto.** De forma predeterminada, el único tráfico de salida es hacia el punto final HTTP local de Ollama; no hay llamadas a la nube, ni sondeos de actualización, ni informes de fallos. **Excepción opcional:** si habilita [Ollama Cloud](#ollama-cloud) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`), las indicaciones para las capas generativas se envían a `ollama.com` a través de HTTPS con una clave de tipo Bearer. Esto es explícito, se informa al usuario y está desactivado a menos que configure ambas variables; los embeddings nunca abandonan el sistema. Consulte [SECURITY.md](SECURITY.md) §11.
 
-**Telemetría:** **ninguna.** Cada llamada se registra como una línea NDJSON en `~/.ollama-intern/log.ndjson` en su máquina. El servidor en sí no envía información a ningún lugar.
+**Telemetría:** **ninguna.** Cada llamada se registra como una línea NDJSON en `~/.ollama-intern/log.ndjson` en su máquina. El servidor en sí no se comunica con ningún servicio externo.
 
-**Errores:** formato estructurado `{ code, message, hint, retryable }`. Los rastreos de pila nunca se exponen a través de los resultados de las herramientas.
+**Errores:** forma estructurada `{ code, message, hint, retryable }`. Los rastreos de pila nunca se exponen a través de los resultados de la herramienta.
 
 Política completa: [SECURITY.md](SECURITY.md).
 
@@ -587,24 +606,24 @@ Política completa: [SECURITY.md](SECURITY.md).
 
 ## Estándares
 
-Construido según el estándar [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck). Las pruebas A–D se superan; consulte [SHIP_GATE.md](SHIP_GATE.md) y [SCORECARD.md](SCORECARD.md).
+Construido según el estándar [Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck). Las barreras A–D se superan; consulte [SHIP_GATE.md](SHIP_GATE.md) y [SCORECARD.md](SCORECARD.md).
 
 - **A. Seguridad:** SECURITY.md, modelo de amenazas, sin telemetría, seguridad de la ruta, `confirm_write` en rutas protegidas
-- **B. Errores:** formato estructurado en todos los resultados de las herramientas; no hay rastreos brutos
-- **C. Documentación:** README actualizado, CHANGELOG, LICENSE; los esquemas de las herramientas se auto documentan
-- **D. Buenas prácticas:** `npm run verify` (conjunto completo de pruebas vitest), CI con análisis de dependencias, Dependabot, archivo lockfile, `engines.node`
+- **B. Errores:** forma estructurada en todos los resultados de la herramienta; sin rastreos sin procesar
+- **C. Documentación:** README actualizado, CHANGELOG, LICENSE; los esquemas de las herramientas se documentan por sí mismos
+- **D. Higiene:** `npm run verify` (conjunto completo de pruebas vitest), CI con escaneo de dependencias, Dependabot, archivo de bloqueo, `engines.node`
 
 ---
 
 ## Hoja de ruta (refuerzo, no ampliación del alcance)
 
-- **Fase 1: Eje de delegación:** ✓ lanzado: superficie atómica, envoltorio uniforme, enrutamiento por niveles, medidas de seguridad
-- **Fase 2: Eje de la verdad:** ✓ lanzado: fragmentación del esquema v2, BM25 + RRF, corpus dinámicos, resúmenes basados en evidencia, paquete de evaluación de recuperación
-- **Fase 3: Eje de paquetes y artefactos:** ✓ lanzado: paquetes de canalización fija con artefactos duraderos + nivel de continuidad
-- **Fase 4: Eje de adopción:** ✓ v2.0.1: prueba de salud de tres etapas, corpus reforzado (TOCTOU, límite de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido del camino de la herramienta, capacidad de observación (eventos de espera de semáforo, contexto de error de tiempo de espera, registro de anulación de entorno de perfil, señal de precalentamiento de inicio en frío), seguridad de las pruebas (instantánea del entorno de carga de módulos en 10 archivos, `tools/call` E2E). Se agregó un manual de solución de problemas y los requisitos mínimos de hardware para los operadores.
-- **Fase 5: Pruebas comparativas M5 Max:** números publicables una vez que se disponga del hardware (~24 de abril de 2026)
+- **Fase 1: Eje de delegación:** ✓ lanzado: superficie atómica, sobre uniforme, enrutamiento por niveles, salvaguardas
+- **Fase 2: Eje de la verdad:** ✓ lanzado: fragmentación de esquema v2, BM25 + RRF, corpus en vivo, resúmenes basados en pruebas, paquete de evaluación de recuperación
+- **Fase 3: Eje de paquetes y artefactos:** ✓ lanzado: paquetes de canalización fija con artefactos duraderos + capa de continuidad
+- **Fase 4: Eje de adopción:** ✓ v2.0.1: pase de salud de tres etapas, corpus reforzado (TOCTOU, límite de archivo de 50 MB, rechazo de enlaces simbólicos, escrituras atómicas, captura de fallos por archivo), recorrido de ruta de la herramienta, observabilidad (eventos de espera de semáforo, contexto de error de tiempo de espera, registro de anulación de entorno de perfil, señal de inicio en frío), seguridad de las pruebas (instantánea del entorno de carga de módulos en 10 archivos, `tools/call` E2E). Se agregó un manual de solución de problemas y requisitos mínimos de hardware para los operadores.
+- **Fase 5: Pruebas de referencia M5 Max:** números publicables una vez que se disponga del hardware (~2026-04-24)
 
-Fase por capa de refuerzo. Las capas de paquetes y artefactos permanecen congeladas en 3 y 7. La congelación atómica se levantó en v2.1.0; los nuevos átomos requieren una justificación basada en auditoría, pruebas, una página del manual y una entrada en CHANGELOG.
+Fase por capa de refuerzo. Las capas de paquetes y artefactos permanecen congeladas en 3 y 7. El congelamiento de la capa atómica se levantó en v2.1.0: los nuevos átomos requieren una justificación de auditoría, pruebas, una página del manual y una entrada en el archivo CHANGELOG.
 
 ---
 

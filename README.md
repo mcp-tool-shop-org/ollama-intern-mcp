@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.ja.md">日本語</a> | <a href="README.zh.md">中文</a> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <a href="README.hi.md">हिन्दी</a> | <a href="README.it.md">Italiano</a> | <a href="README.pt-BR.md">Português (BR)</a>
+  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh.md">中文</a> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <a href="README.hi.md">हिन्दी</a> | <a href="README.it.md">Italiano</a> | <a href="README.pt-BR.md">Português (BR)</a>
 </p>
 
 <p align="center">
@@ -73,7 +73,7 @@ Full detail in [CHANGELOG.md](./CHANGELOG.md).
 - **Cloud-primary with a safety net.** A `RoutingOllamaClient` tries cloud first and falls back to the local profile on timeout / 5xx / 429 / network. Bad keys (401/403) surface loudly via a sticky breaker instead of degrading silently forever; a retired/typo'd cloud model id (404) surfaces too.
 - **Never a silent downgrade.** Every envelope gains `backend` (`cloud`|`local`), `degraded`, and `degrade_reason` so you always know when you got the local model instead of the big one. A `backend_fallback` NDJSON event makes the cloud→local fallback rate visible in `ollama_log_tail`.
 - **`ollama_doctor` reports cloud auth + reachability** as a distinct block; `ollama-intern-mcp doctor` shows a `Cloud (primary)` section.
-- Default cloud model was `minimax-m3:cloud` at v2.7.0 release *(since repinned to `qwen3-coder-next:cloud` — a thinking default returned empty replies on capped-`num_predict` tools; see the [env table](#cloud-env-vars))*; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
+- Default cloud model was `minimax-m3:cloud` at v2.7.0 release *(since repinned to `mistral-large-3:675b-cloud` — a thinking default returned empty replies on capped-`num_predict` tools; see the [env table](#cloud-env-vars))*; override per-tier with `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL`.
 
 ## New in v2.6.0
 
@@ -547,12 +547,12 @@ The flagship consumer is **`ollama_verify_claims`**: adjudicate claims/findings 
 | `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The cloud-primary switch.** `1`/`true`/`yes`/`on` routes the generative tiers to cloud. Unset with a key = **standby** (local-primary, per-call escalation only). Unset without a key = local-only, zero egress. |
 | `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. Setting it alone arms **standby**; **required** when `OLLAMA_CLOUD_PRIMARY` is enabled (fail-fast at startup if missing). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Cloud base host. |
-| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Cloud model for instant + workhorse + deep. Keep the default **non-thinking** — a thinking model here burns short-output budgets on CoT (put big reasoners on the deep override below). |
+| `INTERN_CLOUD_MODEL` | `mistral-large-3:675b-cloud` | Cloud model for instant + workhorse + deep. Keep the default **non-thinking** — a thinking model here burns short-output budgets on CoT (put big reasoners on the deep override below). |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Optional deep-tier-only override, e.g. `deepseek-v3.1:671b`. |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | Per-tier cloud-attempt timeouts. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Context-window cap for cloud calls (cloud bills by GPU-time; cap controls cost). |
 
-> **Model availability changes.** Ollama rotates/retires cloud ids server-side. As of 2026-07, `qwen3-coder-next:cloud` (non-thinking default) and the thinking flagships `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` are current; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id. A retired id degrades visibly (`cloud_model_missing`), never silently.
+> **Model availability changes — check, don't assume.** Ollama rotates and retires cloud ids server-side, and `ollama list` is stale in *both* directions: it keeps listing retired ids and omits live ones. Verified live 2026-09-11: `mistral-large-3:675b-cloud` (the non-thinking default) plus the thinking flagships `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`. Gone (HTTP 410) the same day: `qwen3-coder-next:cloud` — the previous default — along with `glm-4.6:cloud`, `qwen3-coder:480b-cloud`, `deepseek-v3.1:671b-cloud` and `gemini-3-flash-preview:cloud`. Run `ollama-intern-mcp doctor --cloud-check` to check your configured ids against the live catalog in-product. A retired id degrades visibly (`cloud_model_missing`), never silently.
 
 **Privacy note.** Routing to Ollama Cloud sends prompts to a third party. Ollama's [privacy policy](https://ollama.com/privacy) states cloud prompts are processed transiently, not retained beyond the request, and not used for training — but it is still egress, which is why it's opt-in and disclosed. Local-only mode (the default) sends nothing off the box.
 

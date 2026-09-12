@@ -169,13 +169,13 @@ never content.
 | `OLLAMA_CLOUD_PRIMARY` | _(unset)_ | **The cloud-primary switch.** `1`/`true`/`yes`/`on` routes the generative tiers to cloud. Unset with a key = **standby** (local-primary, per-call escalation only). Unset without a key = local-only, zero egress. |
 | `OLLAMA_API_KEY` | _(unset)_ | Bearer key for Ollama Cloud. Setting it alone arms **standby**; **required** when `OLLAMA_CLOUD_PRIMARY` is enabled (fail-fast at startup if missing). |
 | `OLLAMA_CLOUD_HOST` | `https://ollama.com` | Cloud base host. |
-| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | Cloud model for instant + workhorse + deep. Keep the default **non-thinking** — a thinking model here burns short-output `num_predict` budgets on CoT and returns empty replies; put big reasoners on the deep override below. |
+| `INTERN_CLOUD_MODEL` | `mistral-large-3:675b-cloud` | Cloud model for instant + workhorse + deep. Keep the default **non-thinking** — a thinking model here burns short-output `num_predict` budgets on CoT and returns empty replies; put big reasoners on the deep override below. |
 | `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | Optional deep-tier-only override, e.g. `deepseek-v3.1:671b`. |
 | `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000` / `120000` / `300000` | Per-tier cloud-attempt timeouts. |
 | `INTERN_CLOUD_NUM_CTX` | `32768` | Context-window cap for cloud calls (cloud bills by GPU-time; the cap controls cost). |
 
 :::note[Model availability changes]
-Ollama rotates/retires cloud ids server-side. As of 2026-07, `qwen3-coder-next:cloud` (non-thinking default) and the thinking flagships `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` are current; check [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) before pinning an id. A retired id degrades visibly (`cloud_model_missing`), never silently.
+Ollama rotates and retires cloud ids server-side, and `ollama list` is stale in **both** directions — it keeps listing retired ids and omits live ones, so it is not a source of truth. Verified live 2026-09-11: `mistral-large-3:675b-cloud` (the non-thinking default) plus the thinking flagships `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`. Gone (HTTP 410) the same day: `qwen3-coder-next:cloud` — the previous default — along with `glm-4.6:cloud`, `qwen3-coder:480b-cloud`, `deepseek-v3.1:671b-cloud` and `gemini-3-flash-preview:cloud`. Run [`doctor --cloud-check`](#proving-your-key-works--doctor---cloud-check) to check your configured ids against the live catalog. A retired id degrades visibly (`cloud_model_missing`), never silently.
 :::
 
 ## Latency vs quality

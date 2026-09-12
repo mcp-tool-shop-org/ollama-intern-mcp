@@ -94,8 +94,8 @@ describe("runTool — per-call backend directive (F2b)", () => {
     expect(env.degraded).toBeUndefined();
     expect(cloud.callCount.generate).toBe(1);
     expect(local.callCount.generate).toBe(0);
-    expect(cloud.lastGenerate?.model).toBe("qwen3-coder-next:cloud");
-    expect(env.model).toBe("qwen3-coder-next:cloud");
+    expect(cloud.lastGenerate?.model).toBe("mistral-large-3:675b-cloud");
+    expect(env.model).toBe("mistral-large-3:675b-cloud");
   });
 
   it("no backend under STANDBY stays local — zero egress, envelope backend:'local'", async () => {

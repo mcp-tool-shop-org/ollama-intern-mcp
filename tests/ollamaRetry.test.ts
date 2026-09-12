@@ -230,7 +230,7 @@ describe("backoff internals — deterministic bounds", () => {
 describe("HttpOllamaClient — cloud 404 hint (H3)", () => {
   it("a cloud-kind 404 hint names the cloud model env vars and never says 'ollama pull'", async () => {
     const mock = vi.fn(async () =>
-      errorResponse(404, "model 'qwen3-coder-next:cloud' not found"),
+      errorResponse(404, "model 'mistral-large-3:675b-cloud' not found"),
     ) as unknown as FetchFn;
     globalThis.fetch = mock;
     const client = new HttpOllamaClient({
@@ -241,7 +241,7 @@ describe("HttpOllamaClient — cloud 404 hint (H3)", () => {
 
     let caught: unknown;
     try {
-      await client.generate({ model: "qwen3-coder-next:cloud", prompt: "hi" });
+      await client.generate({ model: "mistral-large-3:675b-cloud", prompt: "hi" });
     } catch (e) {
       caught = e;
     }

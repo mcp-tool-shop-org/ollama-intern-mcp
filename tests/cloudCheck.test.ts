@@ -26,7 +26,7 @@ function result(over: Partial<CloudCheckResult>): CloudCheckResult {
     host: "https://ollama.com",
     mode: "standby",
     auth: "ok",
-    model_requested: "qwen3-coder-next:cloud",
+    model_requested: "mistral-large-3:675b-cloud",
     latency_ms: 12,
     ...over,
   } as CloudCheckResult;
@@ -36,9 +36,9 @@ describe("nearestModelId — the suggestion when a pinned id is gone", () => {
   it("matches on base name first: the real miss is a dropped :cloud tag", () => {
     // Cloud ids rotate server-side and the commonest operator error is
     // pinning the local spelling of a cloud model.
-    expect(nearestModelId("qwen3-coder-next", ["qwen3-coder-next:cloud", "glm-4.6:cloud"])).toBe(
-      "qwen3-coder-next:cloud",
-    );
+    expect(
+      nearestModelId("mistral-large-3:675b", ["mistral-large-3:675b-cloud", "glm-4.6:cloud"]),
+    ).toBe("mistral-large-3:675b-cloud");
   });
 
   it("falls back to a near-miss when no base name matches", () => {
@@ -48,7 +48,7 @@ describe("nearestModelId — the suggestion when a pinned id is gone", () => {
   it("suggests nothing rather than something misleading when nothing is close", () => {
     // A wrong suggestion is worse than none: it sends the operator to pin an
     // id that is not the one they meant.
-    expect(nearestModelId("qwen3-coder-next:cloud", ["totally-unrelated:cloud"])).toBeUndefined();
+    expect(nearestModelId("mistral-large-3:675b-cloud", ["totally-unrelated:cloud"])).toBeUndefined();
   });
 
   it("suggests nothing against an empty catalog", () => {
@@ -58,17 +58,17 @@ describe("nearestModelId — the suggestion when a pinned id is gone", () => {
 
 describe("compareCatalog — report, never enforce", () => {
   const configured = [
-    { source: "INTERN_CLOUD_MODEL", id: "qwen3-coder-next:cloud" },
+    { source: "INTERN_CLOUD_MODEL", id: "mistral-large-3:675b-cloud" },
     { source: "INTERN_CLOUD_DEEP_MODEL", id: "minimax-m3:cloud" },
   ];
 
   it("marks a configured id present when the backend lists it", () => {
-    const out = compareCatalog(configured, ["qwen3-coder-next:cloud", "minimax-m3:cloud"]);
+    const out = compareCatalog(configured, ["mistral-large-3:675b-cloud", "minimax-m3:cloud"]);
     expect(out.every((e) => e.status === "present")).toBe(true);
   });
 
   it("marks a retired id missing and names the nearest live one", () => {
-    const out = compareCatalog(configured, ["qwen3-coder-next:cloud", "minimax-m4:cloud"]);
+    const out = compareCatalog(configured, ["mistral-large-3:675b-cloud", "minimax-m4:cloud"]);
     const deep = out.find((e) => e.source === "INTERN_CLOUD_DEEP_MODEL");
     expect(deep?.status).toBe("missing");
     expect(deep?.suggestion).toBe("minimax-m4:cloud");
@@ -86,10 +86,10 @@ describe("compareCatalog — report, never enforce", () => {
     // INTERN_CLOUD_MODEL serves instant+workhorse+deep by default; printing
     // the same id three times hides the deep override when it differs.
     const same = [
-      { source: "INTERN_CLOUD_MODEL", id: "qwen3-coder-next:cloud" },
-      { source: "INTERN_CLOUD_DEEP_MODEL", id: "qwen3-coder-next:cloud" },
+      { source: "INTERN_CLOUD_MODEL", id: "mistral-large-3:675b-cloud" },
+      { source: "INTERN_CLOUD_DEEP_MODEL", id: "mistral-large-3:675b-cloud" },
     ];
-    const out = compareCatalog(same, ["qwen3-coder-next:cloud"]);
+    const out = compareCatalog(same, ["mistral-large-3:675b-cloud"]);
     expect(out).toHaveLength(1);
     expect(out[0].source).toBe("INTERN_CLOUD_MODEL");
   });

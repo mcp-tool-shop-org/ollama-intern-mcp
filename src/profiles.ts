@@ -471,16 +471,21 @@ const CLOUD_DEFAULT_HOST = "https://ollama.com";
  * instant+workhorse, where short-output tools cap num_predict tightly — a
  * thinking default burns that budget on CoT and returns empty replies (the
  * 2026-06-09 minimax-m3:cloud incident: cloud reachable, every chat reply "").
- * qwen3-coder-next:cloud is explicitly non-thinking ("no <think> blocks",
- * 80B-A3B, 256K ctx) per ollama.com/library/qwen3-coder-next, checked
- * 2026-06-09 — cloud ids are volatile; re-check ollama.com/search?c=cloud
- * before re-pinning. Big thinking models (glm-5, deepseek-v4-pro, kimi-k2.x)
+ * mistral-large-3:675b-cloud replaced qwen3-coder-next:cloud on 2026-09-11:
+ * the old default went 410 Gone upstream, so every cloud user on defaults was
+ * silently degrading to local. The replacement was MEASURED against this
+ * exact failure mode rather than chosen from a model card — a capped
+ * num_predict=40 structured (format:json) classify returned "fix" correctly,
+ * while gpt-oss:120b, minimax-m3, glm-5.3-flash and kimi-k2.7-code all
+ * returned EMPTY on the same probe. Cloud ids are volatile: re-check with
+ * `ollama-intern-mcp doctor --cloud-check`, which reports every configured id
+ * against the live catalog, before re-pinning. Big thinking models (glm-5, deepseek-v4-pro, kimi-k2.x)
  * belong on INTERN_CLOUD_DEEP_MODEL, where tools size num_predict for
  * reasoning + response together. NEVER default to a deprecation-listed id
  * (minimax-m2, glm-4.6, kimi-k2:1t, cogito-2.1:671b, qwen3-vl:235b,
  * qwen3-coder:480b — the latter 404s as of 2026-06-09).
  */
-const CLOUD_DEFAULT_MODEL = "qwen3-coder-next:cloud";
+const CLOUD_DEFAULT_MODEL = "mistral-large-3:675b-cloud";
 const CLOUD_DEFAULT_TIMEOUTS: Record<Tier, number> = {
   instant: 30_000,
   workhorse: 120_000,
@@ -619,7 +624,7 @@ function cloudNumCtxEnv(raw: string | undefined): number {
  *   OLLAMA_CLOUD_PRIMARY        opt-in switch (1/true/yes/on)
  *   OLLAMA_API_KEY              bearer key (required when enabled)
  *   OLLAMA_CLOUD_HOST           default https://ollama.com
- *   INTERN_CLOUD_MODEL          default qwen3-coder-next:cloud (instant+workhorse+deep;
+ *   INTERN_CLOUD_MODEL          default mistral-large-3:675b-cloud (instant+workhorse+deep;
  *                               keep NON-thinking — see CLOUD_DEFAULT_MODEL)
  *   INTERN_CLOUD_DEEP_MODEL     optional deep-only override (e.g. glm-5:cloud,
  *                               deepseek-v4-pro:cloud — thinking OK here)

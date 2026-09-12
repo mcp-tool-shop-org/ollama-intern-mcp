@@ -10,79 +10,95 @@
   <a href="https://github.com/mcp-tool-shop-org/ollama-intern-mcp/actions"><img alt="CI" src="https://github.com/mcp-tool-shop-org/ollama-intern-mcp/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/"><img alt="Landing Page" src="https://img.shields.io/badge/landing-page-8b5cf6"></a>
+  <a href="https://www.npmjs.com/package/ollama-intern-mcp"><img alt="npm" src="https://img.shields.io/npm/v/ollama-intern-mcp?color=cb3837&logo=npm"></a>
   <a href="https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/"><img alt="Handbook" src="https://img.shields.io/badge/handbook-docs-10b981"></a>
+  <a href="#ollama-cloud"><img alt="Ollama Cloud: 600B-class, optional" src="https://img.shields.io/badge/Ollama%20Cloud-600B--class%20optional-0ea5e9"></a>
 </p>
 
-**Claude Codeのローカルインターン。** <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> 仕事に合わせたツール、証拠を重視した簡潔な説明、耐久性のある成果物。
+**Claude Codeのローカルインターン。** <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> 業務に合わせたツール、証拠に基づいたブリーフ、耐久性のある成果物。
 
-ルール、階層、デスク、ファイリングキャビネットを備えたClaude Codeにローカルインターンを提供するMCPサーバー。Claudeが_ツール_を選択し、そのツールが_階層_（Instant / Workhorse / Deep / Embed）を選択します。選択された階層は、次週開けるファイルを作成します。
+Claude Codeにルール、階層、デスク、ファイリングキャビネットを備えた**ローカルインターン**を提供するMCPサーバー。Claudeが_ツール_を選択し、ツールが_階層_（インスタント／ワークホース／ディープ／埋め込み）を選択し、階層が来週開けるファイルを作成します。
 
-**また、`hermes3:8b`で[Hermes Agent](https://github.com/NousResearch/hermes-agent)も実行します。** 2026年4月19日にエンドツーエンドの検証が完了しました。デフォルトの階層は`hermes3:8b`、代替のものは`qwen3:*`です。詳細は下記[Hermesとの連携](#use-with-hermes)を参照してください。
+**また、[Hermes Agent](https://github.com/NousResearch/hermes-agent)を`hermes3:8b`上で実行** — 2026-04-19にエンドツーエンドで検証済み。デフォルトのラダーは`hermes3:8b`、代替レールは`qwen3:*`です。下記[Hermesとの連携](#use-with-hermes)を参照してください。
 
-**ハードウェア要件：** `hermes3:8b`の場合は約6GBのVRAM、またはCPU推論の場合は約16GBのRAMが必要です。詳細については、[handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums)を参照してください。
+**ハードウェア要件:** `hermes3:8b`の場合は約6GBのVRAM、またはCPU推論の場合は約16GBのRAM。完全な詳細については、[handbook/getting-started](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/getting-started/#hardware-minimums)を参照してください。
 
 **Claudeを使用していませんか？** [`examples/`](./examples/)ディレクトリには、stdio経由で起動できる最小限のNode.jsおよびPython MCPクライアントがあります。また、[handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)も参照してください。
 
-**ローカル優先** — ユーザーが明示的に選択するまで、ネットワークへのデータ送信は行われません。テレメトリーはありません。「自律的」な機能もありません。すべての呼び出しで処理内容が表示されます。オプションの[Ollama Cloud](#ollama-cloud-optional)ルーティングを使用すると、ローカルハードウェアがボトルネックになっている場合に、600Bクラスのモデルを同じツールで使用できます。また、自動的にローカルにフォールバックします。
+**ローカル優先** — ユーザーが明示的に選択するまで、ネットワークへのデータ送信はゼロ。テレメトリーなし。いかなる「自律的」機能もなし。すべての呼び出しで、その処理内容が表示されます。
+
+**十分なGPUがない場合？[Ollama Cloud](#ollama-cloud)は、すべての<!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->ツールを600Bクラスのモデル上で実行します。** ほとんどのユーザーは、最先端のモデルを自分のカードでホストすることはできません。それがローカルAIの真の限界であり、このシステムはその限界を克服します。同じ`/api/*`インターフェース、同じ業務に合わせたツール、同じエンベロープ。埋め込みはローカルに保持され、クラウドの障害が発生した場合でも、ローカルプロファイルに自動的に切り替わります。**1つ**の呼び出し（`backend: "cloud"`）をエスカレートするか、すべての生成呼び出し（`OLLAMA_CLOUD_PRIMARY=1`）をルーティングします。そして、すべてのエンベロープには、実際にどのバックエンドが処理したかが表示されます。キーを設定するまで、機能はオフになっています。
 
 ---
 
+## v2.10.0で新規追加
+
+**クラウドの透明性を重視したリリース。** v2.9.0では、1回の呼び出しごとにクラウドへのエスカレーションが実装され、このREADMEでは「重要なレビューを600Bモデルにエスカレートする」と宣伝されていました。しかし、`backend`入力は**44のツールのうち1つ**にのみ存在し、それは`ollama_chat`であり、そのツールの説明にもあるように、最終手段として使用されます。すべてのレビューに関連するジョブは、ローカルの8Bモデルに固定されていました。ローカル優先の原則は変更されていません。キーを設定しない場合、データ送信はゼロであり、起動時のクラウドプローブも行われず、埋め込みはローカルに保持され、新しい設定はすべてデフォルトで今日の動作になります。
+
+- **1回の呼び出しごとのエスカレーションは、現在15のツールに拡張されました（以前は1つ）。** `backend: "cloud"`は、`research`、`summarize_deep`、`code_review`、`code_citation`、`corpus_answer`、`hypothesis_drill`、`multi_file_refactor_propose`、`refactor_plan`、すべての3つのブリーフ、すべての3つのパック、および`chat`のオプションの入力です。省略すると、動作はv2.9.xと完全に同じになります。**パックは、合成ステップのみをエスカレートします** — 証拠の組み立て、トリアージ、および成果物の書き込みはローカルで行われ、処理できないエスカレーションは、ローカルで作業を開始する前に拒否されます。
+- **`INTERN_CLOUD_STANDBY_TIERS` — ポリシーを一度宣言します。** どの階層（`instant|workhorse|deep`）が、1回の呼び出しごとの指示なしに、スタンバイ状態でエスカレートするかを指定します。デフォルトでは空です。1回の呼び出しごとの`backend`は、両方の方向で優先されます。`embed`は、構成のロード時とルーティングレイヤーの両方で拒否されます。埋め込みは常にローカルに保持されます。
+- **`doctor --cloud-check` — キーが実際に機能することを確認します。** 以前のプローブは`/api/tags`にアクセスし、無効なキーに対して200を返していたため、認証は常に「未検証」としか読み取れませんでした。この機能では、8トークンの生成を1回実行し、`ok` / `failed` / `unverified` / `unreachable`を返します。これらはすべて、意図的に異なる状態として保持されます。モデルIDに対する404エラーは、キーの問題ではなく、キーを探させるものではないためです。また、各構成済みのクラウドIDが「存在」または「カタログに存在しない」として報告され、最も近いライブIDが提案されるため、廃止されたIDは、コストがかかる前に見つけることができます。
+- **修正：`init`は、すべてのnpmインストールで壊れていました。** `hermes.config.example.yaml`は、公開されたtarballに含まれていなかったため、バイナリは「パッケージングエラー」をnpmからインストールしたすべてのユーザーに報告していました。現在は同梱されており、CIはパッケージ化されたtarballをインストールして実行するため、再発することはありません。
+- **検索スコアは、ついに比較可能になりました。** `CorpusHit.score`は、1つのフィールドの下に4つの比較不可能なスケールを持っていました。デフォルトのハイブリッドモードは`0.0328`で上限に達し、`corpus_min_evidence_score`は「0〜1」とドキュメントに記載されていたため、自然な下限である`0.1`が、すべてのコーパスチャンクを無効にしていました。融合されたスコアは0〜1に再調整され、各ヒットには`score_scale`が含まれます。
+
+完全な詳細は、[CHANGELOG.md](./CHANGELOG.md)を参照してください。
+
 ## v2.9.0で新規追加
 
-**クラウド機能パス — 異なるモデル間での検証、オンデマンドでのクラウドへの切り替え、およびその経済性。** ローカル優先の動作は変更されていません。キーが設定されていない場合、v2.8.0と完全に同じ動作になります（データ送信なし、起動時のクラウドプローブも行われません）。
+**クラウド機能の導入 — 異なるファミリー間の検証、オンデマンドのクラウドへのエスカレーション、およびその経済性。** ローカル優先の原則は変更されていません。キーを設定しない場合、動作はv2.8.0と完全に同じになります（データ送信はゼロ、起動時のクラウドプローブも行われません）。
 
-- **`ollama_verify_claims` — 異なるモデル間での検証。** `ollama_code_review`は結果を*生成*し、この機能がそれらを*評価*します。デフォルトでは、deepseek / kimi / glmを使用して、入力された主張と証拠に対して、異なるモデルファミリーのOllama Cloudフラッグシップパネルを実行し、各主張に対してCONFIRMED（確認済み）/ REFUTED（否定）/ NEEDS_REVIEW（再検討が必要）を返します。集計は、単一の反対意見があっても決定されないように行われます（否定するには少なくとも2つ、確認するには少なくとも2つの肯定的な意見が必要です）。すべての審査員は、ローカルで検証されたモデルを使用するか、代替モデルを使用しますが、ローカルにフォールバックしたり、代替モデルを使用したりした場合は、その数はカウントされません。また、主張の入力は構造的に推論が削除されます。正直な上限はドキュメントに記載されています。CONFIRMEDは証拠であり、証明ではありません。重大な誤りを検出するのに役立ちますが、最先端モデルの微妙な誤りについては効果が低い場合があります。
-- **各呼び出しごとのクラウドへの切り替え + スタンバイモード。** `OLLAMA_API_KEY`のみを設定します（`OLLAMA_CLOUD_PRIMARY`は設定しません）。これにより、**スタンバイモード**になります。ローカルを優先し、データ送信はなく、起動時のプローブも行われません。ただし、単一の呼び出しで`backend:'cloud'`を指定すると、クラウドに切り替わります。重要なレビューを1つだけ600Bモデルに切り替え、すべての呼び出しをクラウドに切り替える必要はありません。最初の切り替え時にデータ送信が発生することが明確に通知されます。また、各呼び出しで`model`をオーバーライドできるようになり、クラウドへの試行時にその値がそのまま使用されます。
-- **`ollama_log_stats` — タグラインで約束されている測定された経済性。** LLMを使用しないNDJSON形式のレシートの集計：クラウド/ローカルの内訳、クラウドからローカルへのフォールバック率、ツールごとのトークン数、p50/p95レイテンシー。これらはすべて`since`ウィンドウで制限されます。
-- **CI用の診断機能 + 機械可読なツール。** `doctor --json --fail-unhealthy`を実行すると、パイプラインに実際のゲートが設定され（クラウド対応の`healthy`フラグ付き）、すべてのツールにMCP `readOnlyHint`/`destructiveHint`/`title`注釈が付加されるため、クライアントは正しい権限に関するUXを取得できます。さらに、`init --claude`を実行すると、貼り付け可能な`.mcp.json`ファイルが作成されます。
+- **`ollama_verify_claims` — 異なるモデル間での検証。** `ollama_code_review` は結果を生成し、それらを評価します。これは、複数のモデル（デフォルトでは deepseek / kimi / glm）を使用して、入力された情報と証拠に基づいて、CONFIRMED（確認済み）/ REFUTED（否定）/ NEEDS_REVIEW（再検討が必要）のいずれかの結果を返します。集計は、単一の反対意見があっても決定されないように行われ（少なくとも2つの肯定的な意見が必要）、すべての評価者は、実際に動作するモデルを使用して評価されます（ローカルの代替モデルや、動作しないモデルは使用されず、カウントされません）。また、入力された情報は、推論に必要な構造が取り除かれます。正直な評価の限界は文書化されており、CONFIRMEDは証拠となる情報であり、絶対的な証明ではありません。そのため、重大な誤りを検出するのには適していますが、最新モデルの微妙な誤りを検出するには限界があります。
+- **個々の呼び出しごとのクラウドへの切り替え + スタンバイモード。** `OLLAMA_API_KEY` を単独で設定（`OLLAMA_CLOUD_PRIMARY` なし）すると、**スタンバイ**モードになります。ローカルでの処理を優先し、外部へのデータ送信は行われず、起動時のプロセスの実行も行われません。単一の呼び出しで `backend:'cloud'` が指定されるまで、この状態が続きます。重要なレビューを、すべての呼び出しをクラウドに切り替えることなく、600Bモデルに切り替えることができます。最初の切り替え時には、外部へのデータ送信が明確に通知され、個々の呼び出しに対する `model` のオーバーライドが、クラウドへの試行時にそのまま適用されます。
+- **`ollama_log_stats` — タグラインで約束されている、測定可能な経済効果。** LLMを使用しない、NDJSON形式のトランザクションデータの集計：クラウドとローカルの処理の割合、クラウドからローカルへのフォールバック率、ツールごとのトークン数、p50/p95のレイテンシー。これらはすべて、`since` の時間ウィンドウ内で集計されます。
+- **CI用のツール + 機械可読なツール。** `doctor --json --fail-unhealthy` は、パイプラインに実際のゲート（クラウド対応の `healthy` フラグ付き）を提供し、すべてのツールは MCP `readOnlyHint`/`destructiveHint`/`title` アノテーションを付加するため、クライアントは正しい権限を持つユーザーエクスペリエンスを得ることができます。さらに、`init --claude` は、貼り付け可能な `.mcp.json` を作成します。
 
-詳細については、[CHANGELOG.md](./CHANGELOG.md)を参照してください。
+詳細については、[CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-## v2.8.0で新規追加
+## v2.8.0 の新機能
 
-**信頼性、耐久性、セキュリティの強化 — 25件の修正。すべてテストを最初に行い、異なるモデルファミリー間で検証しました。** ローカル優先の動作は変更されておらず、ツールの契約も削除されていません。既存の呼び出しは引き続き機能します。主な改善点は次のとおりです。
+**信頼性、耐久性、セキュリティの強化 — 25個の修正。すべてテストを最初に行い、異なるモデル間での検証を行っています。** ローカルでの処理を優先する動作は変更されておらず、ツールの契約も削除されていません。既存のユーザーは引き続き問題なく使用できます。主な改善点は次のとおりです。
 
-- **サイレントなコーパスデータの損失がなくなりました。** `ollama_corpus_refresh`中に一時的な読み取りエラーが発生した場合（Windowsファイルロック、アンチウイルスによる保留、エディターの保存ウィンドウなど）、そのファイルは「存在しない」と分類され、**インデックスされたコンテンツが完全に削除されていました。** 現在では、実際に存在しないファイルのみが削除されます。一時的なエラーの場合、パスを保持し、再試行するようにフラグを設定し、チャンクを保持します。
-- **予算を守る同時実行処理。** 階層のタイムアウトが発生した場合でも、許可待ちの状態にある呼び出しをキャンセルできるようになりました（以前は、レシートがそうでないことを示していても、予算を超えてハングしていました）。また、`ollama_chat`はついにタイムアウト/階層の境界を通過するようにルーティングされるため、1つのローカル生成でハングアップしても、他のツールがすべて停止することはありません。クラウド優先モードでは、実際にクラウドに到達します。
-- **クラッシュするのではなく、段階的に機能低下するクラウド。** 廃止されたクラウドモデルIDは、総シャットダウンではなく、明確な`cloud_model_missing`理由とクラウド固有のヒントを使用してローカルにフォールバックします。サーキットブレーカーが永久にハングアップすることはありません。永続的に存在しないモデルは、すべての呼び出しでクラウドラウンドトリップを実行することを停止します。
-- **ドキュメントと一致するセキュリティ面。** `ollama_batch_proof_check`は現在、cwdの封じ込めを正しく強制します（新しいオペレーター環境キャップ`INTERN_BATCH_PROOF_ALLOWED_ROOTS`があり、呼び出し元がそれを広げることができません）。プロンプトインジェクション対策は、カバレッジと正直に開示された上限を獲得しました。保護されたパスガードは、macOSでも大文字小文字を区別しません。
-- **正直な成果物とレシート。** パックの書き込みはアトミックであり、サイレントな上書きは行われません。機能が低下したバッチエンベロープは、実際に使用された階層を報告します。中断された書き込み検出器は、すべての変更で破損した書き込みをキャッチします。チャンクIDは、同じコンテンツのファイル間で衝突しません。依存関係監査は完全に明確です（脆弱性は0）。
+- **サイレントなデータ損失の防止。** `ollama_corpus_refresh` の実行中に一時的な読み取りエラーが発生した場合（Windowsのファイルロック、アンチウイルスによるブロック、エディターの保存ウィンドウなど）、ファイルが「存在しない」と判断され、**インデックスされたコンテンツが完全に削除されていました。** これからは、実際に存在しないファイルのみが削除され、一時的なエラーが発生した場合は、パスが保持され、再試行するようにフラグが設定され、チャンクが保存されます。
+- **予算を遵守する並行処理。** ティアのタイムアウトが発生した場合、許可待ちの呼び出しをキャンセルできるようになりました（以前は、トランザクションデータがそうでないことを示していても、タイムアウトを超えて処理が続行されていました）。また、`ollama_chat` は、タイムアウト/ティアの境界を通過するようにルーティングされるため、1つのローカル生成プロセスが停止しても、他のすべてのツールが停止することはありません。また、クラウドを優先するモードで、実際にクラウドに到達するようになります。
+- **停止するのではなく、段階的に機能低下するクラウド。** 使用されなくなったクラウドモデルIDは、総停止ではなく、明確な `cloud_model_missing` の理由とクラウド固有のヒントとともに、ローカルにフォールバックするようになりました。サーキットブレーカーが永久に停止することはありません。また、永続的に存在しないモデルは、すべての呼び出しでクラウドへのラウンドトリップを試行することを停止します。
+- **ドキュメントと一致するセキュリティ面。** `ollama_batch_proof_check` は、cwd（カレントワーキングディレクトリ）の封じ込めを実際に強制するようになりました（新しいオペレーター環境制限 `INTERN_BATCH_PROOF_ALLOWED_ROOTS` により、呼び出し元が範囲を広げることができなくなります）。プロンプトインジェクション対策は、カバレッジが向上し、正直に開示された限界が設定されました。また、保護されたパスガードは、macOSでも大文字と小文字を区別しなくなりました。
+- **正直な成果物とトランザクションデータ。** パックの書き込みはアトミックであり、サイレントな上書きは行われません。機能が低下したバッチエンベロープは、実際に使用されたティアを報告します。中断された書き込み検出器は、すべての変更で、破損した書き込みを検出します。チャンクIDは、同一のコンテンツを持つファイル間で衝突しなくなりました。依存関係の監査は完全に完了しており（脆弱性は0です）。
 
-詳細については、[CHANGELOG.md](./CHANGELOG.md)を参照してください。
+詳細については、[CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-## v2.7.0で新規追加
+## v2.7.0 の新機能
 
-**オプションの Ollama Cloud ルーティング — クラウド優先、ローカルフォールバック。** キーとフラグを設定することで有効にし、生成レイヤーからのリクエストは 600B クラスのクラウドモデルにルーティングされます。埋め込みはローカルで処理され、クラウドでエラーが発生した場合はローカルプロファイルにフォールバックします。**デフォルトでは無効 — `OLLAMA_API_KEY` と `OLLAMA_CLOUD_PRIMARY=1` の両方を設定しない限り、外部への通信はありません。** 既存の機能に追加されるマイナーな変更です。v2.7.0 より前のバージョンを使用している場合、または有効にしない場合は、動作は変わりません。詳細は [Ollama Cloud (オプション)]([#ollama-cloud-optional]) を参照してください。
+**オプションのOllama Cloudルーティング — クラウドを優先、ローカルにフォールバック。** キーとフラグを設定することで、生成レイヤーを600Bクラスのクラウドモデルにルーティングできます。埋め込みはローカルに保持され、サーキットブレーカーは、クラウドに障害が発生した場合に、ローカルプロファイルにフォールバックします。**デフォルトではオフ — 両方の `OLLAMA_API_KEY` と `OLLAMA_CLOUD_PRIMARY=1` を設定しない限り、外部へのデータ送信は行われません。** 既存のv2.7.0より前のユーザー（および、この機能を有効にしないユーザー）は、変更の影響を受けません。詳細については、[Ollama Cloud](#ollama-cloud) を参照してください。
 
-- **安全策を備えたクラウド優先モード。** `RoutingOllamaClient` はまずクラウドを試し、タイムアウト / 5xx / 429 / ネットワークエラーが発生した場合はローカルプロファイルにフォールバックします。無効なキー (401/403) が検出された場合、サイレントに機能停止するのではなく、すぐにエラーが表示されます。また、廃止またはタイプミスのあるクラウドモデル ID (404) も同様です。
-- **サイレントな機能低下は発生しません。** すべてのリクエストには、`backend` (`cloud`|`local`)、`degraded`、および `degrade_reason` が含まれるため、ローカルモデルが使用された場合に常にそれを知ることができます。`backend_fallback` NDJSON イベントにより、クラウドからローカルへのフォールバック率が `ollama_log_tail` で確認できるようになります。
-- **`ollama_doctor` は、クラウド認証と接続可能性を個別のブロックとしてレポートします。** `ollama-intern-mcp doctor` には、「Cloud (primary)」セクションが表示されます。
-- デフォルトのクラウドモデルは、v2.7.0 リリース時に `minimax-m3:cloud` でした（現在は `qwen3-coder-next:cloud` に変更されており、これはより適切なデフォルトです。ただし、上限が設定された `num_predict` ツールでは空の結果を返すため、[env table](#cloud-env-vars) を参照してください）。レイヤーごとに `INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` でオーバーライドできます。
+- **クラウドを優先し、安全ネットを用意。** `RoutingOllamaClient` は、まずクラウドを試行し、タイムアウト/5xx/429/ネットワークエラーが発生した場合に、ローカルプロファイルにフォールバックします。無効なキー（401/403）は、サイレントに機能低下するのではなく、サーキットブレーカーを通じて明確に通知されます。使用されなくなった/タイプミスのあるクラウドモデルID（404）も同様です。
+- **サイレントな機能低下は発生しない。** すべてのエンベロープに `backend`（`cloud`|`local`）、`degraded`、および `degrade_reason` が追加されるため、常にローカルモデルではなく、大規模なモデルが使用されているかどうかを確認できます。`backend_fallback` のNDJSONイベントにより、クラウドからローカルへのフォールバック率が `ollama_log_tail` で表示されます。
+- **`ollama_doctor` は、クラウド認証と到達可能性を個別のブロックとして報告します。** `ollama-intern-mcp doctor` には、`Cloud (primary)` セクションが表示されます。
+- デフォルトのクラウドモデルは、v2.7.0 リリース時に `minimax-m3:cloud` でした（その後、`qwen3-coder-next:cloud` に変更されました — 制限された `num_predict` のツールに対して空の応答を返すため、より適切なデフォルトモデルに変更されました。詳細については、[env table](#cloud-env-vars) を参照してください）。ティアごとに、`INTERN_CLOUD_MODEL` / `INTERN_CLOUD_DEEP_MODEL` を使用してオーバーライドできます。
 
-## v2.6.0 での新機能
+## v2.6.0 の新機能
 
-`ollama_extract` の各リクエストに対するレイヤーごとの予算のオーバーライド。既存の機能に追加されるマイナーな変更です。v2.6.0 より前のバージョンを使用している場合、動作は変わりません。詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+個々の呼び出しに対するティア予算のオーバーライドを `ollama_extract` で設定できます。既存のv2.6.0より前のユーザーには影響はありません。詳細については、[CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-- **`ollama_extract` の `tier_budget_ms_override?: number` スキーマフィールド**（オプション、範囲は `[1, 600000]` ミリ秒）。設定されている場合、このオーバーライドはランナーによってアクセスされるすべてのレイヤーに適用され、`src/guardrails/timeouts.ts:61` の内部の `runWithTimeoutAndFallback` メカニズムがプロファイルで定義されたデフォルトではなく、オペレーターが指定した予算を尊重します。カスケード（ワークホース → タイムアウト時の即時処理）は引き続き実行されますが、オーバーライドは各カスケードステップに均一に適用されます。
-- **この機能が存在する理由。** research-os R-018 ラッパー (v0.12.1) は MCP の `callTool` を `Promise.race` でラップし、ラッパーの予算が内部レイヤーに到達しないことがわかりました。`DEV_RTX5080_TIMEOUTS.instant = 15_000` が引き続き 15000 ミリ秒で `TIER_TIMEOUT` をトリガーし、180000 ミリ秒のラッパー予算に関係なく動作していました。v2.6.0 では、MCP 側で権限のある予算が提供されるため、オペレーターの `--planner-timeout-ms` フラグ (research-os) が設計どおりに内部レイヤーのタイムアウトを制御できるようになります。
-- **デフォルトの動作は維持されます。** フィールドが省略された場合、プロファイルで定義されたデフォルトが変更なしに使用されます。v2.6.0 より前のバージョンを使用している場合は、変更はありません。
-- **R-010 フォールバック原因正規表現は維持されます。** サーバー側の `TIER_TIMEOUT` エラーメッセージは引き続き `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/` に一致するため、AI アドバイザーの可視性がオーバーライドとデフォルトの両方のパスで機能します。
-- research-os v0.13.0 で使用され、調整されたマルチリポジトリリリースの一部として R-019 クライアントの連携 + R-020 + R-021 が行われます。
+- **`tier_budget_ms_override?: number` schema field on `ollama_extract`** (optional, bounded `[1, 600000]` ms). When present, applies the override to every tier visited by the runner so the inner `runWithTimeoutAndFallback` machinery at `src/guardrails/timeouts.ts:61` honors the operator-supplied budget instead of the profile default. The cascade (workhorse → instant on timeout) still fires; the override governs each cascade hop uniformly.
+- **Why this exists.** The research-os R-018 wrapper (v0.12.1) wrapped MCP `callTool` with `Promise.race` and found the wrapper's budget did not reach the inner tier — `DEV_RTX5080_TIMEOUTS.instant = 15_000` continued to fire `TIER_TIMEOUT` at 15000ms regardless of a 180000ms wrapper budget. v2.6.0 supplies the MCP-side authoritative budget so the operator's `--planner-timeout-ms` flag (research-os) finally controls inner-tier timeouts as designed.
+- **Default behavior preserved.** Field omitted = profile defaults govern byte-identically. Pre-v2.6.0 callers see zero change.
+- **R-010 fallback-cause regex preserved.** Server-side `TIER_TIMEOUT` error message still matches `/elapsed=(\d+)ms/` + `/budget=(\d+)ms/` so AI-advisor visibility downstream works on override and default paths alike.
+- Consumed by research-os v0.13.0 (cumulative R-019 client wire-up + R-020 + R-021) in a coordinated multi-repo release.
 
-### 過去のバージョン — v2.4.0 の成果物
+### 履歴 — v2.4.0 の成果物
 
-v2.4.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) を参照してください（プロファイルシステムにおけるレイヤーごとの `num_ctx` 制御）。
+v2.4.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) を参照してください（プロファイルシステムにおけるティアごとの `num_ctx` 制御）。
 
-## v2.4.0 での新機能
+## v2.4.0 の新機能
 
-プロファイルシステムにおけるレイヤーごとの `num_ctx` (コンテキストウィンドウ) 制御。既存の機能に追加されるマイナーな変更です。v2.3.0 を使用している場合、動作は変わりません。詳細は [CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) を参照してください。
+プロファイルシステムにおけるティアごとの `num_ctx`（コンテキストウィンドウ）制御。付加的なマイナーバージョン — v2.3.0 の呼び出し元は変更なし。詳細なエントリは、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.4.0.md](./docs/release-notes/v2.4.0.md) を参照してください。
 
-- **`TierConfig.num_ctx` マップ（新規）** — プロファイルにオプションで `{ instant?, workhorse?, deep?, embed? }` を設定できます。レイヤーに対して設定された場合、MCP サーバーは、そのレイヤーにルーティングされるすべての Ollama generate/chat リクエスト (初期リクエストとフォールバック) で `options.num_ctx = <value>` を設定します。設定されていない場合、リクエストから `num_ctx` が完全に省略され、Ollama はモデルにロードされたデフォルトを使用するため、v2.3.0 の動作が正確に維持されます。
-- **新しいエンベロープフィールド `num_ctx_used?: number`** — MCP サーバーが実際に `num_ctx` を送信した場合にのみ存在します。リクエストで Ollama が選択できるようにした場合は存在しません。デフォルト値を推測しないでください。MCP サーバーは、Ollama に有効な値について問い合わせを行いません。
-- **プロファイルのデフォルト:** `dev-rtx5080` / `dev-rtx5080-qwen3` は、`instant: 4096`、`workhorse: 8192`、`deep`/`embed` が設定されていない状態で出荷されます。これにより、`hermes3:8b` を RTX 5080 の 16GB VRAM に常駐させ、高速なツールを実現します。`m5-max` はすべてのレイヤーで設定を解除しており、128GB の統合メモリにはスピルが発生しません。
-- **v0.8.0 フェーズ 1 の診断を完了します** — `hermes3:8b` をデフォルトの 32K コンテキストで使用すると、RTX 5080 で CPU にスピルし、ワークホース `ollama_extract` コールのタイムアウトが発生しました。v2.4.0 では、プロファイルレイヤーでこれを防止します。
+- **`TierConfig.num_ctx` マップ（新規）** — プロファイルのオプションの `{ instant?, workhorse?, deep?, embed? }`。ティアに設定されている場合、MCPサーバーは、そのティアにルーティングされたすべてのOllama generate/chatリクエストに `options.num_ctx = <value>` を配置します（初期 + フォールバック）。設定されていない場合、リクエストは `num_ctx` を完全に省略するため、Ollamaはモデルにロードされたデフォルトを使用します — v2.3.0 の動作を正確に維持します。
+- **新しいエンベロープフィールド `num_ctx_used?: number`** — MCPサーバーが実際に `num_ctx` を送信した場合にのみ存在します。リクエストでOllamaが選択できるようにした場合、存在しません。デフォルトを推測しないでください。MCPサーバーは、Ollamaに有効な値を問い合わせません。
+- **プロファイルのデフォルト:** `dev-rtx5080` / `dev-rtx5080-qwen3` は、`instant: 4096`、`workhorse: 8192`、`deep`/`embed` が UNSET の状態で出荷されます。RTX 5080 の 16GB VRAM 予算内に `hermes3:8b` を保持し、高速ツールを実現できるようにサイズが調整されています。`m5-max` は、すべてのティアを UNSET のままにします — 128GB の統合メモリには、スピルが発生する問題はありません。
+- **v0.8.0 フェーズ 1 の診断をクローズします。** — `hermes3:8b` は、デフォルトの 32K コンテキストで RTX 5080 上で実行された場合、CPU にスピルし、ワークホース `ollama_extract` 呼び出しのタイムアウトを引き起こしました。v2.4.0 は、プロファイルレイヤーでこれを防止します。
 
-### レイヤーごとの `num_ctx` 制御（v2.4.0 での新機能）
+### ティアごとの `num_ctx` 制御（v2.4.0 の新機能）
 
 プロファイル（`src/profiles.ts` からの抜粋）：
 
@@ -104,7 +120,7 @@ v2.4.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) 
 }
 ```
 
-ワークホースレイヤーでの呼び出し (例: `ollama_extract`) のエンベロープ：
+ワークホースティアの呼び出しにおけるエンベロープ（例：`ollama_extract`）：
 
 ```jsonc
 {
@@ -116,23 +132,23 @@ v2.4.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) 
 }
 ```
 
-`m5-max` （またはレイヤーの設定を解除するプロファイルを使用している場合）、`num_ctx_used` はエンベロープに存在せず、Ollama へのワイヤリクエストには `num_ctx` フィールドが含まれません。Ollama はモデルにロードされたデフォルトを使用します。
+`m5-max`（またはティアを UNSET のままにするプロファイル）の場合、`num_ctx_used` はエンベロープに存在せず、Ollama へのワイヤリクエストには `num_ctx` フィールドが含まれません。Ollama は、モデルにロードされたデフォルトを使用します。
 
-オペレーターは、プロファイルの選択または編集によって調整できます。ツールスキーマで各リクエストごとに `num_ctx` を入力することはできません。将来的に必要になった場合は、v2.3.0 の `model` オーバーライドと同様のパターンに従います。
+オペレーターは、プロファイルの選択/編集によって調整します。ツールスキーマに、呼び出しごとの `num_ctx` 入力はありません。将来の呼び出しで必要になった場合は、v2.3.0 の `model` オーバーライドに従います。
 
-### 過去のバージョン — v2.3.0 の成果物
+### 履歴 — v2.3.0 の成果物
 
-v2.3.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) を参照してください（LLM ベースの原子ツール全体での各リクエストに対するモデルのオーバーライド）。
+v2.3.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) を参照してください（呼び出しごとのモデルオーバーライド）。
 
-## v2.3.0 での新機能
+## v2.3.0 の新機能
 
-LLM ベースのすべての原子ツールで、各リクエストに対してモデルをオーバーライドできます。既存の機能に追加されるマイナーな変更です。v2.2.0 を使用している場合、動作は変わりません。詳細は [CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) を参照してください。
+LLM をバックエンドとするアトムツール全体での、呼び出しごとのモデルオーバーライド。付加的なマイナーバージョン — v2.2.0 の呼び出し元は変更なし。詳細なエントリは、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.3.0.md](./docs/release-notes/v2.3.0.md) を参照してください。
 
-- **8つのアトムツールに対するオプションの `model: string` 入力** — `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep`, `ollama_research`, `ollama_corpus_answer`, `ollama_chat`, `ollama_code_citation`。ツールの階層で最初の試行は、呼び出し元が指定したモデルに対して実行されます。タイムアウトした場合、既存の `TIER_FALLBACK` カスケードによって、より低価格な階層自身のモデルが解決されます（呼び出し元のオーバーライドではありません）。複合/要約/パックツールは、意図的に `model` を受け入れません。アトムは各呼び出しごとに制御され、複合ツールは階層のデフォルトを使用します。
-- **新しいエンベロープフィールド `model_requested?: string`** — オーバーライドが提供された場合にのみ存在します。キャリブレーションを意識した呼び出し元は、`model_requested` と `model` を比較して、フォールバック置換を検出します: `if (env.model_requested && env.model !== env.model_requested) { /* 置換 */ }`。空/空白のみの入力は、スキーマ解析時に `ZodError` をスローし、サイレントなフォールバックにはなりません。
-- **バグ修正 — `src/version.ts` のずれ**。実行時の `VERSION` 定数は、モジュールのロード時に `package.json` から読み込まれるようになりました。v2.1.0 および v2.2.0 では、古い `"2.0.0"` ID 文字列が報告される状態でリリースされました。新しい `tests/version.test.ts` は、`VERSION === pkg.version` を検証します。
+- **8 つのアトムツールにおけるオプションの `model: string` 入力** — `ollama_extract`、`ollama_classify`、`ollama_summarize_fast`、`ollama_summarize_deep`、`ollama_research`、`ollama_corpus_answer`、`ollama_chat`、`ollama_code_citation`。ツールのティアでの最初の試行は、呼び出し元が指定したモデルに対して実行されます。タイムアウトが発生した場合、既存の `TIER_FALLBACK` カスケードによって、より安価なティアの独自のモデルが解決されます（呼び出し元のオーバーライドではありません）。コンポジット/ブリーフ/パックツールは、意図的に `model` を受け入れません。アトムは呼び出しごとの制御を受け取り、コンポジットはティアのデフォルトを使用します。
+- **新しいエンベロープフィールド `model_requested?: string`** — オーバーライドが提供された場合にのみ存在します。キャリブレーションを意識した呼び出し元は、`model_requested` と `model` を比較して、フォールバックの置換を検出します：`if (env.model_requested && env.model !== env.model_requested) { /* substitution */ }`。空または空白のみの入力は、スキーマの解析時に `ZodError` をスローし、サイレントなフォールバックは行いません。
+- **バグ修正 — `src/version.ts` のドリフト。** ランタイム `VERSION` 定数は、モジュールのロード時に `package.json` から読み込まれるようになりました。v2.1.0 および v2.2.0 では、古い `"2.0.0"` ID 文字列が報告されていました。新しい `tests/version.test.ts` が `VERSION === pkg.version` をロックします。
 
-### 各呼び出しごとのモデルのオーバーライド（v2.3.0 で追加）
+### 呼び出しごとのモデルオーバーライド（v2.3.0 の新機能）
 
 ```jsonc
 {
@@ -158,34 +174,34 @@ LLM ベースのすべての原子ツールで、各リクエストに対して�
 }
 ```
 
-もしワークホース/ディープ階層がタイムアウトし、呼び出しがインスタント階層にカスケードされた場合、`env.model` はインスタント階層の解決されたモデルとなり、`env.fallback_from` は `"workhorse"` となります。`env.model_requested` は依然として `"hermes3:8b"` であり、`env.model !== env.model_requested` が置換シグナルです。オーバーライドは意図的により低価格な階層に引き継がれません。選択されたモデルはその階層の役割に必ずしも適合するとは限りません。
+ワークホース/ディープティアでタイムアウトが発生し、呼び出しがインスタントティアにカスケードされた場合、`env.model` はインスタントティアの解決されたモデルであり、`env.fallback_from` は `"workhorse"` になり、`env.model_requested` は `"hermes3:8b"` のままで、`env.model !== env.model_requested` が置換シグナルになります。オーバーライドは、意図的により安価なティアに伝播されません。選択されたモデルは、そのティアの役割にまったく適合しない可能性があります。
 
-### 過去のもの — v2.2.0 の成果物
+### 履歴 — v2.2.0 の成果物
 
-完全な v2.2.0 エントリ（フレーム境界内の関連性と構造化された回避）については、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) を参照してください。
+v2.2.0 の完全なエントリについては、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) を参照してください（フレームに制限されたトピック性 + 構造化された棄権）。
 
-## v2.2.0 で追加
+## v2.2.0 の新機能
 
-ローカルの証拠ワーカー役割契約：フレーム境界内の関連性と構造化された回避。付加的なマイナーアップデート — v2.1.0 の呼び出し元は変更なし。[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) に詳細なエントリがあります。
+ローカルの証拠ワーカーの役割契約：フレームに制限されたトピック性および構造化された棄権。付加的なマイナーバージョン — v2.1.0 の呼び出し元は変更なし。詳細なエントリは、[CHANGELOG.md](./CHANGELOG.md) および [docs/release-notes/v2.2.0.md](./docs/release-notes/v2.2.0.md) を参照してください。
 
-- `ollama_extract`, `ollama_classify`, `ollama_summarize_fast`, `ollama_summarize_deep` での **フレーム境界内の抽出** — オプションの `frame: string` 入力 + 構造化された `frame_alignment` / `on_topic` / `frame_addressed` 出力。関連性のないソースは、スキーマに言い換えられる代わりにフラグが立てられます。
-- `ollama_research` での **構造化された回避** — `weak` / `abstained` / `sources_address_question` フィールド。空でない `answer` とともに空の `citations[]` は、これ以上サイレントな成功とは見なしません。
-- `ollama_corpus_answer` での **関連性閾値** — オプションの `min_top_score`。閾値を下回ると、ツールは `abstained: true` で処理を中断し、合成をスキップします。各引用に対する `score` が、それぞれの引用で表示されるようになりました。
-- **簡潔な証拠を通じた検索スコアの保持** — `corpusHitsToEvidence` は `score` を持ちます（および、`incident_brief` / `repo_brief` / `change_brief` でのアセンブリ時に `corpus_min_evidence_score` ノブでフィルタリングされます）。
-- **引用行範囲の境界** — `guardrails/citations.ts` は、`ollama_research` における範囲外の範囲を拒否し、既存の `ollama_code_citation` の姿勢と一致します。
-- **オペレーター契約ドキュメントの修正** — README の `chunk_id`/`chunk_index` の修正、「サーバー側で検証済み」という記述の書き換え、証拠法則セクションの注釈、マーケティングスローガンの注釈。
+- **フレームに限定された抽出**：`ollama_extract`、`ollama_classify`、`ollama_summarize_fast`、`ollama_summarize_deep`で使用。オプションの`frame: string`入力と、構造化された`frame_alignment` / `on_topic` / `frame_addressed`出力。関連性のないソースは、スキーマに沿って言い換えるのではなく、フラグが立てられます。
+- **構造化された回答拒否**：`ollama_research`で使用。`weak` / `abstained` / `sources_address_question`フィールド。空の`citations[]`に空でない`answer`が含まれる場合、以前は成功として処理されていましたが、現在はそうではありません。
+- **トピック適合性の閾値**：`ollama_corpus_answer`で使用。オプションの`min_top_score`。閾値を下回ると、ツールは`abstained: true`で処理を中断し、合成をスキップします。各引用に表示される、引用ごとの`score`。
+- **検索スコアの維持**：簡潔な証拠を通じて。`corpusHitsToEvidence`は`score`を保持し、（`incident_brief` / `repo_brief` / `change_brief`でアセンブリ時に使用される）`corpus_min_evidence_score`のノブフィルターを使用します。
+- **引用行範囲の制限**：`guardrails/citations.ts`は、`ollama_research`で範囲外の範囲を拒否し、既存の動作（`ollama_code_citation`）と一致します。
+- **オペレーター契約ドキュメントの修正**：README `chunk_id`/`chunk_index`の修正、「サーバー側で検証済み」という記述の書き換え、証拠法則セクションの修正、マーケティングスローガンの注釈。
 
 ### シード回帰 — 検証
 
-スライスの契約は、リテラルな research-os のフレッシュパック失敗に対して検証されます: arxiv 2112.10422 (Cosmological Standard Timers) のセクション 01 のフレーム *"ローカルファーストとクラウド LLM 深層研究ワークフローにおける証拠の保管とはどういう意味ですか？"* — 9 / 9 のモックされた LLM 契約テストにより、関連性のないソースが現在含まれていることが確認されました (`frame_alignment.on_topic = false` が extract に設定; `off_topic: true` が classify に設定; `frame_addressed: false` が summarize_deep に設定; `abstained: true` が `min_top_score` が設定された corpus_answer に設定)。
+スライスの契約は、リテラルなresearch-osのフレッシュパックの失敗に対して検証されます：arxiv 2112.10422（宇宙論的標準タイマー）、セクション01のフレーム「ローカルファーストとクラウドLLMの深層研究ワークフローにおいて、証拠の保管とは何を意味するか？」— 9 / 9のモックLLM契約テストにより、関連性のないソースが現在含まれていることが確認されました（`frame_alignment.on_topic = false`で抽出、`off_topic: true`で分類、`frame_addressed: false`で要約、`abstained: true`で`min_top_score`を設定した状態でコーパスの回答）。
 
-### 過去のもの — v2.1.0 の成果物
+### 履歴 — v2.1.0の成果物
 
-完全な v2.1.0 エントリ（機能パス：13 個の新しいツール + 4 つの拡張 + フリーズ解除）については、[CHANGELOG.md](./CHANGELOG.md) を参照してください。
+完全なv2.1.0のエントリについては、[CHANGELOG.md](./CHANGELOG.md)を参照してください（機能パス：13個の新しいツール + 4つの機能強化 + 制限の解除）。
 
 ---
 
-## アーキテクチャ概要
+## アーキテクチャの概要
 
 ```mermaid
 flowchart LR
@@ -207,11 +223,11 @@ flowchart LR
   MCP --> NDJSON
 ```
 
-すべての Claude ツールの呼び出しは、stdio JSON-RPC 経由で MCP サーバーに入力されます。サーバーは、呼び出しをツールの [zod](https://zod.dev) スキーマに対して検証し、構成されたガードレール（引用の検証、禁止フレーズの削除、保護パスの強制、信頼度閾値）を実行し、次に、決定論的なレンダラー（アーティファクト階層）または Ollama HTTP 呼び出し（他のすべての階層）にルーティングします。Ollama デーモンは、ユーザーが提供したパスを一切参照しません。モデル階層と準備されたプロンプトのみです。各呼び出しは、1 つの構造化イベントを `~/.ollama-intern/log.ndjson` の NDJSON ログに追加し、`ollama_log_tail` とシェルから読み取ることができます。
+すべてのClaudeツールの呼び出しは、stdio JSON-RPCを介してMCPサーバーに入力されます。サーバーは、ツールの[zod](https://zod.dev)スキーマに対して呼び出しを検証し、構成されたガードレール（引用の検証、禁止フレーズの削除、保護されたパスの強制、信頼度の閾値）を実行し、次に、決定論的なレンダラー（アーティファクト層）またはOllama HTTP呼び出し（他のすべての層）にルーティングします。Ollamaデーモンは、ユーザーが提供したパスを直接参照することはありません。モデル層と準備されたプロンプトのみです。すべての呼び出しは、構造化されたイベントを`~/.ollama-intern/log.ndjson`のNDJSONログに追加し、そこで`ollama_log_tail`とシェルがそれを読み取ることができます。
 
 ---
 
-## 主要な例 — 1 回の呼び出し、1 つの成果物
+## 主要な例 — 1つの呼び出し、1つの成果物
 
 ```jsonc
 // Claude → ollama-intern-mcp
@@ -225,7 +241,7 @@ flowchart LR
 }
 ```
 
-ディスク上のファイルを参照するエンベロープを返します：
+ディスク上のファイルへのパスを含むエンベロープを返します。
 
 ```jsonc
 {
@@ -247,13 +263,13 @@ flowchart LR
 }
 ```
 
-→ `weak: false` は、≥2 個の証拠アイテムがアセンブルされたことを意味します。仮説が検証されたという意味ではありません。[以下に示す証拠法則](#evidence-laws) を参照してください。
+→ `weak: false`は、≥2個の証拠項目がアセンブルされたことを意味します。仮説が検証されたことを意味するわけではありません。以下の[証拠法則](#evidence-laws)を参照してください。
 
-その Markdown ファイルは、インターンの作業台にある出力です — 見出し、引用 ID が付いた証拠ブロック、調査の `next_checks`、証拠が少ない場合は `weak: true` バナーが表示されます。これは決定論的です。レンダラーはコードであり、プロンプトではありません。（レンダラーは決定論的ですが、仮説と表面の内容は生成的なものです — 検証されたものではなく、ドラフトとして読んでください。）明日開いて、来週 diff して、`ollama_artifact_export_to_path` を使用してハンドブックにエクスポートします。
+そのマークダウンファイルは、インターンの作業台の出力です。見出し、引用されたIDを含む証拠ブロック、調査の`next_checks`、証拠が少ない場合の`weak: true`バナー。これは決定論的です。レンダラーはコードであり、プロンプトではありません。（レンダラーは決定論的ですが、仮説と表面の*内容*は生成されます。草案として読み、検証されたものとして扱わないでください。）明日開いて、来週diffして、`ollama_artifact_export_to_path`でハンドブックにエクスポートしてください。
 
-このカテゴリのすべての競合他社は、「トークンを節約」することを前面に出しています。私たちは「インターンが書いたファイルはこちらです」と主張します。
+このカテゴリのすべての競合他社は、「トークンを節約」することを前面に打ち出しています。当社は、「インターンが書いたファイルはこちらです」と打ち出します。
 
-### 2 番目の例 — コーパスを作成し、質問する
+### 2番目の例 — コーパスを構築し、次に質問する
 
 ```jsonc
 // 1. Build a persistent, searchable corpus over your project.
@@ -271,13 +287,13 @@ flowchart LR
 // → { answer: "...", citations: [{chunk_index, path}...], weak: false }
 ```
 
-サーバーは、引用の識別情報を検証し、各 `chunk_index` が取得された検索結果の範囲内にあることを確認します。ただし、生成されたすべての主張が、引用されたテキストの内容によって意味的に裏付けられていることは証明しません。それはモデルの責任であり、検索結果が不十分な場合でも、引用のような回答を生成する可能性があります。詳細については、[handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/) を参照してください。
+サーバーは、引用のIDを検証し、各`chunk_index`が取得されたヒットの範囲内にあることを確認します。生成されたすべての主張が、引用されたチャンクの内容によって意味的にサポートされていることを証明するわけではありません。これはモデルの責任であり、検索が不十分な場合でも、引用のような回答が生成される可能性があります。完全なウォークスルーについては、[handbook/corpora](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/corpora/)を参照してください。
 
 ---
 
-## フレームで区切られた抽出（v2.2.0 で新規）
+## フレームに限定された抽出（v2.2.0で新規）
 
-`ollama_extract`、`ollama_classify`、`ollama_summarize_fast`、および `ollama_summarize_deep` は、オプションの `frame: string` 入力を受け付けます。フレームは、ソースに対して回答を求める質問の名前を指定します。モデルには、ソースがフレームに関連しない場合でも、真実だがテーマから外れた内容を出力するのではなく、回答を控えるように指示されます。
+`ollama_extract`、`ollama_classify`、`ollama_summarize_fast`、および`ollama_summarize_deep`は、オプションの`frame: string`入力を受け入れます。フレームは、ソースに回答させる質問を定義します。ソースがフレームに答えない場合、モデルは、真実であるが関連性のないコンテンツを出力するのではなく、回答を拒否するように指示されます。
 
 ```jsonc
 {
@@ -291,47 +307,47 @@ flowchart LR
 // → result includes frame_alignment: { on_topic: boolean, reason: string, unaddressed_aspects: string[] }
 ```
 
-`frame` が省略された場合、v2.1.0 からの動作は変更されません。指定された場合、`frame_alignment.on_topic = false` は、抽出されたフィールドがソースの内容としては正しいものの、フレームには関連しない可能性があることを示します。これを `weak: true` の要約と同じように扱い、有用だが、下流の証拠として使用する前に確認してください。
+`frame`が省略された場合、動作はv2.1.0から変更されません。指定された場合、`frame_alignment.on_topic = false`は、抽出されたフィールドがソースに対しては真実であるが、フレームには関連しない可能性があることを示します。これを、`weak: true`の簡潔な説明と同じものとして扱い、有用ですが、下流の証拠に昇格する前に、スポットチェックしてください。
 
 ---
 
-## 回答を控える契約（v2.2.0 で新規）
+## 回答拒否契約（v2.2.0で新規）
 
-`ollama_research` は、構造化された回答を控えるフィールドを返します: `weak: boolean`、`abstained: boolean`、`sources_address_question: boolean | null`。空の `citations[]` と空でない `answer` がある場合、以前は何も出力されませんでしたが、現在は `abstained: true` でモデルが合成を拒否したことを示します。これは、呼び出し元によって提供されたパスが質問に答えていないためです。回答を控えることを失敗ではなく成功として扱いましょう。これは、不十分な検索結果を信頼できる出力に変換することをツールが拒否しているだけです。
+`ollama_research`は、構造化された回答拒否フィールドを返します：`weak: boolean`、`abstained: boolean`、`sources_address_question: boolean | null`。空の`citations[]`に空でない`answer`が含まれる場合、以前はサイレントに処理されていましたが、現在はそうではありません。`abstained: true`は、モデルが、呼び出し元が提供したパスが質問に答えていないため、合成を拒否したことを示します。回答拒否を失敗ではなく成功として扱ってください。これは、ツールが、不十分な検索を権威のある出力に変換することを拒否していることを意味します。
 
-`ollama_corpus_answer` は、オプションの `min_top_score: number` の関連性しきい値（0.0〜1.0）を受け付けます。クエリに対する上位の検索結果スコアが `min_top_score` を下回ると、ツールは `abstained: true` で処理を中断し、合成をスキップします。これにより、「スコア 0.21 のテーマから外れた 5 つのテキストでも完全な回答につながる」という v2.1.0 の `weak: true` ルールでは検出できなかった失敗モードを防ぎます（`weak: true` は `hits.length < 2` の場合にのみ有効になります）。各引用で新たに公開される `score` フィールドと組み合わせて、エンベロープから直接検索品質を監査します。
+`ollama_corpus_answer`は、オプションの`min_top_score: number`トピック適合性の閾値（0.0〜1.0）を受け入れます。クエリの最上位の検索スコアが`min_top_score`を下回ると、ツールは`abstained: true`で処理を中断し、合成をスキップします。これにより、「スコア0.21の5つの関連性のないチャンクが、完全な回答を生成する」というv2.1.0の`weak: true`ルールでは検出されなかった失敗モードを防ぎます（`weak: true`は`hits.length < 2`でのみトリガーされます）。各引用に新たに表示される、引用ごとの`score`フィールドと組み合わせて、エンベロープから直接検索品質を監査します。
 
 ---
 
-## ここに何があるか — 4つの階層、<!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end --> 個のツール
+## ここに何があるか — 4つの層、<!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->ツール
 
-**ジョブに合わせた**とは、各ツールがインターンに割り当てるジョブの名前を指します。たとえば、「これを分類する」「あれを抽出する」「これらのログをトリアージする」「このリリースノートを作成する」「このインシデントをまとめる」などです。ツールの入力はジョブの仕様であり、出力はその成果物です。最上位に汎用的な `run_model` / `chat_with_llm` プリミティブはありません。
+**ジョブに合わせた**とは、各ツールがインターンに依頼するジョブを定義することを意味します。これを分類する、あれを抽出する、これらのログをトリアージする、このリリースノートを作成する、このインシデントをまとめる。ツールの入力はジョブ仕様であり、出力は成果物です。最上位に汎用的な`run_model` / `chat_with_llm`プリミティブはありません。
 
-| 階層 | 数 | ここに何があるか |
+| 層 | 数 | ここに何があるか |
 |---|---|---|
-| **Atoms** | 31 | ジョブに合わせたプリミティブ。**オリジナル15個:** `classify`、`extract`、`triage_logs`、`summarize_fast`/`deep`、`draft`、`research`、`corpus_search`/`answer`/`index`/`refresh`/`list`、`embed_search`、`embed`、`chat`。**v2.1.0 で追加された 13 個:** `doctor`、`log_tail`、`batch_proof_check`（運用）；`code_map`、`code_citation`、`multi_file_refactor_propose`、`refactor_plan`（リファクタリング）；`artifact_prune`、`hypothesis_drill`（成果物/要約）；`corpus_health`、`corpus_amend`、`corpus_amend_history`、`corpus_rerank`（コーパス）。**+1 レビューアトム:** `code_review`（構造化されたプルリクエストのレビュー結果。主要なツールであり、レビュー専用）。**v2.9 で追加された 2 個:** `verify_claims`（クロスファミリーのクラウドフラッグシップパネルが主張を審査します。クラウドが必要です）および `log_stats`（NDJSON レシートを集計して、測定可能な経済指標にします。クラウド/ローカルの分割、フォールバック率、各ツールごとの p50/p95。モデル呼び出しはありません）。バッチ処理が可能なアトム (`classify`、`extract`、`triage_logs`) は、`items: [{id, text}]` を受け入れます。 |
-| **Briefs** | 3 | 証拠に基づいた構造化されたオペレーターの要約。`incident_brief`、`repo_brief`、`change_brief`。すべての主張は、証拠 ID を引用します。不明な点はサーバー側で削除されます。不十分な証拠の場合、偽の記述ではなく `weak: true` が表示されます。 |
-| **Packs** | 3 | 固定パイプラインによる複合ジョブで、永続的なマークダウンと JSON を `~/.ollama-intern/artifacts/` に書き込みます。`incident_pack`、`repo_pack`、`change_pack`。決定論的なレンダラーであり、成果物の形式に対してモデル呼び出しは行いません。 |
-| **Artifacts** | 7 | パックの出力に対する連続性の表面。`artifact_list`/`read`/`diff`/`export_to_path` に加えて、3 つの決定論的なスニペットがあります: `incident_note`、`onboarding_section`、`release_note`。 |
+| **Atoms** | 31 | ジョブに合わせた基本的な要素。**オリジナル15:** `classify`、`extract`、`triage_logs`、`summarize_fast` / `deep`、`draft`、`research`、`corpus_search` / `answer` / `index` / `refresh` / `list`、`embed_search`、`embed`、`chat`。**v2.1.0で追加された13個:** `doctor`、`log_tail`、`batch_proof_check`（オペレーション）；`code_map`、`code_citation`、`multi_file_refactor_propose`、`refactor_plan`（リファクタリング）；`artifact_prune`、`hypothesis_drill`（成果物/概要）；`corpus_health`、`corpus_amend`、`corpus_amend_history`、`corpus_rerank`（コーパス）。**+1レビューアトム:** `code_review`（構造化されたPRレビューの結果、主要なツール、レビュー専用）。**v2.9で追加された2個:** `verify_claims`（クロスファミリーのクラウド主要パネルが主張を評価、クラウドが必要）および`log_stats`（NDJSON形式のデータを集計して、測定可能な経済指標を算出 - クラウド/ローカルの分割、フォールバック率、各ツールのp50/p95、モデルの呼び出しはなし）。バッチ処理が可能なアトム（`classify`、`extract`、`triage_logs`）は、`items: [{id, text}]`を受け入れます。 |
+| **Briefs** | 3 | 証拠に基づいた構造化されたオペレーター向け概要。`incident_brief`、`repo_brief`、`change_brief`。すべての主張は、証拠IDを参照します。不明な点はサーバー側で削除されます。信頼性の低い証拠は、偽の物語ではなく、`weak: true`を提示します。 |
+| **Packs** | 3 | 固定パイプラインの複合ジョブで、永続的なマークダウンとJSONを`~/.ollama-intern/artifacts/`に書き込みます。`incident_pack`、`repo_pack`、`change_pack`。決定的なレンダラー - 成果物の形状に対してモデルを呼び出すことはありません。 |
+| **Artifacts** | 7 | パックの出力全体にわたる連続性。`artifact_list` / `read` / `diff` / `export_to_path`、さらに3つの決定的なスニペット：`incident_note`、`onboarding_section`、`release_note`。 |
 
-合計: **31 個のアトム + 3 個の要約 + 3 個のパック + 7 個の成果物ツール = <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->**。
+合計：**31個のアトム + 3個の概要 + 3個のパック + 7個の成果物ツール = <!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->**。
 
 フリーズライン：
-- アトム：v2.1.0 で **解除**（現在 31 個、v2.1.0 の機能パスで +13 個追加、その後 `code_review` が 1 つ追加、v2.9 で `verify_claims` と `log_stats` が 2 つ追加）。新しいアトムは、監査によって正当化されたギャップ、テスト、ハンドブックのページ、および CHANGELOG エントリが必要です。カジュアルな追加は行いません。
-- パック：3 個でフリーズ。新しいパックタイプはありません。
-- 成果物階層：7 個でフリーズ。
+- アトム：**v2.1.0でフリーズを解除**（現在31個、v2.1.0の機能追加で13個追加、その後1個（`code_review`）、v2.9で2個（`verify_claims`、`log_stats`））。新しいアトムには、監査による正当化、テスト、ハンドブックのページ、およびCHANGELOGのエントリが必要です。安易な追加は行いません。
+- パック：3でフリーズ。新しいパックタイプはありません。
+- 成果物ティア：7でフリーズ。
 
-完全なツール参照は、[ハンドブック](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/) にあります。
+完全なツールリファレンスは、[ハンドブック](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/)にあります。
 
 ---
 
 ## インストール
 
-ローカルで実行されている [Ollama](https://ollama.com) と、ダウンロードされた階層モデルが必要です（下記「モデルのダウンロード」を参照）。
+ローカルで実行されている[Ollama](https://ollama.com)と、ティアモデルをダウンロードする必要があります（以下「[モデルのダウンロード](#model-pulls)」を参照）。
 
-### Claude Code (推奨)
+### Claude Code（推奨）
 
-ほとんどのユーザーは、これを Claude Code MCP サーバー構成に追加することでインストールします。グローバルなインストールは必要ありません。Claude Code は、`npx` を使用してオンデマンドでサーバーを実行します。
+ほとんどのユーザーは、これをClaude Code MCPサーバー構成に追加してインストールします。グローバルインストールは必要ありません。Claude Codeは、必要に応じてサーバーを`npx`経由で実行します。
 
 ```json
 {
@@ -350,21 +366,21 @@ flowchart LR
 
 ### Claude Desktop
 
-同じブロックを `~/Library/Application Support/Claude/claude_desktop_config.json`（macOS）または `%APPDATA%\Claude\claude_desktop_config.json`（Windows）に書き込みます。
+同じブロックを、`~/Library/Application Support/Claude/claude_desktop_config.json`（macOS）または`%APPDATA%\Claude\claude_desktop_config.json`（Windows）に書き込みます。
 
-### グローバルインストール (上級者向け)
+### グローバルインストール（上級者向け）
 
-バイナリを `PATH` に配置して、Claude Code 以外の場所でアドホックに使用したい場合にのみ必要です。
+Claude Codeの外で、アドホックに使用するためにバイナリを`PATH`に配置したい場合にのみ必要です。
 
 ```bash
 npm install -g ollama-intern-mcp
 ```
 
-### Hermes との連携
+### Hermesとの連携
 
-このMCPは、Ollama上で`hermes3:8b`に対して[Hermes Agent](https://github.com/NousResearch/hermes-agent)を用いてエンドツーエンドで検証されました（2026-04-19）。Hermesは外部エージェントであり、このMCPの固定された基本的な機能に*アクセスします*。つまり、計画はHermesが行い、実行は私たちが担当します。
+このMCPは、[Hermes Agent](https://github.com/NousResearch/hermes-agent)を使用して、Ollama上で`hermes3:8b`に対してエンドツーエンドで検証されました（2026-04-19）。Hermesは、このMCPのフリーズされた基本的な要素に*アクセスする*外部エージェントです。計画はHermesが行い、作業は私たちが実行します。
 
-参照設定 ([hermes.config.example.yaml](hermes.config.example.yaml) このリポジトリ内):
+リファレンス構成（このリポジトリの[hermes.config.example.yaml](hermes.config.example.yaml)）：
 
 ```yaml
 model:
@@ -392,17 +408,16 @@ mcp_servers:
       # only needed if you're pinning a different local model.
 ```
 
-**プロンプトの形式が重要です。** 命令型のツール呼び出しプロンプト（「引数...でXを呼び出す」）は、統合テストであり、8Bローカルモデルに十分な基盤を提供して、クリーンな`tool_calls`を出力させます。リスト形式のマルチタスクプロンプト（「Aを実行し、次にB、次にC」）は、より大規模なモデルに対する機能ベンチマークです。8Bでリスト形式が失敗した場合でも、「配線に問題がある」と解釈しないでください。[handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)を参照して、完全な統合手順と既知の転送に関する注意点（Ollama `/v1`ストリーミング + openai-SDK非ストリーミングシム）を確認してください。
+**プロンプトの形式が重要です。**命令型のツール呼び出しプロンプト（「引数...でXを呼び出す」）は、統合テストです。これにより、8Bのローカルモデルに十分な足場が与えられ、クリーンな`tool_calls`を出力できます。リスト形式のマルチタスクプロンプト（「Aを実行し、次にBを実行し、次にCを実行する」）は、より大きなモデルの機能ベンチマークです。8Bでリスト形式の失敗を「配線が壊れている」と解釈しないでください。完全な統合ウォークスルーと、既知のトランスポートの注意事項（Ollama `/v1`ストリーミング + openai-SDK非ストリーミングシム）については、[handbook/with-hermes](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/with-hermes/)を参照してください。
 
 ### モデルのダウンロード
 
-**デフォルトの開発プロファイル（RTX 5080 16GBおよび同等のもの）：**
+**デフォルトの開発プロファイル（RTX 5080 16GBおよび同等のハードウェア）：**
 
 ```bash
 ollama pull hermes3:8b
 ollama pull nomic-embed-text
 export OLLAMA_MAX_LOADED_MODELS=2
-export OLLAMA_KEEP_ALIVE=-1
 ```
 
 **Qwen 3代替レール（同じハードウェア、Qwenツール用）：**
@@ -414,7 +429,7 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=dev-rtx5080-qwen3
 ```
 
-**M5 Maxプロファイル（128GB統合メモリ）：**
+**M5 Maxプロファイル（128GBの統合メモリ）：**
 
 ```bash
 ollama pull qwen3:14b
@@ -423,13 +438,15 @@ ollama pull nomic-embed-text
 export INTERN_PROFILE=m5-max
 ```
 
-ティアごとの環境変数（`INTERN_TIER_INSTANT`、`INTERN_TIER_WORKHORSE`、`INTERN_TIER_DEEP`、`INTERN_EMBED_MODEL`）は、依然として一時的な設定を上書きします。
+ティアごとの環境変数（`INTERN_TIER_INSTANT`、`INTERN_TIER_WORKHORSE`、`INTERN_TIER_DEEP`、`INTERN_EMBED_MODEL`）は、必要に応じてプロファイル設定を上書きします。
+
+**Residency.** On the dev profiles the server prewarms the Instant model at startup with a **bounded** `keep_alive` (10 minutes) so the first call is never cold; after any real call, Ollama's own idle eviction (default 5 minutes after the last request) governs. Set `INTERN_PREWARM=off` to skip the startup warm entirely — the right mode when the GPU is shared with training or rendering: models load on first use and idle out on their own. Raising `OLLAMA_KEEP_ALIVE` is for boxes dedicated to Ollama; `-1` pins every touched model in VRAM until the server restarts.
 
 ---
 
-## 統一されたエンベロープ
+## 均一なエンベロープ
 
-すべてのツールは同じ形式で結果を返します：
+すべてのツールは、同じ形式を返します。
 
 ```ts
 {
@@ -449,34 +466,36 @@ export INTERN_PROFILE=m5-max
 }
 ```
 
-`residency`はOllamaの`/api/ps`から取得されます。`evicted: true`または`size_vram < size`の場合、モデルはディスクにページングされ、推論速度が5〜10倍低下します。これをユーザーに通知し、Ollamaを再起動するか、ロードされたモデル数を減らすように促します。
+`residency`は、Ollamaの`/api/ps`から取得されます。`evicted: true`または`size_vram < size`の場合、モデルはディスクにページングされ、推論速度が5〜10倍低下します。これをユーザーに通知し、Ollamaを再起動するか、ロードされたモデルの数を減らすように指示します。
 
-[Ollama Cloud](#ollama-cloud-optional)モードでは、エンベロープには`backend`（`"cloud"` | `"local"`）も含まれ、クラウドからローカルへのフォールバック時には`degraded: true` + `degrade_reason`が含まれます。これらのフィールドは、デフォルトのローカル専用パスでは**存在しません**。そのため、既存のユーザーには影響がありません。クラウドで提供される呼び出しの場合、`residency`は`null`です（ステートレスなクラウドにはローカルVRAMでの存在情報はありません）。
+[Ollama Cloud](#ollama-cloud)モードでは、エンベロープには`backend`（`"cloud"` | `"local"`）も含まれ、クラウドからローカルへのフォールバック時には、`degraded: true` + `degrade_reason`も含まれます。これらのフィールドは、デフォルトのローカルモードでのみ存在しないため、既存のクライアントには影響しません。`residency`は、クラウドで提供される呼び出しの場合、`null`です（ステートレスなクラウドにはローカルVRAMの常駐はありません）。
 
-すべての呼び出しは、1つのNDJSON行として`~/.ollama-intern/log.ndjson`に記録されます。`hardware_profile`でフィルタリングして、開発用の数値を公開可能なベンチマークから除外します。
+すべての呼び出しは、1つのNDJSON行として`~/.ollama-intern/log.ndjson`にログ記録されます。公開可能なベンチマークから開発番号を除外するには、`hardware_profile`でフィルタリングします。
 
 ---
 
 ## ハードウェアプロファイル
 
-| プロファイル | インスタント | ワークホース | ディープ | 埋め込み |
+| プロファイル | Instant | Workhorse | Deep | Embed |
 |---|---|---|---|---|
-| **`dev-rtx5080`（デフォルト）** | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
+| **`dev-rtx5080`**（デフォルト） | hermes3 8B | hermes3 8B | hermes3 8B | nomic-embed-text |
 | `dev-rtx5080-qwen3` | qwen3 8B | qwen3 8B | qwen3 14B | nomic-embed-text |
 | `m5-max` | qwen3 14B | qwen3 14B | qwen3 32B | nomic-embed-text |
 
-**デフォルトの開発環境**では、検証済みのHermes Agent統合パスである`hermes3:8b`に、すべての3つのワークティアがまとめられます。同じモデルを最初から最後まで使用することで、ダウンロードするものが1つ、ローカルVRAMのコストが1つ、理解する必要のある動作セットが1つになります。Qwen 3（その`THINK_BY_SHAPE`パイプラインを使用）を好むユーザーは、`dev-rtx5080-qwen3`を選択できます。`m5-max`は、統合メモリ用にサイズ調整されたQwen 3ラダーです。
+**デフォルトの開発**は、検証済みのHermes Agent統合パスである、3つのワークティアすべてを`hermes3:8b`に統合します。上から下まで同じモデルを使用するため、ダウンロードするものが1つ、常駐コストが1つ、理解する必要がある動作が1つだけです。Qwen 3（その`THINK_BY_SHAPE`のパイプラインを使用）を好むユーザーは、`dev-rtx5080-qwen3`を選択できます。`m5-max`は、統合メモリ用にサイズ調整されたQwen 3ラダーです。
 
 ---
 
-## Ollama Cloud（オプション）
+## Ollama Cloud
 
-ローカルの8Bモデルは、ほとんどのユーザーが遭遇するハードウェアのボトルネックです。[Ollama Cloud](https://ollama.com/cloud)は、**同じ**`/api/*`インターフェースを使用して、600Bクラスのモデルを提供します。これにより、負荷の高いツールをより強力なモデルにルーティングし、ローカルVRAMを解放しながら、常にオンになっているローカル環境をフォールバックとして維持できます。
+**ハードウェアの制約を解消。** ほとんどの機械が実際に扱えるのは、ローカルの8Bモデルであり、これがほぼすべてのユーザーが直面するボトルネックです。予算や関心の問題ではなく、VRAMの問題です。[Ollama Cloud](https://ollama.com/cloud)は、**同じ**`/api/*`インターフェースを通じて600Bクラスのモデルを提供するため、高度なツールは最先端のモデルで実行され、VRAMは他の必要なタスクに割り当てられます。ローカル環境は常に利用可能なバックアップとして機能するため、制約を緩和しながら、基本的な機能は維持されます。
 
-**これはオプトインであり、デフォルトではオフになっています。** キーが設定されていない場合、パッケージはローカル優先のままであり、**データ送信はゼロ**です。オプトインしないユーザーには影響はありません。オプトインする方法は2つあります：
+ツールのインターフェースは変更されません。同じ<!-- TOOL_COUNT:start -->44<!-- TOOL_COUNT:end -->種類のツール、同じ設定、同じ安全対策が適用されます。埋め込みはクラウドに送信されません（Ollama Cloudは埋め込みモデルを提供しないため）、そのため、データセットは常にローカルに保持されます。
 
-- **クラウド優先**（下記）：`OLLAMA_CLOUD_PRIMARY=1`と`OLLAMA_API_KEY`の両方を設定します。生成ティアはクラウドにルーティングされ、ローカルでフォールバックされます。
-- **クラウドスタンバイ**（v2.9）：**`OLLAMA_API_KEY`のみ**を設定します。すべてがローカルのままになり（データ送信はゼロであり、起動時のプローブも行われません）、単一の呼び出しで明示的に`backend: "cloud"`を要求するまで、クラウドにエスカレートしません。[Cloud standby & per-call escalation](#cloud-standby--per-call-escalation)を参照してください。
+**オプトイン方式で、デフォルトはオフ。** キーが設定されていない場合、パッケージはローカル優先で動作し、**データ送信は一切行われません**。オプトインしないユーザーには影響がありません。オプトインする方法は2つあります。
+
+- **クラウド優先**（以下）：`OLLAMA_CLOUD_PRIMARY=1`と`OLLAMA_API_KEY`の両方を設定します。生成モデルはクラウドにルーティングされ、ローカルでバックアップされます。
+- **クラウド待機**（v2.9）：**`OLLAMA_API_KEY`のみ**を設定します。すべての処理はローカルで行われ（データ送信は一切行われません。起動時のプローブも行われません）、単一の呼び出しで明示的に`backend: "cloud"`を使用してクラウドに切り替えるまで、この状態が維持されます。詳細は、以下「クラウド待機と、呼び出しごとのエスカレーション」を参照してください。
 
 ```json
 {
@@ -494,117 +513,117 @@ export INTERN_PROFILE=m5-max
 }
 ```
 
-> **キーは実行時の環境変数であり、CIシークレットではありません。** GitHub Actionsのシークレットは、CI実行内でのみ表示されます。実行サーバーには到達しません。[ollama.com/settings/keys](https://ollama.com/settings/keys)でキーを作成し、MCPクライアントの`env`ブロック（またはシェル環境）に配置します。
+> **キーは、CIのシークレットではなく、実行時の環境変数です。** GitHub Actionsのシークレットは、CIの実行中にのみアクセスできます。実行中のサーバーには到達しません。[ollama.com/settings/keys](https://ollama.com/settings/keys)でキーを作成し、MCPクライアントの`env`ブロック（またはシェル環境）に配置します。
 
-**ルーティングの仕組み。** クラウドがオンになっている場合、生成ティア（インスタント/ワークホース/ディープ）はクラウドモデルに送信されます。**埋め込みは常にローカルのままです**（Ollama Cloudは埋め込みモデルを提供しないため、コーパス/埋め込みツールには影響しません）。サーキットブレーカーは最初にクラウドを試み、タイムアウト/5xx/429/ネットワークエラーが発生した場合にローカルプロファイルにフォールバックします。無効なキー（401/403）は、静かに劣化するのではなく、明確に通知する*スティッキー*ブレーカーをトリガーします。ローカルプロファイル（`INTERN_PROFILE`）はフォールバックラダーであるため、そのモデルがダウンロードされていることを確認してください。
+**ルーティングの仕組み。** クラウドが有効になっている場合、生成モデル（インスタント/ワークホース/ディープ）はクラウドモデルにルーティングされます。**埋め込みは常にローカルに保持されます**（Ollama Cloudは埋め込みモデルを提供しないため、データセット/埋め込みツールには影響しません）。サーキットブレーカーは、最初にクラウドを試み、タイムアウト/5xx/429/ネットワークエラーが発生した場合にローカルプロファイルに切り替えます。無効なキー（401/403）は、サイレントに機能停止するのではなく、明確にエラーを表示するサーキットブレーカーをトリガーします。ローカルプロファイル（`INTERN_PROFILE`）はフォールバックラダーであるため、モデルを常に最新の状態に保ってください。
 
-**サイレントなダウングレードはありません。** すべてのエンベロープには、どのバックエンドが呼び出しを処理したかが報告されます：
+**サイレントな機能低下は発生しません。** すべての応答には、どのバックエンドが呼び出しを処理したかが含まれます。
 
 ```ts
 { ...envelope, backend: "cloud" | "local", degraded?: true, degrade_reason?: "cloud_timeout" | "cloud_5xx" | "cloud_rate_limited" | "cloud_unreachable" | "cloud_auth_failed" | "circuit_open" }
 ```
 
-クラウドからローカルへのフォールバックが発生するたびに（`ollama_log_tail --filter_kind backend_fallback`）、`backend_fallback`行が`~/.ollama-intern/log.ndjson`に記録され、`ollama-intern-mcp doctor`は**Cloud (primary | standby)**ブロックを表示し、モード、到達可能性、および認証ステータスを示します。
+クラウドからローカルへのフォールバックが発生するたびに、`backend_fallback`行が`~/.ollama-intern/log.ndjson`に記録され（`ollama_log_tail --filter_kind backend_fallback`）、`ollama-intern-mcp doctor`には、モード、到達可能性、認証ステータスを含む**クラウド（プライマリ | 待機）**ブロックが表示されます。
 
-### クラウドスタンバイと1回ごとのエスカレーション
+### クラウド待機と、呼び出しごとのエスカレーション
 
-`OLLAMA_API_KEY`を**`OLLAMA_CLOUD_PRIMARY`なしで**設定すると、**スタンバイ**が有効になります：ルーティングはローカル優先のままであり、マシンからデータが送信されることはありません。ただし、呼び出しに`backend: "cloud"`が含まれている場合（`ollama_chat`で公開され、内部的に`ollama_verify_claims`で使用されます）、その1回の呼び出しだけがクラウドモデルにエスカレートされ、同じサーキットブレーカーとローカルフォールバックメカニズム、および同じエンベロープのプロビナンスが使用されます。他のすべての呼び出しはローカルのままになります。**最初にエスカレートされた呼び出し**では、ホストの名前が明確にstderrに出力され、`cloud_egress`行がNDJSONログに書き込まれます。データ送信は、ここでドキュメントに記載されているだけでなく、実際に発生した時点で通知されます。
+`OLLAMA_API_KEY`を**設定せずに**`OLLAMA_CLOUD_PRIMARY`を設定すると、**待機モード**が有効になります。ルーティングはローカル優先のままになり、データはマシンから送信されません。ただし、呼び出しに`backend: "cloud"`が含まれている場合（`ollama_chat`で公開され、内部的に`ollama_verify_claims`で使用されます）、クラウドに切り替わります。この1回の呼び出しでクラウドモデルにエスカレーションされ、同じサーキットブレーカーとローカルフォールバックの仕組み、および同じ応答の追跡が適用されます。他のすべての呼び出しはローカルで処理されます。**最初に**エスカレーションされた呼び出しでは、ホスト名が明確にstderrに出力され、NDJSONログに`cloud_egress`行が書き込まれます。データ送信は、ドキュメントに記載されているだけでなく、実際に発生した時点で開示されます。
 
 機械的に強制されるルール：
 
-- キーがない場合、`backend: "cloud"` は `CLOUD_NOT_CONFIGURED` で失敗します。ローカルモデルがバックグラウンドで処理し、それがエスカレーションされたと主張することはありません。
-- スタンバイ状態 + 指示がない場合：ローカルモード、送信なし（起動時にクラウドホストをプローブすることもありません）。
-- クラウド優先の場合、`backend: "local"` は1つのリクエストをローカルに固定します。これは、クラウドから切り替えるための逆の仕組みです。
-- 各リクエストに対する `model` のオーバーライドが、クラウドパスに沿ってそのまま適用されるようになりました（以前はティア→クラウドモデルのマッピングによって上書きされていました）。これにより、証拠に基づいてオーケストレーターが各リクエストで使用する正確なクラウドモデルを指定できます。
+- キーがない場合、`backend: "cloud"`は`CLOUD_NOT_CONFIGURED`で失敗します。ローカルモデルがサイレントに動作し、エスカレーションしたかのように装うことはありません。
+- 待機モードで、かつ指示がない場合、ローカルで動作し、データ送信は一切行われません（起動時にクラウドホストをプローブすることはありません）。
+- クラウド優先モードで、`backend: "local"`は1つの呼び出しをローカルに固定します。これは、クラウドからローカルに切り替えるための逆のメカニズムです。
+- 呼び出しごとの`model`オーバーライドは、クラウドパスをそのまま使用するようになりました（以前は、ティアからクラウドモデルへのマッピングによって上書きされていました）。これにより、証拠に基づいてオーケストレーターが、呼び出しごとに正確なクラウドモデルを指定できます。
 
-主要な利用例は **`ollama_verify_claims`** です。3つの異なるモデルを使用したクロスファミリーのクラウドパネル（デフォルト：`deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud`）を使用して、主張/調査結果を評価します。単一の反対意見で決定することはありません。各審査員に対して処理されたモデルを確認し、パネルが少数のモデルしか使用できない場合に正直な `weak` フラグを設定します。パネルから得られたフロンティアモデルによる主張は、*証拠となるものであり、証明ではありません*。パネルは重大な誤りを確実に検出し、微妙な誤りには弱い傾向があります。[ハンドブックのページ](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/)を参照してください。
+この機能の主な用途は、**`ollama_verify_claims`**です。3つのモデルを使用したクロスファミリーのクラウドパネル（デフォルトは`deepseek-v4-pro:cloud`/`kimi-k2.7-code:cloud`/`glm-5.2:cloud`）を使用して、主張/調査結果を評価します。単一の異論は決定に影響を与えません。すべての審査員に対して、使用されたモデルがチェックされ、パネルが縮小された場合には、正直な`weak`フラグが設定されます。パネルによって確認された、最先端のモデルによって作成された主張は、*証拠として使用できますが、決定的な証拠ではありません*。パネルは、重大なエラーを確実に検出し、微妙なエラーには弱い傾向があります。詳細は、[ハンドブックページ](https://mcp-tool-shop-org.github.io/ollama-intern-mcp/handbook/tools/verify-claims/)を参照してください。
 
-**レイテンシーと品質。** 大規模なクラウドモデルは、ローカルの8Bモデルと比較して、1つのトークンを処理するのに非常に時間がかかります（ミリ秒ではなく秒単位）。これは速度の向上ではなく、品質の向上です。クラウドティアでは、寛大なタイムアウトラダーを使用します（デフォルト：即時30秒/主要なもの120秒/詳細なもの300秒）。
+**レイテンシーと品質。** 大規模なクラウドモデルは、ローカルの8Bモデルよりもトークンあたりの処理速度が大幅に遅くなります（ミリ秒ではなく秒単位）。これは、速度の向上ではなく、品質の向上です。クラウドティアは、寛大なタイムアウトラダーを使用します（デフォルトでは、インスタントは30秒、ワークホースは120秒、ディープは300秒）。
 
 ### クラウド環境変数
 
 | 変数 | デフォルト値 | 目的 |
 |---|---|---|
-| `OLLAMA_CLOUD_PRIMARY` | _(未設定)_ | **クラウド優先モードの切り替え。** `1`/`true`/`yes`/`on` は、生成ティアをクラウドにルーティングします。キーが設定されていない場合：**スタンバイ**（ローカル優先、リクエストごとのエスカレーションのみ）。キーなしで未設定の場合：ローカルのみ、送信なし。 |
-| `OLLAMA_API_KEY` | _(未設定)_ | Ollama Cloudのベアラートークン。これを設定するだけで**スタンバイ**モードが有効になります。`OLLAMA_CLOUD_PRIMARY` が有効になっている場合は**必須**です（起動時に見つからない場合、すぐに失敗します）。 |
-| `OLLAMA_CLOUD_HOST` | `https://ollama.com` | クラウドベースホスト。 |
-| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | 即時 + 主要なもの + 詳細なモデルに使用するクラウドモデル。デフォルトの**思考能力を持たない**モデルを使用してください。ここで思考能力を持つモデルを使用すると、CoT（推論）で短い出力予算を使い果たします（大規模な推論エンジンは、以下の詳細なオーバーライドに配置します）。 |
-| `INTERN_CLOUD_DEEP_MODEL` | _(= `INTERN_CLOUD_MODEL`)_ | オプションの、詳細ティアのみのオーバーライド。例：`deepseek-v3.1:671b`。 |
-| `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | 各ティアのクラウド試行タイムアウト。 |
-| `INTERN_CLOUD_NUM_CTX` | `32768` | クラウドリクエストのコンテキストウィンドウの上限（クラウドはGPU時間に基づいて課金されます。上限を設定することでコストを制御します）。 |
+| `OLLAMA_CLOUD_PRIMARY` | _(未設定)_ | **クラウド優先モードの切り替え。** `1`/`true`/`yes`/`on`は、生成モデルをクラウドにルーティングします。キーを設定せずに未設定の場合、**待機モード**（ローカル優先、呼び出しごとのエスカレーションのみ）になります。キーを設定せずに未設定の場合、ローカルのみで動作し、データ送信は一切行われません。 |
+| `OLLAMA_API_KEY` | _(未設定)_ | Ollama Cloudのベアラートークン。これを設定するだけで**待機モード**が有効になります。`OLLAMA_CLOUD_PRIMARY`が有効になっている場合は**必須**です（設定されていない場合、起動時にエラーが発生します）。 |
+| `OLLAMA_CLOUD_HOST` | `https://ollama.com` | クラウドの基本ホスト。 |
+| `INTERN_CLOUD_MODEL` | `qwen3-coder-next:cloud` | インスタント、ワークホース、ディープのクラウドモデル。デフォルトの**思考能力を持たない**モデルを使用することをお勧めします。思考能力を持つモデルをここに設定すると、CoT（Chain of Thought）で短い出力の予算を使い果たします。高度な推論を行うモデルは、以下のディープティアのオーバーライドに設定してください。 |
+| `INTERN_CLOUD_DEEP_MODEL` | _（= `INTERN_CLOUD_MODEL`）_ | オプションのディープティア専用のオーバーライド（例：`deepseek-v3.1:671b`）。 |
+| `INTERN_CLOUD_TIMEOUT_{INSTANT,WORKHORSE,DEEP}_MS` | `30000`/`120000`/`300000` | ティアごとのクラウド試行のタイムアウト。 |
+| `INTERN_CLOUD_NUM_CTX` | `32768` | クラウド呼び出しのコンテキストウィンドウの上限（クラウドはGPU時間に基づいて課金されるため、上限を設定することでコストを管理できます）。 |
 
-> **モデルの可用性の変更。** Ollamaは、サーバー側でクラウドIDをローテーション/廃止します。2026年7月現在、`qwen3-coder-next:cloud`（思考能力を持たないデフォルト）と、思考能力を持つ主要なモデルである `deepseek-v4-pro:cloud` / `kimi-k2.7-code:cloud` / `glm-5.2:cloud` が利用可能です。IDを固定する前に、[ollama.com/search?c=cloud](https://ollama.com/search?c=cloud) を確認してください。廃止されたIDは、目に見えて劣化します（`cloud_model_missing`）。静かに失敗することはありません。
+> **モデルの可用性は変更される可能性があります。** Ollamaは、クラウドIDをサーバー側でローテーション/廃止します。2026年7月現在、`qwen3-coder-next:cloud`（デフォルトの思考能力を持たないモデル）と、思考能力を持つ主要モデル`deepseek-v4-pro:cloud`/`kimi-k2.7-code:cloud`/`glm-5.2:cloud`が利用可能です。IDを固定する前に、[ollama.com/search?c=cloud](https://ollama.com/search?c=cloud)で確認してください。廃止されたIDは、サイレントに機能停止するのではなく、明確に機能低下します（`cloud_model_missing`）。
 
-**プライバシーに関する注意。** Ollama Cloudにルーティングすると、プロンプトがサードパーティに送信されます。Ollamaの[プライバシーポリシー](https://ollama.com/privacy)には、クラウドプロンプトは一時的に処理され、リクエストを超えて保持またはトレーニングに使用されないと記載されていますが、それでも送信が発生するため、オプトインであり、明示的に開示されています。ローカルのみモード（デフォルト）では、何も外部に送信されません。
-
----
-
-## 証拠に関する法律
-
-これらはプロンプトではなく、サーバーで強制されます：
-
-- **引用が必要。** すべての簡潔な主張は、証拠IDを引用する必要があります。
-- **不明なものはサーバー側で削除されます。** 証拠バンドルにないIDを引用するモデルは、結果が返される前に、警告とともにそれらのIDが削除されます。
-- **IDによって検証され、コンテンツによって検証されるわけではありません。** サーバーは、すべての引用された `evidence_ref` が、組み立てられたセット内の実際の証拠IDを指していることを確認します。引用された証拠から主張のテキストを導き出すことができるかどうかは検証しません。これはモデルの仕事であり、弱い簡潔な説明には、有効な参照を持つ根拠のない主張が含まれる場合があります。`weak: true` + coverage_notes + 含まれている `excerpt` フィールドを使用して、スポットチェックを行います。
-- **弱いものは弱い。** 不十分な証拠は、`weak: true` とともに補足情報でフラグが立てられます。偽の物語に無理やり組み込まれることはありません。
-- **調査的であり、処方的ではありません。** `next_checks` / `read_next` / `likely_breakpoints` のみを使用します。プロンプトで「この修正を適用してください」と指示することは禁止されています。
-- **決定的なレンダラー。** 成果物のマークダウン形式はコードであり、プロンプトではありません。`draft` は、モデルの言い回しが重要な散文に使用するために予約されています。
-- **同じパック内の差分のみ。** パックをまたぐ `artifact_diff` は、明確に拒否されます。ペイロードは常に個別のままです。
+**プライバシーに関する注意。** Ollama Cloud にルーティングすると、プロンプトがサードパーティに送信されます。Ollama の [プライバシーポリシー](https://ollama.com/privacy) には、クラウドプロンプトは一時的に処理され、リクエストを超えて保持またはトレーニングに使用されないことが記載されていますが、それでも外部への送信が発生するため、オプトイン方式であり、その旨が明示されています。ローカルモードのみ（デフォルト）では、外部に何も送信されません。
 
 ---
 
-## 成果物と継続性
+## 証拠法
 
-パックは、`~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)` に書き込みます。成果物ティアを使用すると、このツールをファイル管理ツールにすることなく、継続性の表面を提供できます：
+これらはプロンプトではなく、サーバーで適用されます。
 
-- `artifact_list` - メタデータのみのインデックスで、パック、日付、スラッグのグロブでフィルタリングできます。
-- `artifact_read` - `{pack, slug}` または `{json_path}` で型指定された読み取りを行います。
-- `artifact_diff` - 構造化された同じパック内の比較。弱い変更が強調表示されます。
-- `artifact_export_to_path` - 既存の成果物（プロビナンスヘッダー付き）を、呼び出し側によって宣言された `allowed_roots` に書き込みます。ファイルが存在する場合は、`overwrite: true` が指定されていない限り拒否します。
-- `artifact_incident_note_snippet` - オペレーターノートフラグメント
-- `artifact_onboarding_section_snippet` - ハンドブックフラグメント
-- `artifact_release_note_snippet` - DRAFT リリースノートフラグメント
-
-このティアではモデル呼び出しは行いません。すべてが保存されたコンテンツからレンダリングされます。
+- **引用が必要です。** すべての簡潔な主張は、証拠 ID を引用します。
+- **不明な要素はサーバー側で削除されます。** 証拠バンドルにない ID を引用するモデルは、結果が返される前に、警告とともにこれらの ID を削除します。
+- **ID で検証し、コンテンツで検証するわけではありません。** サーバーは、引用された `evidence_ref` が、組み立てられたセット内の実際の証拠 ID を指していることを確認します。引用された証拠から主張のテキストを導き出すことができるかどうかは検証しません。これはモデルの役割であり、簡潔な記述には、有効な参照を持つ、根拠のない主張が含まれている場合があります。`weak: true` + 補足情報 + 含まれる `excerpt` フィールドを使用して、スポットチェックを行います。
+- **根拠が弱いものは、弱いままです。** 証拠が不十分な場合は、補足情報とともに `weak: true` にフラグが立てられます。偽の物語に無理やり組み込むことはありません。
+- **調査的であり、処方的ではありません。** `next_checks` / `read_next` / `likely_breakpoints` のみ。プロンプトで「この修正を適用してください」と指示することはできません。
+- **決定的なレンダラー。** アーティファクトのマークダウン形式はコードであり、プロンプトではありません。`draft` は、モデルの表現が重要な箇所で使用するために予約されています。
+- **同じパック内の差分のみ。** 異なるパック間の `artifact_diff` は、明確に拒否されます。ペイロードは明確に区別されます。
 
 ---
 
-## 脅威モデルとテレメトリ
+## アーティファクトと継続性
 
-**アクセスされるデータ：** 呼び出し側が明示的に渡すファイルパス（`ollama_research`、コーパスツール）、インラインテキスト、および呼び出し側が `~/.ollama-intern/artifacts/` または呼び出し側によって宣言された `allowed_roots` に書き込むように要求する成果物。
+パックは `~/.ollama-intern/artifacts/{incident,repo,change}/<slug>.(md|json)` に書き込みます。アーティファクト層は、これをファイル管理ツールにすることなく、継続性の表面を提供します。
 
-**変更されないデータ：** `source_paths` / `allowed_roots` の外にあるすべてのデータ。正規化前に `..` は拒否されます。`artifact_export_to_path` は、`overwrite: true` が指定されていない限り、既存のファイルを上書きしません。保護されたパス（`memory/`、`.claude/`、`docs/canon/` など）を対象とするドラフトには、明示的な `confirm_write: true` が必要であり、これはサーバー側で強制されます。
+- `artifact_list` — メタデータのみのインデックス。パック、日付、slug glob でフィルタリングできます。
+- `artifact_read` — `{pack, slug}` または `{json_path}` によって読み取られる型付きデータ。
+- `artifact_diff` — 構造化された同じパック内の比較。根拠が弱い場合の変更が強調表示されます。
+- `artifact_export_to_path` — 既存のアーティファクト（プロビナンスヘッダー付き）を、呼び出し元が宣言した `allowed_roots` に書き込みます。`overwrite: true` がない限り、既存のファイルを拒否します。
+- `artifact_incident_note_snippet` — オペレーターノートのフラグメント
+- `artifact_onboarding_section_snippet` — ハンドブックのフラグメント
+- `artifact_release_note_snippet` — DRAFT リリースノートのフラグメント
 
-**ネットワークからのデータ送信：** **デフォルトではオフ。** 初期状態では、ローカルの Ollama HTTP エンドポイントへのアウトバウンドトラフィックのみが発生します。クラウドへの呼び出し、アップデートの確認、クラッシュレポートは行われません。**例外（オプトイン）：** [Ollama Cloud](#ollama-cloud-optional) (`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`) を有効にすると、生成レイヤーへのプロンプトが HTTPS 経由で `ollama.com` に Bearer キーとともに送信されます。これは明示的であり、開示されており、両方の変数を設定しない限りオフになっています。埋め込みはローカル環境から送信されません。[SECURITY.md](SECURITY.md) §11 を参照してください。
+この層では、モデルの呼び出しは行いません。すべて、保存されたコンテンツからレンダリングされます。
 
-**テレメトリー：** **なし。** すべての呼び出しは、お使いのマシン上の `~/.ollama-intern/log.ndjson` に 1 つの NDJSON 行として記録されます。サーバー自体は外部にデータを送信しません。
+---
 
-**エラー：** `{ code, message, hint, retryable }` という構造化された形式。スタックトレースは、ツールの結果を通じて公開されることはありません。
+## 脅威モデルとテレメトリー
 
-完全なポリシー：[SECURITY.md](SECURITY.md)。
+**アクセスされるデータ:** 呼び出し元が明示的に渡すファイルパス（`ollama_research`、コーパスツール）、インラインテキスト、および呼び出し元が `~/.ollama-intern/artifacts/` または呼び出し元が宣言した `allowed_roots` に書き込むように要求するアーティファクト。
+
+**アクセスされないデータ:** `source_paths` / `allowed_roots` 以外のすべてのデータ。`..` は正規化前に拒否されます。`artifact_export_to_path` は、`overwrite: true` がない限り、既存のファイルを拒否します。保護されたパス（`memory/`、`.claude/`、`docs/canon/` など）をターゲットとするドラフトには、明示的な `confirm_write: true` が必要であり、サーバー側で適用されます。
+
+**ネットワークへのデータ送信:** **デフォルトではオフ。** デフォルトでは、唯一の外部トラフィックは、ローカルの Ollama HTTP エンドポイントへのものです。クラウドへの呼び出し、更新の確認、クラッシュレポートは行いません。**オプトインの例外:** [Ollama Cloud](#ollama-cloud)（`OLLAMA_CLOUD_PRIMARY=1` + `OLLAMA_API_KEY`）を有効にすると、生成層のプロンプトが HTTPS 経由で Bearer キーとともに `ollama.com` に送信されます。これは明示的であり、開示されており、両方の変数を設定しない限りオフになっています。埋め込みは、外部に送信されることはありません。[SECURITY.md](SECURITY.md) §11 を参照してください。
+
+**テレメトリー:** **なし。** すべての呼び出しは、マシンの `~/.ollama-intern/log.ndjson` に 1 つの NDJSON 行としてログに記録されます。サーバー自体は、どこにも情報を送信しません。
+
+**エラー:** 構造化された形式 `{ code, message, hint, retryable }`。スタックトレースは、ツールの結果を通じて公開されることはありません。
+
+完全なポリシー: [SECURITY.md](SECURITY.md)。
 
 ---
 
 ## 標準
 
-[Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) の基準に基づいて構築されています。厳格なゲート A～D を通過しています。[SHIP_GATE.md](SHIP_GATE.md) および [SCORECARD.md](SCORECARD.md) を参照してください。
+[Shipcheck](https://github.com/mcp-tool-shop-org/shipcheck) の基準に基づいて構築されています。厳格なゲート A〜D を通過しています。詳細については、[SHIP_GATE.md](SHIP_GATE.md) および [SCORECARD.md](SCORECARD.md) を参照してください。
 
-- **A. セキュリティ** — SECURITY.md、脅威モデル、テレメトリーなし、パスの安全性、保護されたパスでの `confirm_write`
-- **B. エラー** — すべてのツールの結果で構造化された形式。生のスタックトレースは表示されません。
-- **C. ドキュメント** — README は最新の状態、CHANGELOG、LICENSE。ツールのスキーマは自己文書化されています。
-- **D. 衛生管理** — `npm run verify`（完全な vitest スイート）、依存関係のスキャンを含む CI、Dependabot、ロックファイル、`engines.node`
+- **A. セキュリティ** — SECURITY.md、脅威モデル、テレメトリーなし、パスの安全性、保護されたパスの `confirm_write`
+- **B. エラー** — すべてのツールの結果で構造化された形式。生のスタックトレースはありません。
+- **C. ドキュメント** — README は最新、CHANGELOG、LICENSE。ツールのスキーマは自己文書化されています。
+- **D. 衛生** — `npm run verify`（完全な vitest スイート）、依存関係のスキャン、Dependabot、ロックファイル、`engines.node` を備えた CI。
 
 ---
 
-## ロードマップ（機能追加ではなく、セキュリティ強化）
+## ロードマップ（機能の追加ではなく、堅牢性の向上）
 
-- **フェーズ 1 — デリゲーション・スパイン** ✓ 配信済み：アトムサーフェス、統一されたエンベロープ、階層型ルーティング、ガードレール
-- **フェーズ 2 — トゥルース・スパイン** ✓ 配信済み：スキーマ v2 のチャンキング、BM25 + RRF、動的なコーパス、証拠に基づいた概要、検索評価パック
-- **フェーズ 3 — パック＆アーティファクト・スパイン** ✓ 配信済み：永続的なアーティファクトと継続性レイヤーを備えた固定パイプラインパック
-- **フェーズ 4 — 導入スパイン** ✓ v2.0.1：3段階の健全性チェック、強化されたコーパス（TOCTOU、50 MB のファイルサイズ制限、シンボリックリンクの拒否、アトミック書き込み、ファイルごとのエラー捕捉）、ツールパスのトラバーサル、可視化（セマフォ待機イベント、タイムアウトエラーコンテキスト、プロファイル環境オーバーライドロギング、コールドスタートシグナルの事前読み込み）、テスト安全性（10 個のファイルにわたるモジュールロード環境のスナップショット、`tools/call` E2E）。オペレーター向けのトラブルシューティングハンドブックとハードウェアの最小要件が追加されました。
-- **フェーズ 5 — M5 Max ベンチマーク** — ハードウェアが入手可能になった時点で公開可能な数値（約 2026 年 4 月 24 日）
+- **フェーズ 1 — 委任の基盤** ✓ 配信済み：アトムの表面、一貫したエンベロープ、階層化されたルーティング、ガードレール
+- **フェーズ 2 — 真実の基盤** ✓ 配信済み：スキーマ v2 のチャンク化、BM25 + RRF、動的なコーパス、証拠に基づいた簡潔な記述、検索評価パック
+- **フェーズ 3 — パックとアーティファクトの基盤** ✓ 配信済み：耐久性のあるアーティファクトと継続性層を備えた、固定パイプラインのパック
+- **フェーズ 4 — 導入の基盤** ✓ v2.0.1：3段階の健全性チェック、堅牢化されたコーパス（TOCTOU、50 MB のファイルサイズの制限、シンボリックリンクの拒否、アトミックな書き込み、ファイルごとの失敗のキャプチャ）、ツールのパスのトラバーサル、可視化（セマフォの待機イベント、タイムアウトエラーのコンテキスト、プロファイル環境オーバーライドロギング、コールドスタートシグナルの事前ウォームアップ）、テストの安全性（10 個のファイルにわたるモジュールロード環境のスナップショット、`tools/call` E2E）。オペレーター向けのトラブルシューティングハンドブックとハードウェアの最小要件が追加されました。
+- **フェーズ 5 — M5 Max ベンチマーク** — ハードウェアが利用可能になったら公開可能な数値（〜2026-04-24）
 
-各フェーズはセキュリティ強化のレイヤーに基づいています。パックとアーティファクトのレイヤーは、3 と 7 で固定されたままです。アトムのフリーズは v2.1.0 で解除されました。新しいアトムには、監査によって正当化されるギャップ、テスト、ハンドブックページ、および CHANGELOG エントリが必要です。
+フェーズは、堅牢化の層によって分類されます。パックとアーティファクト層は、3 と 7 で固定されたままです。アトムの固定は v2.1.0 で解除されました。新しいアトムには、監査によって正当化されたギャップ、テスト、ハンドブックページ、および CHANGELOG エントリが必要です。
 
 ---
 
