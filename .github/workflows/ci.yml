@@ -32,6 +32,13 @@ on:
       - "scripts/sync-doc-versions.mjs"
       - "site/src/content/docs/handbook/tools.md"
       - "site/src/content/docs/handbook/tools/**"
+      # A site dependency change is exactly what the `audit` job exists to
+      # judge, and it was the one site path this filter did not cover. A
+      # lockfile-only PR therefore triggered nothing, reported none of its six
+      # REQUIRED contexts, and could never merge -- found 2026-09-17 on a PR
+      # closing a critical advisory in site/.
+      - "site/package.json"
+      - "site/package-lock.json"
       - ".github/workflows/**"
       - ".npmignore"
       - "hermes.config.example.yaml"
@@ -49,6 +56,13 @@ on:
       - "scripts/sync-doc-versions.mjs"
       - "site/src/content/docs/handbook/tools.md"
       - "site/src/content/docs/handbook/tools/**"
+      # A site dependency change is exactly what the `audit` job exists to
+      # judge, and it was the one site path this filter did not cover. A
+      # lockfile-only PR therefore triggered nothing, reported none of its six
+      # REQUIRED contexts, and could never merge -- found 2026-09-17 on a PR
+      # closing a critical advisory in site/.
+      - "site/package.json"
+      - "site/package-lock.json"
       - ".github/workflows/**"
       - ".npmignore"
       - "hermes.config.example.yaml"
