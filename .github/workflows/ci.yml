@@ -40,6 +40,7 @@ on:
       - "site/package.json"
       - "site/package-lock.json"
       - ".github/workflows/**"
+      - "atlas/**"
       - ".npmignore"
       - "hermes.config.example.yaml"
       - "Dockerfile"
@@ -64,6 +65,7 @@ on:
       - "site/package.json"
       - "site/package-lock.json"
       - ".github/workflows/**"
+      - "atlas/**"
       - ".npmignore"
       - "hermes.config.example.yaml"
       - "Dockerfile"
@@ -116,6 +118,11 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: "npm"
+      # Atlas requires Node 22 or later, and one cell is enough, so the check
+      # runs on the ubuntu-latest / Node 22 cell only.
+      - name: Atlas check
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npx --yes @dogfood-lab/atlas@1.16.0 check
       # Fail loudly if the runner somehow booted with a Node version outside
       # our supported range. engines.node is ">=20.0.0"; the matrix pins 20
       # and 22. Anything else means setup-node drifted and tests would give

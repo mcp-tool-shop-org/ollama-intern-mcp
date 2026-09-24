@@ -1,0 +1,2668 @@
+{
+  "authorship": {
+    "parts": [],
+    "places": []
+  },
+  "boundaries": [
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": ".github",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "bench",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "docs",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "evals",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "examples",
+      "qualifyingSourceCommits": 1,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "root",
+      "qualifyingSourceCommits": 1,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "scripts",
+      "qualifyingSourceCommits": 6,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "site",
+      "qualifyingSourceCommits": 12,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "smoke",
+      "qualifyingSourceCommits": 7,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [
+          "tests"
+        ],
+        "importsOnly": [
+          "scripts",
+          "smoke"
+        ]
+      },
+      "cohesion": 0.877205,
+      "cohesionDropped": false,
+      "confidence": "full",
+      "highWater": null,
+      "name": "src",
+      "qualifyingSourceCommits": 105,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [
+          "src"
+        ],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": 0.366013,
+      "cohesionDropped": false,
+      "confidence": "full",
+      "highWater": null,
+      "name": "tests",
+      "qualifyingSourceCommits": 100,
+      "rebaseline": null
+    }
+  ],
+  "churn": {
+    "definition": "commits is how many commits in the window touch the file, including merges and commits dropped from coupling. lines is added plus deleted in those commits.",
+    "files": [
+      {
+        "commits": 1,
+        "lines": 18,
+        "path": ".dockerignore"
+      },
+      {
+        "commits": 1,
+        "lines": 35,
+        "path": ".gitattributes"
+      },
+      {
+        "commits": 1,
+        "lines": 60,
+        "path": ".github/ISSUE_TEMPLATE/bug_report.md"
+      },
+      {
+        "commits": 2,
+        "lines": 42,
+        "path": ".github/ISSUE_TEMPLATE/config.yml"
+      },
+      {
+        "commits": 5,
+        "lines": 75,
+        "path": ".github/ISSUE_TEMPLATE/feature_request.md"
+      },
+      {
+        "commits": 6,
+        "lines": 55,
+        "path": ".github/dependabot.yml"
+      },
+      {
+        "commits": 3,
+        "lines": 52,
+        "path": ".github/pull_request_template.md"
+      },
+      {
+        "commits": 31,
+        "lines": 939,
+        "path": ".github/workflows/ci.yml"
+      },
+      {
+        "commits": 7,
+        "lines": 119,
+        "path": ".github/workflows/codeql.yml"
+      },
+      {
+        "commits": 8,
+        "lines": 140,
+        "path": ".github/workflows/dependency-review.yml"
+      },
+      {
+        "commits": 14,
+        "lines": 561,
+        "path": ".github/workflows/doc-drift.yml"
+      },
+      {
+        "commits": 15,
+        "lines": 139,
+        "path": ".github/workflows/pages.yml"
+      },
+      {
+        "commits": 3,
+        "lines": 286,
+        "path": ".github/workflows/publish.yml"
+      },
+      {
+        "commits": 9,
+        "lines": 213,
+        "path": ".github/workflows/release.yml"
+      },
+      {
+        "commits": 6,
+        "lines": 23,
+        "path": ".gitignore"
+      },
+      {
+        "commits": 3,
+        "lines": 105,
+        "path": ".npmignore"
+      },
+      {
+        "commits": 40,
+        "lines": 978,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "commits": 3,
+        "lines": 49,
+        "path": "CONTRIBUTING.md"
+      },
+      {
+        "commits": 1,
+        "lines": 54,
+        "path": "Dockerfile"
+      },
+      {
+        "commits": 31,
+        "lines": 800,
+        "path": "HANDOFF.md"
+      },
+      {
+        "commits": 1,
+        "lines": 21,
+        "path": "LICENSE"
+      },
+      {
+        "commits": 15,
+        "lines": 2703,
+        "path": "README.es.md"
+      },
+      {
+        "commits": 15,
+        "lines": 2237,
+        "path": "README.fr.md"
+      },
+      {
+        "commits": 15,
+        "lines": 2735,
+        "path": "README.hi.md"
+      },
+      {
+        "commits": 15,
+        "lines": 2261,
+        "path": "README.it.md"
+      },
+      {
+        "commits": 15,
+        "lines": 2837,
+        "path": "README.ja.md"
+      },
+      {
+        "commits": 37,
+        "lines": 1391,
+        "path": "README.md"
+      },
+      {
+        "commits": 15,
+        "lines": 2035,
+        "path": "README.pt-BR.md"
+      },
+      {
+        "commits": 15,
+        "lines": 2517,
+        "path": "README.zh.md"
+      },
+      {
+        "commits": 8,
+        "lines": 260,
+        "path": "ROADMAP.md"
+      },
+      {
+        "commits": 4,
+        "lines": 53,
+        "path": "SCORECARD.md"
+      },
+      {
+        "commits": 14,
+        "lines": 108,
+        "path": "SECURITY.md"
+      },
+      {
+        "commits": 30,
+        "lines": 248,
+        "path": "SHIP_GATE.md"
+      },
+      {
+        "commits": 2,
+        "lines": 76,
+        "path": "bench/README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 3,
+        "path": "bench/prompts/classify.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 2,
+        "path": "bench/prompts/code.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "bench/prompts/summarize.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 110,
+        "path": "bench/run.py"
+      },
+      {
+        "commits": 2,
+        "lines": 184,
+        "path": "docs/design/cross-family-verify-recipe.md"
+      },
+      {
+        "commits": 1,
+        "lines": 409,
+        "path": "docs/design/swarm-readout-pattern.md"
+      },
+      {
+        "commits": 2,
+        "lines": 148,
+        "path": "docs/marketing-research.md"
+      },
+      {
+        "commits": 1,
+        "lines": 130,
+        "path": "docs/release-notes/v2.2.0.md"
+      },
+      {
+        "commits": 2,
+        "lines": 121,
+        "path": "docs/release-notes/v2.3.0.md"
+      },
+      {
+        "commits": 1,
+        "lines": 102,
+        "path": "docs/release-notes/v2.4.0.md"
+      },
+      {
+        "commits": 1,
+        "lines": 226,
+        "path": "docs/reports/SWARM_REPORT_2026-05-11_role-contract.md"
+      },
+      {
+        "commits": 4,
+        "lines": 125,
+        "path": "evals/README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 22,
+        "path": "evals/fixtures/corpus/bm25-law.md"
+      },
+      {
+        "commits": 1,
+        "lines": 15,
+        "path": "evals/fixtures/corpus/citation-validation.md"
+      },
+      {
+        "commits": 1,
+        "lines": 19,
+        "path": "evals/fixtures/corpus/coverage-contract.md"
+      },
+      {
+        "commits": 1,
+        "lines": 13,
+        "path": "evals/fixtures/corpus/fact-mode.md"
+      },
+      {
+        "commits": 1,
+        "lines": 18,
+        "path": "evals/fixtures/corpus/how-to-index-corpus.md"
+      },
+      {
+        "commits": 1,
+        "lines": 11,
+        "path": "evals/fixtures/corpus/how-to-pull-llama.md"
+      },
+      {
+        "commits": 1,
+        "lines": 12,
+        "path": "evals/fixtures/corpus/how-to-pull-qwen.md"
+      },
+      {
+        "commits": 1,
+        "lines": 18,
+        "path": "evals/fixtures/corpus/how-to-search-corpus.md"
+      },
+      {
+        "commits": 1,
+        "lines": 16,
+        "path": "evals/fixtures/corpus/how-to-use-research.md"
+      },
+      {
+        "commits": 1,
+        "lines": 12,
+        "path": "evals/fixtures/corpus/hybrid-mode.md"
+      },
+      {
+        "commits": 1,
+        "lines": 17,
+        "path": "evals/fixtures/corpus/ollama-corpus-search.md"
+      },
+      {
+        "commits": 1,
+        "lines": 16,
+        "path": "evals/fixtures/corpus/ollama-embed-search.md"
+      },
+      {
+        "commits": 1,
+        "lines": 11,
+        "path": "evals/fixtures/corpus/ollama-eviction.md"
+      },
+      {
+        "commits": 1,
+        "lines": 16,
+        "path": "evals/fixtures/corpus/ollama-research.md"
+      },
+      {
+        "commits": 1,
+        "lines": 11,
+        "path": "evals/fixtures/corpus/prewarm-policy.md"
+      },
+      {
+        "commits": 1,
+        "lines": 17,
+        "path": "evals/fixtures/corpus/rrf-fusion.md"
+      },
+      {
+        "commits": 1,
+        "lines": 14,
+        "path": "evals/fixtures/corpus/title-path-mode.md"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/classify.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/draft.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/embed.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/extract.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/research.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 20,
+        "path": "evals/gold/retrieval.jsonl"
+      },
+      {
+        "commits": 3,
+        "lines": 5,
+        "path": "evals/gold/summarizeDeep.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/summarizeFast.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "evals/gold/triageLogs.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 23,
+        "path": "examples/README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 37,
+        "path": "examples/curl-example.md"
+      },
+      {
+        "commits": 2,
+        "lines": 96,
+        "path": "examples/simple-client-node.js"
+      },
+      {
+        "commits": 2,
+        "lines": 106,
+        "path": "examples/simple-client-python.py"
+      },
+      {
+        "commits": 1,
+        "lines": 50,
+        "path": "hermes.config.example.yaml"
+      },
+      {
+        "commits": 20,
+        "lines": 7016,
+        "path": "package-lock.json"
+      },
+      {
+        "commits": 41,
+        "lines": 186,
+        "path": "package.json"
+      },
+      {
+        "commits": 1,
+        "lines": 106,
+        "path": "scripts/cloud-smoke-generate.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 0,
+        "path": "scripts/gen-tool-docs.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 254,
+        "path": "scripts/live-audit-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 302,
+        "path": "scripts/live-c3-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 334,
+        "path": "scripts/live-calibrate-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 196,
+        "path": "scripts/live-learning-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 202,
+        "path": "scripts/live-memory-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 258,
+        "path": "scripts/live-phase-2_5-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 220,
+        "path": "scripts/live-retrieval-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 246,
+        "path": "scripts/live-router-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 248,
+        "path": "scripts/live-shadow-proof.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 388,
+        "path": "scripts/live-skill-proof.mjs"
+      },
+      {
+        "commits": 7,
+        "lines": 990,
+        "path": "scripts/sync-doc-versions.mjs"
+      },
+      {
+        "commits": 4,
+        "lines": 56,
+        "path": "site/astro.config.mjs"
+      },
+      {
+        "commits": 6,
+        "lines": 16805,
+        "path": "site/package-lock.json"
+      },
+      {
+        "commits": 3,
+        "lines": 30,
+        "path": "site/package.json"
+      },
+      {
+        "commits": 1,
+        "lines": 13,
+        "path": "site/public/favicon.svg"
+      },
+      {
+        "commits": 1,
+        "lines": 7,
+        "path": "site/src/content.config.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 183,
+        "path": "site/src/content/docs/handbook/artifacts.md"
+      },
+      {
+        "commits": 1,
+        "lines": 116,
+        "path": "site/src/content/docs/handbook/comparison.md"
+      },
+      {
+        "commits": 1,
+        "lines": 127,
+        "path": "site/src/content/docs/handbook/corpora.md"
+      },
+      {
+        "commits": 6,
+        "lines": 150,
+        "path": "site/src/content/docs/handbook/envelope-and-tiers.md"
+      },
+      {
+        "commits": 1,
+        "lines": 73,
+        "path": "site/src/content/docs/handbook/error-codes.md"
+      },
+      {
+        "commits": 4,
+        "lines": 147,
+        "path": "site/src/content/docs/handbook/getting-started.md"
+      },
+      {
+        "commits": 15,
+        "lines": 174,
+        "path": "site/src/content/docs/handbook/index.md"
+      },
+      {
+        "commits": 3,
+        "lines": 107,
+        "path": "site/src/content/docs/handbook/laws.md"
+      },
+      {
+        "commits": 3,
+        "lines": 238,
+        "path": "site/src/content/docs/handbook/observability.md"
+      },
+      {
+        "commits": 6,
+        "lines": 242,
+        "path": "site/src/content/docs/handbook/ollama-cloud.md"
+      },
+      {
+        "commits": 6,
+        "lines": 254,
+        "path": "site/src/content/docs/handbook/quickstart.md"
+      },
+      {
+        "commits": 4,
+        "lines": 150,
+        "path": "site/src/content/docs/handbook/security.md"
+      },
+      {
+        "commits": 16,
+        "lines": 567,
+        "path": "site/src/content/docs/handbook/tools.md"
+      },
+      {
+        "commits": 2,
+        "lines": 202,
+        "path": "site/src/content/docs/handbook/tools/artifact-diff.md"
+      },
+      {
+        "commits": 2,
+        "lines": 180,
+        "path": "site/src/content/docs/handbook/tools/artifact-export-to-path.md"
+      },
+      {
+        "commits": 2,
+        "lines": 112,
+        "path": "site/src/content/docs/handbook/tools/artifact-incident-note-snippet.md"
+      },
+      {
+        "commits": 2,
+        "lines": 168,
+        "path": "site/src/content/docs/handbook/tools/artifact-list.md"
+      },
+      {
+        "commits": 2,
+        "lines": 112,
+        "path": "site/src/content/docs/handbook/tools/artifact-onboarding-section-snippet.md"
+      },
+      {
+        "commits": 3,
+        "lines": 139,
+        "path": "site/src/content/docs/handbook/tools/artifact-prune.md"
+      },
+      {
+        "commits": 2,
+        "lines": 138,
+        "path": "site/src/content/docs/handbook/tools/artifact-read.md"
+      },
+      {
+        "commits": 2,
+        "lines": 112,
+        "path": "site/src/content/docs/handbook/tools/artifact-release-note-snippet.md"
+      },
+      {
+        "commits": 2,
+        "lines": 166,
+        "path": "site/src/content/docs/handbook/tools/batch-proof-check.md"
+      },
+      {
+        "commits": 4,
+        "lines": 202,
+        "path": "site/src/content/docs/handbook/tools/change-brief.md"
+      },
+      {
+        "commits": 6,
+        "lines": 247,
+        "path": "site/src/content/docs/handbook/tools/change-pack.md"
+      },
+      {
+        "commits": 1,
+        "lines": 115,
+        "path": "site/src/content/docs/handbook/tools/chat.md"
+      },
+      {
+        "commits": 1,
+        "lines": 144,
+        "path": "site/src/content/docs/handbook/tools/classify.md"
+      },
+      {
+        "commits": 3,
+        "lines": 141,
+        "path": "site/src/content/docs/handbook/tools/code-citation.md"
+      },
+      {
+        "commits": 2,
+        "lines": 116,
+        "path": "site/src/content/docs/handbook/tools/code-map.md"
+      },
+      {
+        "commits": 4,
+        "lines": 189,
+        "path": "site/src/content/docs/handbook/tools/code-review.md"
+      },
+      {
+        "commits": 3,
+        "lines": 98,
+        "path": "site/src/content/docs/handbook/tools/corpus-amend-history.md"
+      },
+      {
+        "commits": 3,
+        "lines": 156,
+        "path": "site/src/content/docs/handbook/tools/corpus-amend.md"
+      },
+      {
+        "commits": 1,
+        "lines": 131,
+        "path": "site/src/content/docs/handbook/tools/corpus-answer.md"
+      },
+      {
+        "commits": 3,
+        "lines": 106,
+        "path": "site/src/content/docs/handbook/tools/corpus-health.md"
+      },
+      {
+        "commits": 3,
+        "lines": 148,
+        "path": "site/src/content/docs/handbook/tools/corpus-index.md"
+      },
+      {
+        "commits": 3,
+        "lines": 74,
+        "path": "site/src/content/docs/handbook/tools/corpus-list.md"
+      },
+      {
+        "commits": 3,
+        "lines": 108,
+        "path": "site/src/content/docs/handbook/tools/corpus-refresh.md"
+      },
+      {
+        "commits": 4,
+        "lines": 238,
+        "path": "site/src/content/docs/handbook/tools/corpus-rerank.md"
+      },
+      {
+        "commits": 2,
+        "lines": 208,
+        "path": "site/src/content/docs/handbook/tools/corpus-search.md"
+      },
+      {
+        "commits": 3,
+        "lines": 154,
+        "path": "site/src/content/docs/handbook/tools/doctor.md"
+      },
+      {
+        "commits": 2,
+        "lines": 156,
+        "path": "site/src/content/docs/handbook/tools/draft.md"
+      },
+      {
+        "commits": 2,
+        "lines": 176,
+        "path": "site/src/content/docs/handbook/tools/embed-search.md"
+      },
+      {
+        "commits": 2,
+        "lines": 120,
+        "path": "site/src/content/docs/handbook/tools/embed.md"
+      },
+      {
+        "commits": 1,
+        "lines": 150,
+        "path": "site/src/content/docs/handbook/tools/extract.md"
+      },
+      {
+        "commits": 3,
+        "lines": 137,
+        "path": "site/src/content/docs/handbook/tools/hypothesis-drill.md"
+      },
+      {
+        "commits": 4,
+        "lines": 188,
+        "path": "site/src/content/docs/handbook/tools/incident-brief.md"
+      },
+      {
+        "commits": 6,
+        "lines": 220,
+        "path": "site/src/content/docs/handbook/tools/incident-pack.md"
+      },
+      {
+        "commits": 3,
+        "lines": 88,
+        "path": "site/src/content/docs/handbook/tools/log-stats.md"
+      },
+      {
+        "commits": 3,
+        "lines": 122,
+        "path": "site/src/content/docs/handbook/tools/log-tail.md"
+      },
+      {
+        "commits": 3,
+        "lines": 129,
+        "path": "site/src/content/docs/handbook/tools/multi-file-refactor-propose.md"
+      },
+      {
+        "commits": 3,
+        "lines": 149,
+        "path": "site/src/content/docs/handbook/tools/refactor-plan.md"
+      },
+      {
+        "commits": 4,
+        "lines": 212,
+        "path": "site/src/content/docs/handbook/tools/repo-brief.md"
+      },
+      {
+        "commits": 6,
+        "lines": 256,
+        "path": "site/src/content/docs/handbook/tools/repo-pack.md"
+      },
+      {
+        "commits": 4,
+        "lines": 158,
+        "path": "site/src/content/docs/handbook/tools/research.md"
+      },
+      {
+        "commits": 4,
+        "lines": 179,
+        "path": "site/src/content/docs/handbook/tools/summarize-deep.md"
+      },
+      {
+        "commits": 3,
+        "lines": 132,
+        "path": "site/src/content/docs/handbook/tools/summarize-fast.md"
+      },
+      {
+        "commits": 3,
+        "lines": 150,
+        "path": "site/src/content/docs/handbook/tools/triage-logs.md"
+      },
+      {
+        "commits": 4,
+        "lines": 376,
+        "path": "site/src/content/docs/handbook/tools/verify-claims.md"
+      },
+      {
+        "commits": 2,
+        "lines": 101,
+        "path": "site/src/content/docs/handbook/troubleshooting.md"
+      },
+      {
+        "commits": 3,
+        "lines": 116,
+        "path": "site/src/content/docs/handbook/with-hermes.md"
+      },
+      {
+        "commits": 1,
+        "lines": 33,
+        "path": "site/src/pages/index.astro"
+      },
+      {
+        "commits": 12,
+        "lines": 396,
+        "path": "site/src/site-config.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 3,
+        "path": "site/src/styles/global.css"
+      },
+      {
+        "commits": 1,
+        "lines": 5,
+        "path": "site/src/styles/starlight-custom.css"
+      },
+      {
+        "commits": 1,
+        "lines": 5,
+        "path": "site/tsconfig.json"
+      },
+      {
+        "commits": 2,
+        "lines": 114,
+        "path": "skills/triage-then-brief.json"
+      },
+      {
+        "commits": 2,
+        "lines": 78,
+        "path": "smoke/README.md"
+      },
+      {
+        "commits": 2,
+        "lines": 112,
+        "path": "smoke/corpus.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 40,
+        "path": "smoke/coverage.mjs"
+      },
+      {
+        "commits": 3,
+        "lines": 272,
+        "path": "smoke/live.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 144,
+        "path": "smoke/seams.mjs"
+      },
+      {
+        "commits": 1,
+        "lines": 110,
+        "path": "smoke/targeted.mjs"
+      },
+      {
+        "commits": 2,
+        "lines": 970,
+        "path": "src/cloudCheck.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 264,
+        "path": "src/corpus/atomicWrite.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 472,
+        "path": "src/corpus/chunker.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 237,
+        "path": "src/corpus/fusion.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 96,
+        "path": "src/corpus/identity.ts"
+      },
+      {
+        "commits": 25,
+        "lines": 1573,
+        "path": "src/corpus/indexer.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 341,
+        "path": "src/corpus/lexical.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 201,
+        "path": "src/corpus/lock.ts"
+      },
+      {
+        "commits": 20,
+        "lines": 983,
+        "path": "src/corpus/manifest.ts"
+      },
+      {
+        "commits": 11,
+        "lines": 813,
+        "path": "src/corpus/refresh.ts"
+      },
+      {
+        "commits": 8,
+        "lines": 751,
+        "path": "src/corpus/searcher.ts"
+      },
+      {
+        "commits": 17,
+        "lines": 1076,
+        "path": "src/corpus/storage.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 156,
+        "path": "src/coverage.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 62,
+        "path": "src/embedMath.ts"
+      },
+      {
+        "commits": 13,
+        "lines": 207,
+        "path": "src/envelope.ts"
+      },
+      {
+        "commits": 9,
+        "lines": 82,
+        "path": "src/errors.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 407,
+        "path": "src/evals/retrieval.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 66,
+        "path": "src/format.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 179,
+        "path": "src/guardrails/bannedPhrases.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 218,
+        "path": "src/guardrails/citations.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 325,
+        "path": "src/guardrails/compileCheck.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 160,
+        "path": "src/guardrails/confidence.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 158,
+        "path": "src/guardrails/embedTimeout.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 220,
+        "path": "src/guardrails/stringifiedArrayGuard.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 165,
+        "path": "src/guardrails/timeouts.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 136,
+        "path": "src/guardrails/writeConfirm.ts"
+      },
+      {
+        "commits": 48,
+        "lines": 2770,
+        "path": "src/index.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 510,
+        "path": "src/memory/embeddings.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 1292,
+        "path": "src/memory/explain.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 88,
+        "path": "src/memory/ids.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 16,
+        "path": "src/memory/index.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 462,
+        "path": "src/memory/normalizers.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 376,
+        "path": "src/memory/refresh.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 444,
+        "path": "src/memory/retrieval.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 144,
+        "path": "src/memory/store.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 170,
+        "path": "src/memory/types.ts"
+      },
+      {
+        "commits": 22,
+        "lines": 902,
+        "path": "src/observability.ts"
+      },
+      {
+        "commits": 25,
+        "lines": 1258,
+        "path": "src/ollama.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 177,
+        "path": "src/prewarm.ts"
+      },
+      {
+        "commits": 25,
+        "lines": 1404,
+        "path": "src/profiles.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 421,
+        "path": "src/protectedPaths.ts"
+      },
+      {
+        "commits": 17,
+        "lines": 1154,
+        "path": "src/routing.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 94,
+        "path": "src/routing/actualRoute.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 108,
+        "path": "src/routing/audit/cluster.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 606,
+        "path": "src/routing/audit/findings.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 114,
+        "path": "src/routing/audit/index.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 80,
+        "path": "src/routing/audit/loader.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 226,
+        "path": "src/routing/audit/summary.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 256,
+        "path": "src/routing/audit/types.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 10,
+        "path": "src/routing/calibration/index.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 156,
+        "path": "src/routing/calibration/overlay.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 356,
+        "path": "src/routing/calibration/proposals.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 268,
+        "path": "src/routing/calibration/replay.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 268,
+        "path": "src/routing/calibration/store.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 332,
+        "path": "src/routing/calibration/types.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 190,
+        "path": "src/routing/candidates.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 232,
+        "path": "src/routing/context.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 16,
+        "path": "src/routing/index.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 306,
+        "path": "src/routing/receipts.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 132,
+        "path": "src/routing/router.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 336,
+        "path": "src/routing/runtime.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 798,
+        "path": "src/routing/scoring.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 356,
+        "path": "src/routing/types.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 205,
+        "path": "src/runContext.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 257,
+        "path": "src/semaphore.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 430,
+        "path": "src/skills/chains.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 20,
+        "path": "src/skills/index.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 188,
+        "path": "src/skills/matcher.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 376,
+        "path": "src/skills/newSkillProposer.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 150,
+        "path": "src/skills/promoter.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 344,
+        "path": "src/skills/proposer.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 170,
+        "path": "src/skills/registry.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 544,
+        "path": "src/skills/runner.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 196,
+        "path": "src/skills/store.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 330,
+        "path": "src/skills/traces.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 232,
+        "path": "src/skills/types.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 145,
+        "path": "src/sources.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 340,
+        "path": "src/tiers.ts"
+      },
+      {
+        "commits": 11,
+        "lines": 524,
+        "path": "src/tools/_helpers.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 177,
+        "path": "src/tools/_runContext.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 98,
+        "path": "src/tools/artifactDiff.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 78,
+        "path": "src/tools/artifactExportToPath.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 141,
+        "path": "src/tools/artifactList.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 403,
+        "path": "src/tools/artifactPrune.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 132,
+        "path": "src/tools/artifactRead.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 166,
+        "path": "src/tools/artifactSnippets.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 464,
+        "path": "src/tools/artifacts/diff.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 405,
+        "path": "src/tools/artifacts/export.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 375,
+        "path": "src/tools/artifacts/scan.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 336,
+        "path": "src/tools/artifacts/snippets.ts"
+      },
+      {
+        "commits": 18,
+        "lines": 568,
+        "path": "src/tools/batch.ts"
+      },
+      {
+        "commits": 9,
+        "lines": 713,
+        "path": "src/tools/batchProofCheck.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 345,
+        "path": "src/tools/briefs/common.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 237,
+        "path": "src/tools/briefs/evidence.ts"
+      },
+      {
+        "commits": 14,
+        "lines": 431,
+        "path": "src/tools/changeBrief.ts"
+      },
+      {
+        "commits": 15,
+        "lines": 463,
+        "path": "src/tools/chat.ts"
+      },
+      {
+        "commits": 18,
+        "lines": 553,
+        "path": "src/tools/classify.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 288,
+        "path": "src/tools/codeCitation.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 443,
+        "path": "src/tools/codeMap.ts"
+      },
+      {
+        "commits": 15,
+        "lines": 857,
+        "path": "src/tools/codeReview.ts"
+      },
+      {
+        "commits": 9,
+        "lines": 556,
+        "path": "src/tools/corpusAmend.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 98,
+        "path": "src/tools/corpusAmendHistory.ts"
+      },
+      {
+        "commits": 14,
+        "lines": 520,
+        "path": "src/tools/corpusAnswer.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 459,
+        "path": "src/tools/corpusHealth.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 178,
+        "path": "src/tools/corpusIndex.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 98,
+        "path": "src/tools/corpusList.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 85,
+        "path": "src/tools/corpusRefresh.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 227,
+        "path": "src/tools/corpusRerank.ts"
+      },
+      {
+        "commits": 12,
+        "lines": 565,
+        "path": "src/tools/corpusSearch.ts"
+      },
+      {
+        "commits": 13,
+        "lines": 824,
+        "path": "src/tools/doctor.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 199,
+        "path": "src/tools/draft.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 133,
+        "path": "src/tools/embed.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 136,
+        "path": "src/tools/embedSearch.ts"
+      },
+      {
+        "commits": 16,
+        "lines": 621,
+        "path": "src/tools/extract.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 264,
+        "path": "src/tools/hypothesisDrill.ts"
+      },
+      {
+        "commits": 15,
+        "lines": 884,
+        "path": "src/tools/incidentBrief.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 273,
+        "path": "src/tools/logRead.ts"
+      },
+      {
+        "commits": 8,
+        "lines": 781,
+        "path": "src/tools/logStats.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 259,
+        "path": "src/tools/logTail.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 176,
+        "path": "src/tools/memoryExplain.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 140,
+        "path": "src/tools/memoryNeighbors.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 132,
+        "path": "src/tools/memoryRead.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 228,
+        "path": "src/tools/memoryRefresh.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 146,
+        "path": "src/tools/memorySearch.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 314,
+        "path": "src/tools/multiFileRefactorPropose.ts"
+      },
+      {
+        "commits": 8,
+        "lines": 569,
+        "path": "src/tools/packs/artifactWrite.ts"
+      },
+      {
+        "commits": 22,
+        "lines": 1225,
+        "path": "src/tools/packs/changePack.ts"
+      },
+      {
+        "commits": 18,
+        "lines": 787,
+        "path": "src/tools/packs/incidentPack.ts"
+      },
+      {
+        "commits": 20,
+        "lines": 1279,
+        "path": "src/tools/packs/repoPack.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 225,
+        "path": "src/tools/refactorPlan.ts"
+      },
+      {
+        "commits": 14,
+        "lines": 408,
+        "path": "src/tools/repoBrief.ts"
+      },
+      {
+        "commits": 18,
+        "lines": 425,
+        "path": "src/tools/research.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 148,
+        "path": "src/tools/routingAudit.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 394,
+        "path": "src/tools/routingCalibrate.ts"
+      },
+      {
+        "commits": 17,
+        "lines": 637,
+        "path": "src/tools/runner.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 180,
+        "path": "src/tools/skillList.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 106,
+        "path": "src/tools/skillMatch.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 130,
+        "path": "src/tools/skillPromote.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 254,
+        "path": "src/tools/skillPropose.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 144,
+        "path": "src/tools/skillRun.ts"
+      },
+      {
+        "commits": 16,
+        "lines": 331,
+        "path": "src/tools/summarizeDeep.ts"
+      },
+      {
+        "commits": 9,
+        "lines": 171,
+        "path": "src/tools/summarizeFast.ts"
+      },
+      {
+        "commits": 12,
+        "lines": 280,
+        "path": "src/tools/triageLogs.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 1396,
+        "path": "src/tools/verifyClaims.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 20,
+        "path": "src/version.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 139,
+        "path": "tests/_helpers/fakeOllama.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 67,
+        "path": "tests/_helpers/fixtures.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 65,
+        "path": "tests/_helpers/index.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 868,
+        "path": "tests/cli.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 153,
+        "path": "tests/cloudCheck.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 161,
+        "path": "tests/cloudClient.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 231,
+        "path": "tests/cloudConfig.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 454,
+        "path": "tests/cloudEscalation.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 470,
+        "path": "tests/corpus/atomicWrite.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 232,
+        "path": "tests/corpus/chunker.test.ts"
+      },
+      {
+        "commits": 11,
+        "lines": 665,
+        "path": "tests/corpus/indexerSearcher.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 294,
+        "path": "tests/corpus/lexical.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 432,
+        "path": "tests/corpus/lock.test.ts"
+      },
+      {
+        "commits": 9,
+        "lines": 742,
+        "path": "tests/corpus/refresh.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 349,
+        "path": "tests/corpus/searchModes.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 517,
+        "path": "tests/corpus/stageBCFixes.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 80,
+        "path": "tests/coverage.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 226,
+        "path": "tests/doctorCloud.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 85,
+        "path": "tests/embedMath.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 113,
+        "path": "tests/envelope.test.ts"
+      },
+      {
+        "commits": 11,
+        "lines": 932,
+        "path": "tests/errorHintQuality.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 240,
+        "path": "tests/evals/retrieval.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 130,
+        "path": "tests/guardrails/bannedPhrases.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 108,
+        "path": "tests/guardrails/citations.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 282,
+        "path": "tests/guardrails/confidence.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 189,
+        "path": "tests/guardrails/stringifiedArrayGuard.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 66,
+        "path": "tests/guardrails/timeouts.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 66,
+        "path": "tests/guardrails/writeConfirm.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 367,
+        "path": "tests/integration/mcp.integration.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 58,
+        "path": "tests/logTailRoster.test.ts"
+      },
+      {
+        "commits": 27,
+        "lines": 925,
+        "path": "tests/mcpGolden.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 624,
+        "path": "tests/memory/explain.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 530,
+        "path": "tests/memory/retrieval.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 678,
+        "path": "tests/memory/substrate.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 510,
+        "path": "tests/numCtx.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 475,
+        "path": "tests/observability.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 63,
+        "path": "tests/ollama.test.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 420,
+        "path": "tests/ollamaRetry.test.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 224,
+        "path": "tests/pack.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 128,
+        "path": "tests/prewarm.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 191,
+        "path": "tests/prewarmInvariants.test.ts"
+      },
+      {
+        "commits": 12,
+        "lines": 578,
+        "path": "tests/profiles.test.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 382,
+        "path": "tests/protectedPaths.test.ts"
+      },
+      {
+        "commits": 12,
+        "lines": 783,
+        "path": "tests/regressions.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 149,
+        "path": "tests/releaseWorkflowGate.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 767,
+        "path": "tests/routing.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 692,
+        "path": "tests/routing/audit.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 688,
+        "path": "tests/routing/calibration.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 668,
+        "path": "tests/routing/router.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 542,
+        "path": "tests/routing/runtime.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 279,
+        "path": "tests/routingIntegration.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 690,
+        "path": "tests/routingStandby.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 300,
+        "path": "tests/runContext.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 227,
+        "path": "tests/semaphore.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 262,
+        "path": "tests/signalChainE2E.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 476,
+        "path": "tests/skills/learning.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 390,
+        "path": "tests/skills/newSkills.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 376,
+        "path": "tests/skills/substrate.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 120,
+        "path": "tests/sources.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 139,
+        "path": "tests/startupProbe.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 149,
+        "path": "tests/tiers.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 123,
+        "path": "tests/timeoutLogEnrichment.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 92,
+        "path": "tests/toolDocsGen.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 661,
+        "path": "tests/tools/artifactDiff.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 749,
+        "path": "tests/tools/artifactHandoff.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 256,
+        "path": "tests/tools/artifactPrune.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 282,
+        "path": "tests/tools/artifactWrite.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 495,
+        "path": "tests/tools/artifacts.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 440,
+        "path": "tests/tools/batch.test.ts"
+      },
+      {
+        "commits": 12,
+        "lines": 866,
+        "path": "tests/tools/batchProofCheck.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 222,
+        "path": "tests/tools/batchTierLabel.test.ts"
+      },
+      {
+        "commits": 8,
+        "lines": 651,
+        "path": "tests/tools/changePack.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 378,
+        "path": "tests/tools/chat.test.ts"
+      },
+      {
+        "commits": 11,
+        "lines": 572,
+        "path": "tests/tools/classify.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 256,
+        "path": "tests/tools/codeCitation.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 142,
+        "path": "tests/tools/codeMap.test.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 589,
+        "path": "tests/tools/codeReview.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 185,
+        "path": "tests/tools/corpusAmend.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 100,
+        "path": "tests/tools/corpusAmendHistory.test.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 569,
+        "path": "tests/tools/corpusAnswer.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 181,
+        "path": "tests/tools/corpusEmptyQuery.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 219,
+        "path": "tests/tools/corpusHealth.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 51,
+        "path": "tests/tools/corpusQueryCap.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 241,
+        "path": "tests/tools/corpusRerank.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 296,
+        "path": "tests/tools/corpusSchemaRefine.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 398,
+        "path": "tests/tools/corpusSearchFilterExplain.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 199,
+        "path": "tests/tools/doctor.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 305,
+        "path": "tests/tools/draft.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 169,
+        "path": "tests/tools/embedSearch.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 156,
+        "path": "tests/tools/embedTimeout.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 94,
+        "path": "tests/tools/embedWarning.test.ts"
+      },
+      {
+        "commits": 11,
+        "lines": 489,
+        "path": "tests/tools/extract.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 300,
+        "path": "tests/tools/fenceTolerance.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 161,
+        "path": "tests/tools/hypothesisDrill.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 473,
+        "path": "tests/tools/incidentBrief.test.ts"
+      },
+      {
+        "commits": 7,
+        "lines": 561,
+        "path": "tests/tools/incidentPack.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 490,
+        "path": "tests/tools/logStats.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 133,
+        "path": "tests/tools/logTail.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 159,
+        "path": "tests/tools/multiFileRefactorPropose.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 310,
+        "path": "tests/tools/r019TierBudgetOverride.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 161,
+        "path": "tests/tools/refactorPlan.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 568,
+        "path": "tests/tools/repoAndChangeBrief.test.ts"
+      },
+      {
+        "commits": 10,
+        "lines": 600,
+        "path": "tests/tools/repoPack.test.ts"
+      },
+      {
+        "commits": 6,
+        "lines": 309,
+        "path": "tests/tools/research.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 552,
+        "path": "tests/tools/runner.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 163,
+        "path": "tests/tools/snippetNullSafety.test.ts"
+      },
+      {
+        "commits": 4,
+        "lines": 250,
+        "path": "tests/tools/summarizeDeep.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 152,
+        "path": "tests/tools/summarizeFast.test.ts"
+      },
+      {
+        "commits": 3,
+        "lines": 120,
+        "path": "tests/tools/triageLogs.test.ts"
+      },
+      {
+        "commits": 5,
+        "lines": 1112,
+        "path": "tests/tools/verifyClaims.test.ts"
+      },
+      {
+        "commits": 1,
+        "lines": 24,
+        "path": "tests/version.test.ts"
+      },
+      {
+        "commits": 2,
+        "lines": 21,
+        "path": "tsconfig.json"
+      },
+      {
+        "commits": 4,
+        "lines": 167,
+        "path": "vitest.config.ts"
+      }
+    ]
+  },
+  "confidence": {
+    "level": "low",
+    "reason": "fewer than 20 source files reach 10 revisions in the window"
+  },
+  "generatedAt": "2026-09-24T02:02:50.190Z",
+  "generatedFrom": {
+    "commit": "5e48e36af656f4320f04178f77536c09855c5372"
+  },
+  "pairs": [
+    {
+      "a": "CHANGELOG.md",
+      "b": "package.json",
+      "either": 43,
+      "shared": 25,
+      "strength": 0.581395
+    },
+    {
+      "a": "HANDOFF.md",
+      "b": "SHIP_GATE.md",
+      "either": 30,
+      "shared": 25,
+      "strength": 0.833333
+    },
+    {
+      "a": "README.es.md",
+      "b": "README.fr.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.es.md",
+      "b": "README.hi.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.es.md",
+      "b": "README.it.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.es.md",
+      "b": "README.ja.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.es.md",
+      "b": "README.pt-BR.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.es.md",
+      "b": "README.zh.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.fr.md",
+      "b": "README.hi.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.fr.md",
+      "b": "README.it.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.fr.md",
+      "b": "README.ja.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.fr.md",
+      "b": "README.pt-BR.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.fr.md",
+      "b": "README.zh.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.hi.md",
+      "b": "README.it.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.hi.md",
+      "b": "README.ja.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.hi.md",
+      "b": "README.pt-BR.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.hi.md",
+      "b": "README.zh.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.it.md",
+      "b": "README.ja.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.it.md",
+      "b": "README.pt-BR.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.it.md",
+      "b": "README.zh.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.ja.md",
+      "b": "README.pt-BR.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.ja.md",
+      "b": "README.zh.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "README.pt-BR.md",
+      "b": "README.zh.md",
+      "either": 12,
+      "shared": 12,
+      "strength": 1
+    },
+    {
+      "a": "site/src/content/docs/handbook/index.md",
+      "b": "site/src/content/docs/handbook/tools.md",
+      "either": 14,
+      "shared": 7,
+      "strength": 0.5
+    },
+    {
+      "a": "site/src/content/docs/handbook/index.md",
+      "b": "site/src/site-config.ts",
+      "either": 13,
+      "shared": 9,
+      "strength": 0.692308
+    },
+    {
+      "a": "src/corpus/chunker.ts",
+      "b": "src/corpus/storage.ts",
+      "either": 10,
+      "shared": 5,
+      "strength": 0.5
+    },
+    {
+      "a": "src/tools/batch.ts",
+      "b": "src/tools/runner.ts",
+      "either": 14,
+      "shared": 8,
+      "strength": 0.571429
+    },
+    {
+      "a": "src/tools/batchProofCheck.ts",
+      "b": "tests/tools/batchProofCheck.test.ts",
+      "either": 7,
+      "shared": 4,
+      "strength": 0.571429
+    },
+    {
+      "a": "src/tools/changeBrief.ts",
+      "b": "src/tools/incidentBrief.ts",
+      "either": 10,
+      "shared": 7,
+      "strength": 0.7
+    },
+    {
+      "a": "src/tools/changeBrief.ts",
+      "b": "src/tools/repoBrief.ts",
+      "either": 9,
+      "shared": 7,
+      "strength": 0.777778
+    },
+    {
+      "a": "src/tools/classify.ts",
+      "b": "src/tools/extract.ts",
+      "either": 14,
+      "shared": 7,
+      "strength": 0.5
+    },
+    {
+      "a": "src/tools/classify.ts",
+      "b": "src/tools/research.ts",
+      "either": 14,
+      "shared": 7,
+      "strength": 0.5
+    },
+    {
+      "a": "src/tools/classify.ts",
+      "b": "src/tools/triageLogs.ts",
+      "either": 12,
+      "shared": 6,
+      "strength": 0.5
+    },
+    {
+      "a": "src/tools/classify.ts",
+      "b": "tests/tools/classify.test.ts",
+      "either": 12,
+      "shared": 7,
+      "strength": 0.583333
+    },
+    {
+      "a": "src/tools/extract.ts",
+      "b": "src/tools/summarizeFast.ts",
+      "either": 10,
+      "shared": 5,
+      "strength": 0.5
+    },
+    {
+      "a": "src/tools/incidentBrief.ts",
+      "b": "src/tools/repoBrief.ts",
+      "either": 10,
+      "shared": 7,
+      "strength": 0.7
+    },
+    {
+      "a": "src/tools/packs/changePack.ts",
+      "b": "src/tools/packs/incidentPack.ts",
+      "either": 12,
+      "shared": 8,
+      "strength": 0.666667
+    },
+    {
+      "a": "src/tools/packs/changePack.ts",
+      "b": "src/tools/packs/repoPack.ts",
+      "either": 12,
+      "shared": 8,
+      "strength": 0.666667
+    },
+    {
+      "a": "src/tools/packs/incidentPack.ts",
+      "b": "src/tools/packs/repoPack.ts",
+      "either": 12,
+      "shared": 6,
+      "strength": 0.5
+    },
+    {
+      "a": "src/tools/research.ts",
+      "b": "src/tools/summarizeDeep.ts",
+      "either": 12,
+      "shared": 8,
+      "strength": 0.666667
+    },
+    {
+      "a": "src/tools/summarizeDeep.ts",
+      "b": "src/tools/summarizeFast.ts",
+      "either": 10,
+      "shared": 5,
+      "strength": 0.5
+    },
+    {
+      "a": "tests/tools/incidentBrief.test.ts",
+      "b": "tests/tools/repoAndChangeBrief.test.ts",
+      "either": 6,
+      "shared": 4,
+      "strength": 0.666667
+    }
+  ],
+  "parameters": {
+    "appliedChangesetLimit": 50,
+    "changeset": 50,
+    "changesetFraction": 0.25,
+    "cohesionDrop": 0.2,
+    "couplingPopulation": "source",
+    "fallenShared": 3,
+    "floor": "fallen",
+    "floorHeld": false,
+    "floorTrigger": "revision-depth",
+    "headDate": "2026-09-17T18:04:18-07:00",
+    "inScopeFiles": 351,
+    "pinnedStart": null,
+    "priorFloor": null,
+    "qualifyingCommits": 199,
+    "qualifyingMinimum": 30,
+    "revisions": 5,
+    "shared": 10,
+    "sharedFloorUsed": 3,
+    "since": "2026-03-22T01:04:18.000Z",
+    "sourceExtensions": [
+      ".js",
+      ".mjs",
+      ".cjs",
+      ".jsx",
+      ".ts",
+      ".tsx",
+      ".mts",
+      ".cts",
+      ".py"
+    ],
+    "sourceFileReach": 20,
+    "sourceFileRise": 25,
+    "sourceFilesReachingStrongFloor": 15,
+    "strength": 0.5,
+    "windowDays": 180
+  },
+  "strengthDefinition": "strength is the shared qualifying commits divided by either. either is the number of qualifying commits that touch either file."
+}
