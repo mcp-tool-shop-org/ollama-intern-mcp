@@ -45,6 +45,8 @@ on:
       - "hermes.config.example.yaml"
       - "Dockerfile"
       - ".dockerignore"
+      # Codecov reads its status and comment settings from this file.
+      - "codecov.yml"
   pull_request:
     paths:
       - "package.json"
@@ -70,6 +72,8 @@ on:
       - "hermes.config.example.yaml"
       - "Dockerfile"
       - ".dockerignore"
+      # Codecov reads its status and comment settings from this file.
+      - "codecov.yml"
   workflow_dispatch:
     inputs:
       run_generate:
@@ -110,6 +114,10 @@ jobs:
         node: ["20", "22"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      # 'true' on the one leg whose coverage and test results go to Codecov,
+      # on a pull request or a push to the default branch.
+      COVERAGE_LEG: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '20' && (github.event_name == 'pull_request' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
     steps:
       # v6
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -179,7 +187,7 @@ jobs:
           # second full-suite execution (the standing CI-minute rule). The
           # count parser below was verified against coverage output before
           # this swap: the `Tests N passed` line is unchanged.
-          npm run test:coverage 2>&1 | tee test-output.txt
+          npm run test:coverage -- --reporter=default --reporter=junit --outputFile.junit=junit.xml 2>&1 | tee test-output.txt
           CLEAN="$(sed -E 's/\x1b\[[0-9;]*m//g' test-output.txt)"
           PASSED="$(printf '%s\n' "$CLEAN" | grep -E "^\s*Tests\s+" | tail -1 | sed -E 's/.*\b([0-9]+)\s+passed.*/\1/' || true)"
           if [ -z "$PASSED" ]; then
@@ -188,6 +196,30 @@ jobs:
           fi
           echo "Resolved passing test count: $PASSED"
           echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+      # The codecov job below uploads what these two steps save; this job
+      # never holds an OIDC token. Coverage is saved when the tests passed,
+      # and test results whenever they ran, failures included, because a
+      # failing test is what that report exists to show. A save step with no
+      # file to save fails the job. overwrite lets a re-run of this job
+      # replace the artifact its earlier attempt saved.
+      - name: Save coverage for Codecov
+        if: ${{ env.COVERAGE_LEG == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codecov-coverage
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+      - name: Save test results for Codecov
+        if: ${{ !cancelled() && env.COVERAGE_LEG == 'true' && steps.pass-count.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codecov-test-results
+          path: junit.xml
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
       # The script emits one '::error file=…::<MARKER> says X, source of truth
       # says Y' per drifted marker, so the drift lands in the run's annotation
       # list and the PR Files-changed view — the same treatment doc-drift.yml
@@ -201,6 +233,64 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/sync-doc-versions.mjs --check --test-count="$PASSED"
+
+  codecov:
+    # Uploads what the test job saved, from a job of its own, so the OIDC
+    # token that signs in to Codecov never exists beside the install and the
+    # tests. The checkout, which keeps no token, is there only so Codecov can
+    # match report paths to files: the job installs nothing and runs none of
+    # the repository's code. It runs whenever the test job ran, failures
+    # included, so failing tests still reach Codecov, and only on the events
+    # that collect coverage. A run the concurrency group cancels uploads
+    # nothing, and each run reads only its own artifacts.
+    needs: verify
+    if: ${{ !cancelled() && needs.verify.result != 'cancelled' && needs.verify.result != 'skipped' && (github.event_name == 'pull_request' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # Each artifact unpacks where the test job wrote its files. A pattern
+      # that matches nothing, unlike a name, does not fail: a failing test
+      # run saves test results and no coverage.
+      - name: Download coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: codecov-coverage
+          path: coverage
+      - name: Download test results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: codecov-test-results
+          path: .
+      # After a passing test job both artifacts exist, so each upload runs,
+      # and fails the job if its files are missing; after a failing one each
+      # runs when its files arrived. Both sign in with OIDC, fail the job when
+      # Codecov refuses the report, and run the Codecov CLI at a fixed version
+      # rather than whichever is newest.
+      - name: Upload coverage to Codecov
+        if: ${{ needs.verify.result == 'success' || hashFiles('coverage/lcov.info') != '' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          version: v11.3.1
+          use_oidc: true
+          fail_ci_if_error: true
+          disable_search: true
+          files: ./coverage/lcov.info
+      - name: Upload test results to Codecov
+        if: ${{ needs.verify.result == 'success' || hashFiles('junit.xml') != '' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          version: v11.3.1
+          use_oidc: true
+          fail_ci_if_error: true
+          report_type: test_results
+          disable_search: true
+          files: ./junit.xml
 
   audit:
     runs-on: ubuntu-latest
