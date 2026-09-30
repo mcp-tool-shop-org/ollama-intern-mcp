@@ -3,12 +3,11 @@
     ".github/",
     "docs/",
     "evals/",
-    "root",
-    "site/"
+    "root"
   ],
   "breaks": [
     {
-      "doors": 4,
+      "doors": 5,
       "importedBy": [
         "scripts",
         "smoke"
@@ -25,6 +24,17 @@
       "importedBy": [],
       "importedByTests": [],
       "kind": "part",
+      "name": "tests",
+      "partLabel": "tests",
+      "spawnedBy": [
+        "scripts"
+      ]
+    },
+    {
+      "doors": 3,
+      "importedBy": [],
+      "importedByTests": [],
+      "kind": "part",
       "name": "root",
       "partLabel": "the repository root"
     },
@@ -35,18 +45,156 @@
       "kind": "part",
       "name": "scripts",
       "partLabel": "scripts"
-    },
-    {
-      "doors": 2,
-      "importedBy": [],
-      "importedByTests": [],
-      "kind": "part",
-      "name": "tests",
-      "partLabel": "tests"
     }
   ],
   "changes": {
-    "first": true
+    "fileCounts": {
+      "added": 1,
+      "changed": 1,
+      "moved": 0,
+      "parts": 2,
+      "removed": 0
+    },
+    "items": [
+      {
+        "kind": "door",
+        "sentence": "CI's pull request trigger now also names `codecov.yml`.",
+        "subjects": [
+          ".github/workflows/ci.yml"
+        ]
+      },
+      {
+        "kind": "door",
+        "sentence": "CI's push trigger now also names `codecov.yml`.",
+        "subjects": [
+          ".github/workflows/ci.yml"
+        ]
+      },
+      {
+        "kind": "door",
+        "sentence": "Doc Drift now also runs tests/cli.test.ts, tests/cloudCheck.test.ts, tests/cloudClient.test.ts and 37 more.",
+        "subjects": [
+          ".github/workflows/doc-drift.yml",
+          "tests/cli.test.ts",
+          "tests/cloudCheck.test.ts",
+          "tests/cloudClient.test.ts",
+          "tests/cloudConfig.test.ts",
+          "tests/cloudEscalation.test.ts",
+          "tests/corpus/",
+          "tests/coverage.test.ts",
+          "tests/doctorCloud.test.ts",
+          "tests/embedMath.test.ts",
+          "tests/envelope.test.ts",
+          "tests/errorHintQuality.test.ts",
+          "tests/evals/",
+          "tests/guardrails/",
+          "tests/integration/",
+          "tests/logTailRoster.test.ts",
+          "tests/mcpGolden.test.ts",
+          "tests/numCtx.test.ts",
+          "tests/observability.test.ts",
+          "tests/ollama.test.ts",
+          "tests/ollamaRetry.test.ts",
+          "tests/pack.test.ts",
+          "tests/prewarm.test.ts",
+          "tests/prewarmInvariants.test.ts",
+          "tests/profiles.test.ts",
+          "tests/protectedPaths.test.ts",
+          "tests/regressions.test.ts",
+          "tests/releaseWorkflowGate.test.ts",
+          "tests/routing.test.ts",
+          "tests/routingIntegration.test.ts",
+          "tests/routingStandby.test.ts",
+          "tests/runContext.test.ts",
+          "tests/semaphore.test.ts",
+          "tests/signalChainE2E.test.ts",
+          "tests/sources.test.ts",
+          "tests/startupProbe.test.ts",
+          "tests/tiers.test.ts",
+          "tests/timeoutLogEnrichment.test.ts",
+          "tests/toolDocsGen.test.ts",
+          "tests/tools/",
+          "tests/version.test.ts"
+        ]
+      },
+      {
+        "kind": "door",
+        "sentence": "And 1 more change to a door.",
+        "subjects": []
+      },
+      {
+        "kind": "landing",
+        "sentence": "site/src/content/docs/handbook/tools.md is now written by scripts/gen-tool-docs.mjs.",
+        "subjects": [
+          "site/src/content/docs/handbook/tools.md",
+          "scripts/gen-tool-docs.mjs"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": ".github/ISSUE_TEMPLATE/feature_request.md is now read by scripts/sync-doc-versions.mjs.",
+        "subjects": [
+          ".github/ISSUE_TEMPLATE/feature_request.md",
+          "scripts/sync-doc-versions.mjs"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "CONTRIBUTING.md is now also read by scripts/sync-doc-versions.mjs.",
+        "subjects": [
+          "CONTRIBUTING.md",
+          "scripts/sync-doc-versions.mjs"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 9 more new writers and readers of places.",
+        "subjects": []
+      },
+      {
+        "kind": "origin",
+        "sentence": "the site was authored and is now mixed.",
+        "subjects": [
+          "site"
+        ]
+      },
+      {
+        "kind": "sequence",
+        "sentence": "In src/index.ts, `main` lost a step, `notePrewarmInProgressRequest`.",
+        "subjects": [
+          "src/index.ts"
+        ]
+      },
+      {
+        "kind": "sequence",
+        "sentence": "In src/index.ts, `main` lost a step, `mintRunId`.",
+        "subjects": [
+          "src/index.ts"
+        ]
+      },
+      {
+        "kind": "sequence",
+        "sentence": "In src/index.ts, `main` lost a step, `withRunContext`.",
+        "subjects": [
+          "src/index.ts"
+        ]
+      },
+      {
+        "kind": "sequence",
+        "sentence": "And 13 more changes to the order of work.",
+        "subjects": []
+      },
+      {
+        "kind": "counts",
+        "sentence": "1 file added and 1 changed content, across 2 parts.",
+        "subjects": []
+      }
+    ],
+    "since": {
+      "commit": "5e48e36af656f4320f04178f77536c09855c5372",
+      "generatedAt": "2026-09-24T02:02:50.190Z"
+    },
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -127,27 +275,45 @@
   ],
   "changesTogetherNote": [
     "2 files changed together with their own tests, as expected.",
-    "Confidence is low: fewer than 20 source files reach 10 revisions in the window.",
+    "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
     "Window: 180 days; a pair counts from 3 shared commits, since 15 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "5e48e36af656f4320f04178f77536c09855c5372",
+  "commit": "9606f5838012236c642ddac69d653302eff12847",
   "defaultBranch": "main",
-  "derived": "11 parts, mostly TypeScript (196 files). Work enters through 8 doors; the busiest is CI, which reaches 4 parts. It publishes to npm and a container image. People run ollama-intern-mcp. People import ollama-intern-mcp.",
+  "derived": "11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.",
   "doors": [
     {
-      "checks": [
+      "builds": [
+        "src/"
+      ],
+      "checks": [],
+      "checksCount": 0,
+      "checksMore": 0,
+      "file": ".github/workflows/ci.yml",
+      "held": [
+        {
+          "checks": [],
+          "checksMore": 0,
+          "lead": "when run by hand with run_generate true",
+          "runs": [
+            "scripts/cloud-smoke-generate.mjs"
+          ],
+          "runsMore": 0,
+          "when": "when run by hand with run_generate true"
+        }
+      ],
+      "id": ".github/workflows/ci.yml",
+      "landings": [
+        "site/src/content/docs/handbook/tools.md"
+      ],
+      "name": "CI",
+      "packs": [
         "hermes.config.example.yaml",
         "package-lock.json",
         "package.json",
-        "src/",
         "tsconfig.json"
       ],
-      "checksCount": 5,
-      "file": ".github/workflows/ci.yml",
-      "id": ".github/workflows/ci.yml",
-      "landings": [],
-      "name": "CI",
       "pushes": false,
       "reach": [
         {
@@ -172,7 +338,6 @@
         }
       ],
       "runs": [
-        "scripts/cloud-smoke-generate.mjs",
         "scripts/gen-tool-docs.mjs",
         "scripts/sync-doc-versions.mjs",
         "src/index.ts",
@@ -217,47 +382,55 @@
         "tests/tools/",
         "tests/version.test.ts"
       ],
-      "runsCount": 44,
-      "sends": [],
+      "runsCount": 43,
+      "runsMore": 98,
+      "sends": [
+        "uploads coverage to Codecov"
+      ],
       "stages": [],
       "triggers": [
-        "on a pull request touching 18 paths",
-        "on a push to main touching 18 paths",
+        "on a pull request touching 19 paths",
+        "on a push to main touching 19 paths",
         "or by hand"
       ]
     },
     {
       "checks": [
-        "hermes.config.example.yaml",
-        "package-lock.json",
-        "package.json",
-        "src/",
-        "tsconfig.json"
+        "HANDOFF.md",
+        "README.md",
+        "SHIP_GATE.md"
       ],
-      "checksCount": 5,
-      "file": ".github/workflows/release.yml",
-      "id": ".github/workflows/release.yml",
+      "checksCount": 3,
+      "checksMore": 0,
+      "file": ".github/workflows/doc-drift.yml",
+      "id": ".github/workflows/doc-drift.yml",
       "landings": [],
-      "name": "Release",
+      "name": "Doc Drift",
       "pushes": false,
       "reach": [
         {
           "boundary": "root",
           "depth": 0,
-          "files": 4
+          "files": 3
         },
         {
-          "boundary": "src",
+          "boundary": "scripts",
           "depth": 0,
-          "files": 92
+          "files": 1
         },
         {
           "boundary": "tests",
           "depth": 0,
           "files": 101
+        },
+        {
+          "boundary": "src",
+          "depth": 1,
+          "files": 90
         }
       ],
       "runs": [
+        "scripts/sync-doc-versions.mjs",
         "tests/cli.test.ts",
         "tests/cloudCheck.test.ts",
         "tests/cloudClient.test.ts",
@@ -299,45 +472,8 @@
         "tests/tools/",
         "tests/version.test.ts"
       ],
-      "runsCount": 40,
-      "sends": [
-        "publishes to npm and a container image",
-        "creates a GitHub release"
-      ],
-      "stages": [],
-      "triggers": [
-        "when a tag matching `v*.*.*` is pushed",
-        "or by hand"
-      ]
-    },
-    {
-      "checks": [
-        "HANDOFF.md",
-        "README.md",
-        "SHIP_GATE.md"
-      ],
-      "checksCount": 3,
-      "file": ".github/workflows/doc-drift.yml",
-      "id": ".github/workflows/doc-drift.yml",
-      "landings": [],
-      "name": "Doc Drift",
-      "pushes": false,
-      "reach": [
-        {
-          "boundary": "root",
-          "depth": 0,
-          "files": 3
-        },
-        {
-          "boundary": "scripts",
-          "depth": 0,
-          "files": 1
-        }
-      ],
-      "runs": [
-        "scripts/sync-doc-versions.mjs"
-      ],
-      "runsCount": 1,
+      "runsCount": 41,
+      "runsMore": 96,
       "sends": [],
       "stages": [],
       "triggers": [
@@ -347,8 +483,99 @@
       ]
     },
     {
+      "builds": [
+        "src/"
+      ],
       "checks": [],
       "checksCount": 0,
+      "checksMore": 0,
+      "file": ".github/workflows/release.yml",
+      "id": ".github/workflows/release.yml",
+      "landings": [],
+      "name": "Release",
+      "packs": [
+        "hermes.config.example.yaml",
+        "package-lock.json",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "root",
+          "depth": 0,
+          "files": 4
+        },
+        {
+          "boundary": "src",
+          "depth": 0,
+          "files": 92
+        },
+        {
+          "boundary": "tests",
+          "depth": 0,
+          "files": 101
+        }
+      ],
+      "runs": [
+        "src/index.ts",
+        "tests/cli.test.ts",
+        "tests/cloudCheck.test.ts",
+        "tests/cloudClient.test.ts",
+        "tests/cloudConfig.test.ts",
+        "tests/cloudEscalation.test.ts",
+        "tests/corpus/",
+        "tests/coverage.test.ts",
+        "tests/doctorCloud.test.ts",
+        "tests/embedMath.test.ts",
+        "tests/envelope.test.ts",
+        "tests/errorHintQuality.test.ts",
+        "tests/evals/",
+        "tests/guardrails/",
+        "tests/integration/",
+        "tests/logTailRoster.test.ts",
+        "tests/mcpGolden.test.ts",
+        "tests/numCtx.test.ts",
+        "tests/observability.test.ts",
+        "tests/ollama.test.ts",
+        "tests/ollamaRetry.test.ts",
+        "tests/pack.test.ts",
+        "tests/prewarm.test.ts",
+        "tests/prewarmInvariants.test.ts",
+        "tests/profiles.test.ts",
+        "tests/protectedPaths.test.ts",
+        "tests/regressions.test.ts",
+        "tests/releaseWorkflowGate.test.ts",
+        "tests/routing.test.ts",
+        "tests/routingIntegration.test.ts",
+        "tests/routingStandby.test.ts",
+        "tests/runContext.test.ts",
+        "tests/semaphore.test.ts",
+        "tests/signalChainE2E.test.ts",
+        "tests/sources.test.ts",
+        "tests/startupProbe.test.ts",
+        "tests/tiers.test.ts",
+        "tests/timeoutLogEnrichment.test.ts",
+        "tests/toolDocsGen.test.ts",
+        "tests/tools/",
+        "tests/version.test.ts"
+      ],
+      "runsCount": 41,
+      "runsMore": 96,
+      "sends": [
+        "creates a GitHub release on a tag push",
+        "publishes to npm and a container image (on a run by hand, only with dry_run false)"
+      ],
+      "stages": [],
+      "triggers": [
+        "when a tag matching `v*.*.*` is pushed",
+        "or by hand"
+      ]
+    },
+    {
+      "checks": [],
+      "checksCount": 0,
+      "checksMore": 0,
       "file": ".github/workflows/pages.yml",
       "id": ".github/workflows/pages.yml",
       "landings": [],
@@ -358,7 +585,7 @@
         {
           "boundary": "site",
           "depth": 0,
-          "files": 3
+          "files": 5
         }
       ],
       "runs": [
@@ -366,6 +593,7 @@
         "site/src/"
       ],
       "runsCount": 2,
+      "runsMore": 0,
       "sends": [
         "deploys the site"
       ],
@@ -378,6 +606,7 @@
     {
       "checks": [],
       "checksCount": 0,
+      "checksMore": 0,
       "file": ".github/workflows/codeql.yml",
       "id": ".github/workflows/codeql.yml",
       "landings": [],
@@ -386,10 +615,13 @@
       "reach": [],
       "runs": [],
       "runsCount": 0,
-      "sends": [],
+      "runsMore": 0,
+      "sends": [
+        "scans code with CodeQL"
+      ],
       "stages": [],
       "triggers": [
-        "on a pull request",
+        "on a pull request to main",
         "on a push to main",
         "on a schedule (`0 9 * * 0`), Sunday at 09:00 UTC",
         "or by hand"
@@ -398,6 +630,7 @@
     {
       "checks": [],
       "checksCount": 0,
+      "checksMore": 0,
       "file": ".github/workflows/dependency-review.yml",
       "id": ".github/workflows/dependency-review.yml",
       "landings": [],
@@ -406,15 +639,19 @@
       "reach": [],
       "runs": [],
       "runsCount": 0,
-      "sends": [],
+      "runsMore": 0,
+      "sends": [
+        "reviews dependency changes"
+      ],
       "stages": [],
       "triggers": [
-        "on a pull request"
+        "on a pull request to main"
       ]
     },
     {
       "checks": [],
       "checksCount": 0,
+      "checksMore": 0,
       "file": "package.json",
       "id": "package.json#ollama-intern-mcp",
       "kind": "command",
@@ -432,6 +669,7 @@
         "src/index.ts"
       ],
       "runsCount": 1,
+      "runsMore": 0,
       "sends": [],
       "stages": [],
       "triggers": []
@@ -439,6 +677,7 @@
     {
       "checks": [],
       "checksCount": 0,
+      "checksMore": 0,
       "file": "package.json",
       "id": "package.json#ollama-intern-mcp",
       "kind": "package",
@@ -456,6 +695,7 @@
         "src/index.ts"
       ],
       "runsCount": 1,
+      "runsMore": 0,
       "sends": [],
       "stages": [],
       "triggers": []
@@ -476,15 +716,27 @@
       "to": "src"
     }
   ],
-  "generated": [],
-  "generatedAt": "2026-09-24T02:02:50.190Z",
+  "engine": "1.24.0",
+  "generated": [
+    {
+      "block": true,
+      "place": "site/src/content/docs/handbook/tools.md",
+      "writers": [
+        "scripts/gen-tool-docs.mjs"
+      ]
+    }
+  ],
+  "generatedAt": "2026-09-30T20:11:20.027Z",
   "limits": [
-    "4 files use syntax the parser cannot read (scripts/gen-tool-docs.mjs, scripts/sync-doc-versions.mjs, tests/tools/artifactWrite.test.ts and 1 more), so what they import is not known: 2 in scripts (a NUL character inside a string), 2 in tests (`typeof import(…)` as a type argument).",
-    "18 writes and 23 reads use paths built at run time and are not named here.",
+    "1 import could not be resolved: `scripts/gen-tool-docs.mjs` imports a path built at run time.",
+    "3 writes and 9 reads use paths built at run time and are not named here.",
     "1 write goes to places this repository does not track, so it is not listed as generated.",
-    "2 writes and 11 reads go to the directory the command is run in, the home directory or a path its caller passes, not to this repository.",
-    "7 commands are built at run time and not followed, 5 of them in tests.",
-    "Statistics confidence is low: fewer than 20 source files reach 10 revisions in the window."
+    "9 writes and 18 reads go to the home directory (.claude/ and .ollama-intern/) or a path their caller passes, not to this repository.",
+    "8 writes and 13 reads go to a path their caller passes, not to this repository.",
+    "1 write and 12 reads go to the directory the command is run in, not to this repository.",
+    "1 write goes to a temporary directory, not to this repository.",
+    "2 commands are built at run time and not followed, 1 of them in tests.",
+    "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
   "mainDoor": ".github/workflows/ci.yml",
   "partLabels": {
@@ -501,7 +753,15 @@
     "tests": "tests"
   },
   "parts": 11,
-  "readers": [],
+  "readers": [
+    {
+      "readers": [
+        "scripts/sync-doc-versions.mjs",
+        "site/astro.config.mjs"
+      ],
+      "target": "site/src/content/docs/handbook/tools.md"
+    }
+  ],
   "repo": "mcp-tool-shop-org/ollama-intern-mcp",
   "sequences": [
     {
@@ -509,538 +769,75 @@
       "file": "src/index.ts",
       "inner": [
         {
-          "file": "src/tools/corpusSearch.ts",
-          "name": "handleCorpusSearch",
+          "file": "src/prewarm.ts",
+          "name": "runPrewarm",
           "part": "src",
           "partLabel": "src",
-          "phrase": "handle corpus search",
+          "phrase": "`runPrewarm`",
           "steps": [
             {
               "name": "resolveTier",
               "part": "src",
               "partLabel": "src",
-              "phrase": "resolve tier"
-            },
-            {
-              "name": "loadCorpus",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "load corpus"
-            },
-            {
-              "name": "isEmptyQuery",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "is empty query"
-            },
-            {
-              "name": "buildEnvelope",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build envelope"
-            },
-            {
-              "name": "callEvent",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "call event"
-            },
-            {
-              "name": "searchCorpus",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "search corpus"
-            },
-            {
-              "name": "resolveTier",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "resolve tier"
+              "phrase": "`resolveTier`"
             },
             {
               "name": "resolveNumCtx",
               "part": "src",
               "partLabel": "src",
-              "phrase": "resolve num ctx"
+              "phrase": "`resolveNumCtx`"
             },
             {
-              "name": "cloudMayServe",
+              "name": "timestamp",
               "part": "src",
               "partLabel": "src",
-              "phrase": "cloud may serve"
-            },
-            {
-              "name": "buildEnvelope",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build envelope"
-            },
-            {
-              "name": "callEvent",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "call event"
-            }
-          ]
-        },
-        {
-          "file": "src/tools/corpusAnswer.ts",
-          "name": "handleCorpusAnswer",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle corpus answer",
-          "steps": [
-            {
-              "name": "loadCorpus",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "load corpus"
-            },
-            {
-              "name": "isEmptyQuery",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "is empty query"
-            },
-            {
-              "name": "resolveTier",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "resolve tier"
-            },
-            {
-              "name": "buildEnvelope",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build envelope"
-            },
-            {
-              "name": "callEvent",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "call event"
-            },
-            {
-              "name": "resolveTier",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "resolve tier"
-            },
-            {
-              "name": "searchCorpus",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "search corpus"
-            },
-            {
-              "name": "resolveTier",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "resolve tier"
-            },
-            {
-              "name": "buildEnvelope",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build envelope"
-            },
-            {
-              "name": "callEvent",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "call event"
-            },
-            {
-              "name": "resolveTier",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "resolve tier"
-            },
-            {
-              "name": "buildEnvelope",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build envelope"
-            }
-          ]
-        },
-        {
-          "file": "src/tools/packs/incidentPack.ts",
-          "name": "handleIncidentPack",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle incident pack",
-          "steps": [
-            {
-              "name": "getRunContext",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "get run context"
-            },
-            {
-              "name": "mintCallId",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "mint call id"
-            },
-            {
-              "name": "withCallContext",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "with call context"
-            },
-            {
-              "name": "assertCloudEscalationConfigured",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "assert cloud escalation configured"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "handleTriageLogs",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "handle triage logs"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "normalizeCorpusQuery",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "normalize corpus query"
-            },
-            {
-              "name": "assembleEvidence",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "assemble evidence"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "synthesizeIncidentBrief",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "synthesize incident brief"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            }
-          ]
-        },
-        {
-          "file": "src/tools/packs/repoPack.ts",
-          "name": "handleRepoPack",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle repo pack",
-          "steps": [
-            {
-              "name": "getRunContext",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "get run context"
-            },
-            {
-              "name": "mintCallId",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "mint call id"
-            },
-            {
-              "name": "withCallContext",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "with call context"
-            },
-            {
-              "name": "assertCloudEscalationConfigured",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "assert cloud escalation configured"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "normalizeCorpusQuery",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "normalize corpus query"
-            },
-            {
-              "name": "assembleEvidence",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "assemble evidence"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "synthesizeRepoBrief",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "synthesize repo brief"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "loadSources",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "load sources"
-            },
-            {
-              "name": "formatSourcesBlock",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "format sources block"
-            }
-          ]
-        },
-        {
-          "file": "src/tools/packs/changePack.ts",
-          "name": "handleChangePack",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle change pack",
-          "steps": [
-            {
-              "name": "getRunContext",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "get run context"
-            },
-            {
-              "name": "mintCallId",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "mint call id"
-            },
-            {
-              "name": "withCallContext",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "with call context"
-            },
-            {
-              "name": "assertCloudEscalationConfigured",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "assert cloud escalation configured"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "normalizeCorpusQuery",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "normalize corpus query"
-            },
-            {
-              "name": "assembleEvidence",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "assemble evidence"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "handleTriageLogs",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "handle triage logs"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
-            },
-            {
-              "name": "synthesizeChangeBrief",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "synthesize change brief"
-            },
-            {
-              "name": "buildPackStepEventWithCorrelation",
-              "part": "src",
-              "partLabel": "src",
-              "phrase": "build pack step event with correlation"
+              "phrase": "`timestamp`"
             }
           ]
         }
       ],
       "part": "src",
       "partLabel": "src",
-      "phrase": "main",
+      "phrase": "`main`",
       "steps": [
         {
           "count": 3,
           "name": null,
           "part": "src",
           "partLabel": "src",
-          "phrase": "profiles"
+          "phrase": "`profiles.ts`"
         },
         {
           "count": 3,
           "name": null,
           "part": "src",
           "partLabel": "src",
-          "phrase": "ollama"
+          "phrase": "`ollama.ts`"
         },
         {
           "name": "timestamp",
           "part": "src",
           "partLabel": "src",
-          "phrase": "timestamp"
+          "phrase": "`timestamp`"
         },
         {
           "name": "runPrewarm",
           "part": "src",
           "partLabel": "src",
-          "phrase": "run prewarm"
-        },
-        {
-          "name": "notePrewarmInProgressRequest",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "note prewarm in progress request"
-        },
-        {
-          "name": "mintRunId",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "mint run id"
-        },
-        {
-          "name": "withRunContext",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "with run context"
-        },
-        {
-          "name": "toErrorShape",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "to error shape"
-        },
-        {
-          "name": "handleResearch",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle research"
-        },
-        {
-          "name": "handleCorpusSearch",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle corpus search"
-        },
-        {
-          "name": "handleCorpusAnswer",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle corpus answer"
-        },
-        {
-          "name": "handleIncidentBrief",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle incident brief"
-        },
-        {
-          "name": "handleRepoBrief",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle repo brief"
-        },
-        {
-          "name": "handleChangeBrief",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle change brief"
-        },
-        {
-          "name": "handleIncidentPack",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle incident pack"
-        },
-        {
-          "name": "handleRepoPack",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle repo pack"
-        },
-        {
-          "name": "handleChangePack",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle change pack"
-        },
-        {
-          "name": "handleArtifactList",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle artifact list"
-        },
-        {
-          "name": "handleArtifactRead",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle artifact read"
-        },
-        {
-          "name": "handleArtifactDiff",
-          "part": "src",
-          "partLabel": "src",
-          "phrase": "handle artifact diff"
+          "phrase": "`runPrewarm`"
         }
       ]
     }
   ],
+  "spawnTested": [
+    "scripts"
+  ],
   "startDoor": ".github/workflows/ci.yml",
   "startHere": [
     ".github/workflows/ci.yml",
-    "src/index.ts"
+    "src/index.ts",
+    "src/profiles.ts",
+    "src/tiers.ts"
   ],
   "summary": null,
   "summaryFrom": null,
@@ -1048,12 +845,13 @@
   "testedBy": {
     "bench": 0,
     "examples": 0,
-    "scripts": 0,
+    "scripts": 1,
     "smoke": 1,
-    "src": 94
+    "src": 97
   },
-  "unnamedWrites": 18,
+  "unnamedWrites": 3,
   "unread": [],
+  "unreadFiles": 0,
   "unreadNote": [],
   "untested": [
     {
@@ -1065,13 +863,10 @@
       "part": "examples",
       "partLabel": "examples",
       "testedBy": 0
-    },
-    {
-      "part": "scripts",
-      "partLabel": "scripts",
-      "testedBy": 0
     }
   ],
-  "untestedNote": [],
-  "written": 0
+  "untestedNote": [
+    "scripts is touched by tests only through a spawn: a test runs its files as a child process."
+  ],
+  "written": 1
 }
