@@ -130,7 +130,7 @@ jobs:
       # runs on the ubuntu-latest / Node 22 cell only.
       - name: Atlas check
         if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
-        run: npx --yes @dogfood-lab/atlas@1.16.0 check
+        run: npx --yes @dogfood-lab/atlas@1.24.0 check
       # Fail loudly if the runner somehow booted with a Node version outside
       # our supported range. engines.node is ">=20.0.0"; the matrix pins 20
       # and 22. Anything else means setup-node drifted and tests would give
