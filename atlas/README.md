@@ -1,31 +1,19 @@
 # ollama-intern-mcp: how it works
 
-Mapped at 2026-09-30 from commit 9606f58 by Atlas 1.24.0.
+Mapped at 2026-10-01 from commit 9555331 by Atlas 1.24.0.
 
 ## What this is
 
 11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.
 
-## What changed since 2026-09-24 (5e48e36)
+## What changed since 2026-09-30 (9606f58)
 
-- CI's pull request trigger now also names `codecov.yml`.
-- CI's push trigger now also names `codecov.yml`.
-- Doc Drift now also runs tests/cli.test.ts, tests/cloudCheck.test.ts, tests/cloudClient.test.ts and 37 more.
-- And 1 more change to a door.
-- site/src/content/docs/handbook/tools.md is now written by scripts/gen-tool-docs.mjs.
-- .github/ISSUE_TEMPLATE/feature_request.md is now read by scripts/sync-doc-versions.mjs.
-- CONTRIBUTING.md is now also read by scripts/sync-doc-versions.mjs.
-- And 9 more new writers and readers of places.
-- the site was authored and is now mixed.
-- In src/index.ts, `main` lost a step, `notePrewarmInProgressRequest`.
-- In src/index.ts, `main` lost a step, `mintRunId`.
-- In src/index.ts, `main` lost a step, `withRunContext`.
-- And 13 more changes to the order of work.
-- 1 file added and 1 changed content, across 2 parts.
+- CI's pull request trigger no longer names `.dockerignore`, `.github/workflows/**`, `.npmignore`, `Dockerfile`, `atlas/**`, `codecov.yml`, `hermes.config.example.yaml`, `package-lock.json`, `package.json`, `scripts/gen-tool-docs.mjs`, `scripts/sync-doc-versions.mjs`, `site/package-lock.json`, `site/package.json`, `site/src/content/docs/handbook/tools.md`, `site/src/content/docs/handbook/tools/**`, `src/**`, `tests/**`, `tsconfig.json` and `vitest.config.ts`.
+- 2 files changed content, across 2 parts.
 
 ## What comes in
 
-1. **CI.** On a pull request touching 19 paths; on a push to main touching 19 paths; or by hand. Runs scripts/gen-tool-docs.mjs, scripts/sync-doc-versions.mjs, src/index.ts and 98 more; builds src/; packs hermes.config.example.yaml, package-lock.json, package.json and 1 more into an image. When run by hand with run_generate true, it also runs scripts/cloud-smoke-generate.mjs.
+1. **CI.** On a pull request; on a push to main touching 19 paths; or by hand. Runs scripts/gen-tool-docs.mjs, scripts/sync-doc-versions.mjs, src/index.ts and 98 more; builds src/; packs hermes.config.example.yaml, package-lock.json, package.json and 1 more into an image. When run by hand with run_generate true, it also runs scripts/cloud-smoke-generate.mjs.
 2. **Doc Drift.** On a pull request touching 12 paths; on a push to main touching 12 paths; or by hand. Runs scripts/sync-doc-versions.mjs, tests/cli.test.ts, tests/cloudCheck.test.ts and 96 more; checks HANDOFF.md, README.md and SHIP_GATE.md.
 3. **Release.** When a tag matching `v*.*.*` is pushed; or by hand. Runs src/index.ts, tests/cli.test.ts, tests/cloudCheck.test.ts and 96 more; builds src/; packs hermes.config.example.yaml, package-lock.json, package.json and 1 more into an image.
 4. **Deploy site to GitHub Pages.** On a push to main touching 2 paths; or by hand. Runs site/astro.config.mjs and site/src/.
