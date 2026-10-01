@@ -507,8 +507,10 @@ jobs:
   # Cost: the doctor probe is a no-GPU /api/tags listing; the optional real
   # generate is a single ~8-token call (run_generate input, default on). Keep
   # it tiny.
+  # A required check, so the job runs on every pull request: install and build.
+  # The Ollama Cloud steps below stay manual-only (workflow_dispatch), so a PR
+  # never calls the cloud.
   cloud-smoke:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -525,6 +527,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: "Cloud doctor probe (reachable: yes)"
+        if: github.event_name == 'workflow_dispatch'
         # Maps the OLLAMA_CLOUD secret → OLLAMA_API_KEY here (step-level env is
         # the only context where `secrets` is permitted). Skips gracefully when
         # the secret is absent.
@@ -559,7 +562,7 @@ jobs:
         # Optional, default on. The doctor probe only proves reachability (the
         # /api/tags listing does not gate on the key); this single tiny generate
         # proves the key is GOOD and the routing path actually serves from cloud.
-        if: ${{ inputs.run_generate }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_generate }}
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD }}
           OLLAMA_CLOUD_PRIMARY: "1"

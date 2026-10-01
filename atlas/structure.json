@@ -29,7 +29,7 @@
           "path": ".github/pull_request_template.md"
         },
         {
-          "hash": "d2d61201172807b54cec4aa8c709b3bbd7a4c2a7b9577004e85e596d2e0de845",
+          "hash": "b610da13ba74af82b12e9ebef3887f7dcb0b9cc136863974836fcca79c40b061",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -7676,10 +7676,7 @@
           "matched": true,
           "path": "src/",
           "runKind": "executes",
-          "via": "tsc tsconfig.json",
-          "when": {
-            "event": "workflow_dispatch"
-          }
+          "via": "tsc tsconfig.json"
         },
         {
           "built": true,
@@ -9609,7 +9606,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "9555331eec5ad1f5aab691e9eb4b1f66bdfeb135",
+    "commit": "c9172cea7dd811660a2cba73feb42a509e3d3c85",
     "tracked": 352
   },
   "landings": [
