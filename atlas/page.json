@@ -50,30 +50,23 @@
   "changes": {
     "fileCounts": {
       "added": 0,
-      "changed": 2,
+      "changed": 1,
       "moved": 0,
-      "parts": 2,
+      "parts": 1,
       "removed": 0
     },
     "items": [
       {
-        "kind": "door",
-        "sentence": "CI's pull request trigger no longer names `.dockerignore`, `.github/workflows/**`, `.npmignore`, `Dockerfile`, `atlas/**`, `codecov.yml`, `hermes.config.example.yaml`, `package-lock.json`, `package.json`, `scripts/gen-tool-docs.mjs`, `scripts/sync-doc-versions.mjs`, `site/package-lock.json`, `site/package.json`, `site/src/content/docs/handbook/tools.md`, `site/src/content/docs/handbook/tools/**`, `src/**`, `tests/**`, `tsconfig.json` and `vitest.config.ts`.",
-        "subjects": [
-          ".github/workflows/ci.yml"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "2 files changed content, across 2 parts.",
+        "sentence": "Nothing structural changed since 2026-10-01; 1 file changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "9606f5838012236c642ddac69d653302eff12847",
-      "generatedAt": "2026-09-30T20:11:20.027Z"
+      "commit": "9555331eec5ad1f5aab691e9eb4b1f66bdfeb135",
+      "generatedAt": "2026-10-01T02:13:30.714Z"
     },
-    "unchanged": false
+    "unchanged": true
   },
   "changesTogether": [
     {
@@ -158,7 +151,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 15 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "9555331eec5ad1f5aab691e9eb4b1f66bdfeb135",
+  "commit": "c9172cea7dd811660a2cba73feb42a509e3d3c85",
   "defaultBranch": "main",
   "derived": "11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.",
   "doors": [
@@ -605,7 +598,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-01T02:13:30.714Z",
+  "generatedAt": "2026-10-01T02:36:07.954Z",
   "limits": [
     "1 import could not be resolved: `scripts/gen-tool-docs.mjs` imports a path built at run time.",
     "3 writes and 9 reads use paths built at run time and are not named here.",

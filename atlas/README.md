@@ -1,15 +1,14 @@
 # ollama-intern-mcp: how it works
 
-Mapped at 2026-10-01 from commit 9555331 by Atlas 1.24.0.
+Mapped at 2026-10-01 from commit c9172ce by Atlas 1.24.0.
 
 ## What this is
 
 11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.
 
-## What changed since 2026-09-30 (9606f58)
+## What changed since 2026-10-01 (9555331)
 
-- CI's pull request trigger no longer names `.dockerignore`, `.github/workflows/**`, `.npmignore`, `Dockerfile`, `atlas/**`, `codecov.yml`, `hermes.config.example.yaml`, `package-lock.json`, `package.json`, `scripts/gen-tool-docs.mjs`, `scripts/sync-doc-versions.mjs`, `site/package-lock.json`, `site/package.json`, `site/src/content/docs/handbook/tools.md`, `site/src/content/docs/handbook/tools/**`, `src/**`, `tests/**`, `tsconfig.json` and `vitest.config.ts`.
-- 2 files changed content, across 2 parts.
+Nothing structural changed since 2026-10-01; 1 file changed content.
 
 ## What comes in
 
