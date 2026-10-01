@@ -49,8 +49,8 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 1,
-      "changed": 1,
+      "added": 0,
+      "changed": 2,
       "moved": 0,
       "parts": 2,
       "removed": 0
@@ -58,141 +58,20 @@
     "items": [
       {
         "kind": "door",
-        "sentence": "CI's pull request trigger now also names `codecov.yml`.",
+        "sentence": "CI's pull request trigger no longer names `.dockerignore`, `.github/workflows/**`, `.npmignore`, `Dockerfile`, `atlas/**`, `codecov.yml`, `hermes.config.example.yaml`, `package-lock.json`, `package.json`, `scripts/gen-tool-docs.mjs`, `scripts/sync-doc-versions.mjs`, `site/package-lock.json`, `site/package.json`, `site/src/content/docs/handbook/tools.md`, `site/src/content/docs/handbook/tools/**`, `src/**`, `tests/**`, `tsconfig.json` and `vitest.config.ts`.",
         "subjects": [
           ".github/workflows/ci.yml"
         ]
-      },
-      {
-        "kind": "door",
-        "sentence": "CI's push trigger now also names `codecov.yml`.",
-        "subjects": [
-          ".github/workflows/ci.yml"
-        ]
-      },
-      {
-        "kind": "door",
-        "sentence": "Doc Drift now also runs tests/cli.test.ts, tests/cloudCheck.test.ts, tests/cloudClient.test.ts and 37 more.",
-        "subjects": [
-          ".github/workflows/doc-drift.yml",
-          "tests/cli.test.ts",
-          "tests/cloudCheck.test.ts",
-          "tests/cloudClient.test.ts",
-          "tests/cloudConfig.test.ts",
-          "tests/cloudEscalation.test.ts",
-          "tests/corpus/",
-          "tests/coverage.test.ts",
-          "tests/doctorCloud.test.ts",
-          "tests/embedMath.test.ts",
-          "tests/envelope.test.ts",
-          "tests/errorHintQuality.test.ts",
-          "tests/evals/",
-          "tests/guardrails/",
-          "tests/integration/",
-          "tests/logTailRoster.test.ts",
-          "tests/mcpGolden.test.ts",
-          "tests/numCtx.test.ts",
-          "tests/observability.test.ts",
-          "tests/ollama.test.ts",
-          "tests/ollamaRetry.test.ts",
-          "tests/pack.test.ts",
-          "tests/prewarm.test.ts",
-          "tests/prewarmInvariants.test.ts",
-          "tests/profiles.test.ts",
-          "tests/protectedPaths.test.ts",
-          "tests/regressions.test.ts",
-          "tests/releaseWorkflowGate.test.ts",
-          "tests/routing.test.ts",
-          "tests/routingIntegration.test.ts",
-          "tests/routingStandby.test.ts",
-          "tests/runContext.test.ts",
-          "tests/semaphore.test.ts",
-          "tests/signalChainE2E.test.ts",
-          "tests/sources.test.ts",
-          "tests/startupProbe.test.ts",
-          "tests/tiers.test.ts",
-          "tests/timeoutLogEnrichment.test.ts",
-          "tests/toolDocsGen.test.ts",
-          "tests/tools/",
-          "tests/version.test.ts"
-        ]
-      },
-      {
-        "kind": "door",
-        "sentence": "And 1 more change to a door.",
-        "subjects": []
-      },
-      {
-        "kind": "landing",
-        "sentence": "site/src/content/docs/handbook/tools.md is now written by scripts/gen-tool-docs.mjs.",
-        "subjects": [
-          "site/src/content/docs/handbook/tools.md",
-          "scripts/gen-tool-docs.mjs"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": ".github/ISSUE_TEMPLATE/feature_request.md is now read by scripts/sync-doc-versions.mjs.",
-        "subjects": [
-          ".github/ISSUE_TEMPLATE/feature_request.md",
-          "scripts/sync-doc-versions.mjs"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "CONTRIBUTING.md is now also read by scripts/sync-doc-versions.mjs.",
-        "subjects": [
-          "CONTRIBUTING.md",
-          "scripts/sync-doc-versions.mjs"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "And 9 more new writers and readers of places.",
-        "subjects": []
-      },
-      {
-        "kind": "origin",
-        "sentence": "the site was authored and is now mixed.",
-        "subjects": [
-          "site"
-        ]
-      },
-      {
-        "kind": "sequence",
-        "sentence": "In src/index.ts, `main` lost a step, `notePrewarmInProgressRequest`.",
-        "subjects": [
-          "src/index.ts"
-        ]
-      },
-      {
-        "kind": "sequence",
-        "sentence": "In src/index.ts, `main` lost a step, `mintRunId`.",
-        "subjects": [
-          "src/index.ts"
-        ]
-      },
-      {
-        "kind": "sequence",
-        "sentence": "In src/index.ts, `main` lost a step, `withRunContext`.",
-        "subjects": [
-          "src/index.ts"
-        ]
-      },
-      {
-        "kind": "sequence",
-        "sentence": "And 13 more changes to the order of work.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "1 file added and 1 changed content, across 2 parts.",
+        "sentence": "2 files changed content, across 2 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "5e48e36af656f4320f04178f77536c09855c5372",
-      "generatedAt": "2026-09-24T02:02:50.190Z"
+      "commit": "9606f5838012236c642ddac69d653302eff12847",
+      "generatedAt": "2026-09-30T20:11:20.027Z"
     },
     "unchanged": false
   },
@@ -279,7 +158,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 15 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "9606f5838012236c642ddac69d653302eff12847",
+  "commit": "9555331eec5ad1f5aab691e9eb4b1f66bdfeb135",
   "defaultBranch": "main",
   "derived": "11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.",
   "doors": [
@@ -389,7 +268,7 @@
       ],
       "stages": [],
       "triggers": [
-        "on a pull request touching 19 paths",
+        "on a pull request",
         "on a push to main touching 19 paths",
         "or by hand"
       ]
@@ -726,7 +605,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-09-30T20:11:20.027Z",
+  "generatedAt": "2026-10-01T02:13:30.714Z",
   "limits": [
     "1 import could not be resolved: `scripts/gen-tool-docs.mjs` imports a path built at run time.",
     "3 writes and 9 reads use paths built at run time and are not named here.",
