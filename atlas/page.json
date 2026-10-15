@@ -50,108 +50,30 @@
   "changes": {
     "fileCounts": {
       "added": 0,
-      "changed": 1,
+      "changed": 10,
       "moved": 0,
-      "parts": 1,
+      "parts": 4,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-01; 1 file changed content.",
+        "sentence": "Nothing structural changed since 2026-10-01; 10 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "9555331eec5ad1f5aab691e9eb4b1f66bdfeb135",
-      "generatedAt": "2026-10-01T02:13:30.714Z"
+      "commit": "c9172cea7dd811660a2cba73feb42a509e3d3c85",
+      "generatedAt": "2026-10-01T02:36:07.954Z"
     },
     "unchanged": true
   },
-  "changesTogether": [
-    {
-      "a": "src/tools/changeBrief.ts",
-      "b": "src/tools/repoBrief.ts",
-      "either": 9,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 7
-    },
-    {
-      "a": "src/tools/changeBrief.ts",
-      "b": "src/tools/incidentBrief.ts",
-      "either": 10,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 7
-    },
-    {
-      "a": "src/tools/incidentBrief.ts",
-      "b": "src/tools/repoBrief.ts",
-      "either": 10,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 7
-    },
-    {
-      "a": "src/tools/packs/changePack.ts",
-      "b": "src/tools/packs/incidentPack.ts",
-      "either": 12,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 8
-    },
-    {
-      "a": "src/tools/packs/changePack.ts",
-      "b": "src/tools/packs/repoPack.ts",
-      "either": 12,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 8
-    }
-  ],
+  "changesTogether": [],
   "changesTogetherNote": [
-    "2 files changed together with their own tests, as expected.",
-    "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 15 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 0 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 2,
-  "commit": "c9172cea7dd811660a2cba73feb42a509e3d3c85",
+  "changesTogetherWithTests": 0,
+  "commit": "6dbb745224d9a8ea74bd1d2b15a3af947f934253",
   "defaultBranch": "main",
   "derived": "11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.",
   "doors": [
@@ -598,7 +520,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-01T02:36:07.954Z",
+  "generatedAt": "2026-10-15T02:39:49.849Z",
   "limits": [
     "1 import could not be resolved: `scripts/gen-tool-docs.mjs` imports a path built at run time.",
     "3 writes and 9 reads use paths built at run time and are not named here.",
