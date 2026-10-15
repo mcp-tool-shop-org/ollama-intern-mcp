@@ -365,7 +365,7 @@
           "path": ".npmignore"
         },
         {
-          "hash": "a2a733da9c0786dfcbd069e2f6bf9871df8c6734f86aacd03ceb480d83880089",
+          "hash": "8f0fa9a4f3c85031b5e50d1e91f8d9e05ad0cae8286f951fbb4ccde672baa2a8",
           "path": "CHANGELOG.md"
         },
         {
@@ -441,11 +441,11 @@
           "path": "hermes.config.example.yaml"
         },
         {
-          "hash": "79d172c8354f4e946971399541f36d8383d909293c752837c6d9b42e447c4d96",
+          "hash": "82b7553404695c25b0aad74b852fdaadab2fe7016e6941919671af6a349692a1",
           "path": "package-lock.json"
         },
         {
-          "hash": "604df3ea4c4ee631c273f199c1f7b72af5375f9b57a1cc6fbbe7ff454acc5bf4",
+          "hash": "3595a3860d229fdcfb97ca73ac9b4347fcd5bbd55c823f203213a9d2bbfef657",
           "path": "package.json"
         },
         {
@@ -8741,7 +8741,7 @@
           "rule": "D1",
           "step": "Check doc version/count markers (sync-docs:check)",
           "tool": "vitest run",
-          "version": "4.1.8",
+          "version": "4.1.11",
           "why": "no setup-node step before it"
         }
       ],
@@ -9606,7 +9606,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "6dbb745224d9a8ea74bd1d2b15a3af947f934253",
+    "commit": "306fadf94a8e02028c5670cdd6a617a0abed9d1c",
     "tracked": 352
   },
   "landings": [

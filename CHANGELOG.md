@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
-- **Dependency updates; no code changed.** Lockfile only, within the declared ranges: `@modelcontextprotocol/sdk` 1.29.0 to 1.32.1 (a high advisory, fixed in 1.31.0), `fast-uri` 3.1.8, `ip-address` 10.7.4, `proxy-addr` 2.0.8 and `source-map-js` 1.2.2. Three moderate advisories stay open, all dev-only: `vitest`, `@vitest/mocker` and `@vitest/coverage-v8` (a path traversal through the mock redirect, fixed in 4.1.11); npm crashes with an `edgesOut` error on every install that would move them in this tree.
+- **Dependency updates; no code changed.** Lockfile only, within the declared ranges: `@modelcontextprotocol/sdk` 1.29.0 to 1.32.1 (a high advisory, fixed in 1.31.0), `fast-uri` 3.1.8, `ip-address` 10.7.4, `proxy-addr` 2.0.8 and `source-map-js` 1.2.2. The dev-only test tooling moves with them: `vitest` and `@vitest/coverage-v8` are raised from `^4.1.4` to `^4.1.11` (a path traversal through vitest's mock redirect, fixed in 4.1.11), which also moves `vite` to 8.3.4.
 
 ## [2.10.0] - 2026-09-11
 

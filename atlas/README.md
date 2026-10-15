@@ -1,14 +1,14 @@
 # ollama-intern-mcp: how it works
 
-Mapped at 2026-10-15 from commit 6dbb745 by Atlas 1.24.0.
+Mapped at 2026-10-15 from commit 306fadf by Atlas 1.24.0.
 
 ## What this is
 
 11 parts, mostly TypeScript (196 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.
 
-## What changed since 2026-10-01 (c9172ce)
+## What changed since 2026-10-15 (6dbb745)
 
-Nothing structural changed since 2026-10-01; 10 files changed content.
+Nothing structural changed since 2026-10-15; 3 files changed content.
 
 ## What comes in
 
