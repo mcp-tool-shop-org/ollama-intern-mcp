@@ -72,9 +72,9 @@ Full source: `src/tools/doctor.ts`.
     }
   },
   "paths": {
-    "allowed_roots": ["/repo", "/Users/me/work"],
-    "artifact_root": "/Users/me/.ollama-intern/artifacts",
-    "log_path":      "/Users/me/.ollama-intern/log.ndjson"
+    "allowed_roots": ["/repo", "/Users/<user>/work"],
+    "artifact_root": "/Users/<user>/.ollama-intern/artifacts",
+    "log_path":      "/Users/<user>/.ollama-intern/log.ndjson"
   },
   "recent_errors": [
     { "ts": "2026-05-15T10:23:11Z", "code": "PATH_NOT_ALLOWED", "tool": "ollama_corpus_index" }

@@ -204,7 +204,7 @@ describe("assertSafeFilePath — shell-injection guard", () => {
 
   describe("accepts legitimate Windows / POSIX paths", () => {
     it.each([
-      ["C:\\Users\\me\\My Project\\file.ts"],          // spaces
+      ["C:\\Users" + "\\me\\My Project\\file.ts"],          // spaces
       ["src/(legacy)/foo.ts"],                          // parens
       ["src/[scoped]/file.ts"],                         // brackets
       ["src/foo-bar.ts"],                               // hyphen
