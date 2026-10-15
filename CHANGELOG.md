@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.10.1] - 2026-10-15
+
+### Security
+
+- **Dependency updates; no code changed.** Lockfile only, within the declared ranges: `@modelcontextprotocol/sdk` 1.29.0 to 1.32.1 (a high advisory, fixed in 1.31.0), `fast-uri` 3.1.8, `ip-address` 10.7.4, `proxy-addr` 2.0.8 and `source-map-js` 1.2.2. The dev-only test tooling moves with them: `vitest` and `@vitest/coverage-v8` are raised from `^4.1.4` to `^4.1.11` (a path traversal through vitest's mock redirect, fixed in 4.1.11), which also moves `vite` to 8.3.4.
+
 ## [2.10.0] - 2026-09-11
 
 The cloud-honesty release. v2.9.0 shipped per-call cloud escalation and the README advertised it as "escalate one high-stakes review to a 600B model" — but the `backend` input existed on exactly **one** of 44 tools, and it was `ollama_chat`, whose own description calls it a last resort. Every review-shaped job was pinned to a local 8B with no escape hatch short of flipping every call to cloud. Most people cannot host a frontier model on their own GPU; that hardware ceiling, not interest, is the real limit on local AI, and this release makes the thing that lifts it actually reachable.

@@ -45,7 +45,7 @@ import type { RunContext } from "../runContext.js";
  * Windows paths and are NOT rejected — only the characters cmd.exe parses.
  *
  * Reference test cases:
- *   "C:\\Users\\me\\My Project\\file.ts"   — passes (legitimate)
+ *   "C:\\work\\My Project\\file.ts"   — passes (legitimate)
  *   "src/(legacy)/foo.ts"                  — passes (legitimate)
  *   "foo & calc.exe"                       — rejects (& is cmd separator)
  *   "evil.ts; rm -rf /"                    — rejects (; is cmd separator)

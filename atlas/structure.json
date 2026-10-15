@@ -365,7 +365,7 @@
           "path": ".npmignore"
         },
         {
-          "hash": "50d98e36031af8a663784d0dd08962dd3167346232fc4820191f65af717a5818",
+          "hash": "8f0fa9a4f3c85031b5e50d1e91f8d9e05ad0cae8286f951fbb4ccde672baa2a8",
           "path": "CHANGELOG.md"
         },
         {
@@ -377,7 +377,7 @@
           "path": "Dockerfile"
         },
         {
-          "hash": "e932c27ab3f30d8f5aba20324c5be8e64658acdc98ff434d15b95dd9c2d49a58",
+          "hash": "3da73ae6ffb7f9517f0b04f43be7d0d39099b2efadea6ed5ecfe05377b34b359",
           "path": "HANDOFF.md"
         },
         {
@@ -429,7 +429,7 @@
           "path": "SECURITY.md"
         },
         {
-          "hash": "287526e27743402ac2df2de4aae862d24b56c95ae3e7e8b20223b3962efa34de",
+          "hash": "a2017c8b73937b518a2e6be2295bf4a1f3dd99380976df69f3f7115c3eecb90d",
           "path": "SHIP_GATE.md"
         },
         {
@@ -441,11 +441,11 @@
           "path": "hermes.config.example.yaml"
         },
         {
-          "hash": "293da1307ca6a0d72873825a0cf24af8c6c93dafbbd8c719c1aaaa9ce6498ba5",
+          "hash": "82b7553404695c25b0aad74b852fdaadab2fe7016e6941919671af6a349692a1",
           "path": "package-lock.json"
         },
         {
-          "hash": "4b005761fe1d6a1272dd3045bef94b238ead4311ba7f56de4ea2a452b11712f2",
+          "hash": "3595a3860d229fdcfb97ca73ac9b4347fcd5bbd55c823f203213a9d2bbfef657",
           "path": "package.json"
         },
         {
@@ -660,7 +660,7 @@
           "path": "site/astro.config.mjs"
         },
         {
-          "hash": "846515ee68511ea641db9eee053ff2c31cd3dbbe8650d5adccc6d1f00882a6a7",
+          "hash": "6476319f7a7066b7268ecb0d648705c7788cbb838e4bf06ff50ba9c44dc3c2fd",
           "path": "site/package-lock.json"
         },
         {
@@ -829,7 +829,7 @@
           "path": "site/src/content/docs/handbook/tools/corpus-search.md"
         },
         {
-          "hash": "c6a4ee02050ce775f33bf267eea5b3ddf810b8dddacd7b15982056fcf76e81bc",
+          "hash": "0122a4456b3a02cd3b20c5efa05143c1e4628ce5da0dfd89243f7c0e5b012c08",
           "path": "site/src/content/docs/handbook/tools/doctor.md"
         },
         {
@@ -1294,7 +1294,7 @@
               "line": 29
             }
           ],
-          "hash": "1b0314daf39b2e6b4d454191cbe07903b3ac9ab5270adc7f4fb6699c69d651ce",
+          "hash": "2385a3bb5a104af291db006d3787e85fdb0f9c30208c11dad0f8467b36aa48d7",
           "path": "src/corpus/identity.ts"
         },
         {
@@ -3579,7 +3579,7 @@
               "line": 362
             }
           ],
-          "hash": "139c1e84aab568febd31100e89e25032dc109142390c3695a4a4eca598fb8184",
+          "hash": "91d1824f45196bdb3c431b88ab6336189a87f9066604a6232c166485f5a8de2d",
           "importOrder": [
             "src/envelope.ts",
             "src/observability.ts",
@@ -6334,7 +6334,7 @@
           "testFramework": "vitest"
         },
         {
-          "hash": "94d3938e5e5e42a8c7756c3188df56b5068aff94461a3ddd29d3ced24bd94894",
+          "hash": "f3ffd32dc5715f3871f331e504adc373902a417b260d584a936033994df000cc",
           "importOrder": [
             "src/tools/batchProofCheck.ts",
             "src/errors.ts",
@@ -8741,7 +8741,7 @@
           "rule": "D1",
           "step": "Check doc version/count markers (sync-docs:check)",
           "tool": "vitest run",
-          "version": "4.1.8",
+          "version": "4.1.11",
           "why": "no setup-node step before it"
         }
       ],
@@ -9606,7 +9606,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "c9172cea7dd811660a2cba73feb42a509e3d3c85",
+    "commit": "c67e21c96190f2bab5d0dee995e25b91c50e74a8",
     "tracked": 352
   },
   "landings": [
