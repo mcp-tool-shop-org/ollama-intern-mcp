@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.10.2] - 2026-10-15
+
+### Fixed
+
+- **Command timeouts are enforced on Windows.** The `ollama_draft` compile check (15 s) and `ollama_batch_proof_check` (your `timeout_ms`, 60 s by default) both run their command through `cmd.exe` on Windows. On timeout they killed `cmd.exe` only: the real command (`rustc`, `tsc`, `npm test`) kept running and kept the output pipes open, so the call waited for it to finish anyway. A hung proof-check command hung the tool call with it. Both now end the whole process tree on Windows (`taskkill /T /F`), and on every platform they return at most 2 s after the deadline, even if something the command started still holds the pipes. On Linux and macOS, a process the command started can outlive it; the call still returns on time.
+- Found by a CI timeout: the Windows compile-check regression test ran past its 30 s limit on a cold runner, though the check's own limit is 15 s.
+
 ## [2.10.1] - 2026-10-15
 
 ### Security

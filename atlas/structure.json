@@ -365,7 +365,7 @@
           "path": ".npmignore"
         },
         {
-          "hash": "8f0fa9a4f3c85031b5e50d1e91f8d9e05ad0cae8286f951fbb4ccde672baa2a8",
+          "hash": "5bef441a9ed9fd097aa57c9b11acd68c5c775ace794a34b6bf4c3307f66bd26a",
           "path": "CHANGELOG.md"
         },
         {
@@ -377,7 +377,7 @@
           "path": "Dockerfile"
         },
         {
-          "hash": "3da73ae6ffb7f9517f0b04f43be7d0d39099b2efadea6ed5ecfe05377b34b359",
+          "hash": "f5515e404b455b6e86a3395ce59bc799a9ffcf6aedeb1762bb1a73be26d5bf4f",
           "path": "HANDOFF.md"
         },
         {
@@ -429,7 +429,7 @@
           "path": "SECURITY.md"
         },
         {
-          "hash": "a2017c8b73937b518a2e6be2295bf4a1f3dd99380976df69f3f7115c3eecb90d",
+          "hash": "b1c90efb7c1dd03d14f8d68bcaa1aa51aff23063875c9cea18741756150d0918",
           "path": "SHIP_GATE.md"
         },
         {
@@ -441,11 +441,11 @@
           "path": "hermes.config.example.yaml"
         },
         {
-          "hash": "82b7553404695c25b0aad74b852fdaadab2fe7016e6941919671af6a349692a1",
+          "hash": "70ef328f2102e5c997010bbcd1d18e6e220e67bf02a82289b560bb305bff8fed",
           "path": "package-lock.json"
         },
         {
-          "hash": "3595a3860d229fdcfb97ca73ac9b4347fcd5bbd55c823f203213a9d2bbfef657",
+          "hash": "afc56a48129f5c456cc0d154060a5adb2369f19452883235d2641466cd67cb60",
           "path": "package.json"
         },
         {
@@ -660,11 +660,11 @@
           "path": "site/astro.config.mjs"
         },
         {
-          "hash": "6476319f7a7066b7268ecb0d648705c7788cbb838e4bf06ff50ba9c44dc3c2fd",
+          "hash": "533ffbc2cf9d09309284006b66c2dcbf163e3dd78b609b703b3ba15eac8d930a",
           "path": "site/package-lock.json"
         },
         {
-          "hash": "4ac6e2a6dd2baea8c73698e171b6120db1c3e5ba116e035df9b6f89db836263a",
+          "hash": "de721436c9e34642667e0d7b4ad48c624b80756070860bda10b3ba580f919c5f",
           "path": "site/package.json"
         },
         {
@@ -1927,16 +1927,20 @@
         {
           "exports": [
             "buildCompileCheckEvent",
-            "compileCheck"
+            "compileCheck",
+            "runProcess"
           ],
           "failurePaths": [
             {
               "in": "runChecker",
               "kind": "catch",
-              "line": 89
+              "line": 90
             }
           ],
-          "hash": "c1917c07937b839490d8f679d8af4084eab78e75aa2820cf500e5212c812518d",
+          "hash": "49f134a7f114c873711630e84144daf3cf699768428576eceeaf73ac333f9e3f",
+          "importsFiles": [
+            "src/killTree.ts"
+          ],
           "path": "src/guardrails/compileCheck.ts"
         },
         {
@@ -2400,6 +2404,20 @@
               "name": "runCliDoctor"
             }
           ]
+        },
+        {
+          "exports": [
+            "killTree"
+          ],
+          "failurePaths": [
+            {
+              "in": "killChild",
+              "kind": "catch",
+              "line": 34
+            }
+          ],
+          "hash": "983fab1b7f8ca3b9e6c2ba77e12767db450bac484819e06ee8fbc6c18d635aba",
+          "path": "src/killTree.ts"
         },
         {
           "exports": [
@@ -3530,67 +3548,65 @@
           "exports": [
             "__setSpawner",
             "assertSafeFilePath",
+            "defaultSpawner",
             "handleBatchProofCheck"
           ],
           "failurePaths": [
             {
               "in": "assertSafeFilePath",
               "kind": "throw",
-              "line": 61
+              "line": 62
             },
             {
               "in": "assertSafeFilePath",
               "kind": "throw",
-              "line": 70
+              "line": 71
             },
             {
               "in": "assertCwdContained",
               "kind": "throw",
-              "line": 120
+              "line": 121
             },
             {
               "in": "assertCwdContained",
               "kind": "throw",
-              "line": 128
+              "line": 129
             },
             {
               "in": "assertCwdWithinOperatorCap",
               "kind": "throw",
-              "line": 149
+              "line": 150
             },
             {
               "in": "assertFileContained",
               "kind": "throw",
-              "line": 169
+              "line": 170
             },
             {
               "in": "defaultSpawner",
               "kind": "catch",
-              "line": 272
-            },
-            {
-              "in": "defaultSpawner",
-              "kind": "catch",
-              "line": 288
+              "line": 276
             },
             {
               "in": "specFor",
               "kind": "throw",
-              "line": 362
+              "line": 369
             }
           ],
-          "hash": "91d1824f45196bdb3c431b88ab6336189a87f9066604a6232c166485f5a8de2d",
+          "hash": "3bbe028d8419a8438e9a273667c6d8ba77cbf1454039cc333c098f19893efa39",
           "importOrder": [
             "src/envelope.ts",
             "src/observability.ts",
             "src/guardrails/stringifiedArrayGuard.ts",
             "src/errors.ts",
-            "src/runContext.ts"
+            "src/runContext.ts",
+            "src/killTree.ts"
           ],
           "importsFiles": [
             "src/envelope.ts",
             "src/errors.ts",
             "src/guardrails/stringifiedArrayGuard.ts",
+            "src/killTree.ts",
             "src/observability.ts",
             "src/runContext.ts"
           ],
@@ -5407,7 +5423,7 @@
       "testRunners": [
         "vitest"
       ],
-      "testedBy": 97,
+      "testedBy": 98,
       "unresolvedSites": 0
     },
     {
@@ -5809,6 +5825,21 @@
           "spawns": [
             "src/index.ts"
           ],
+          "testFramework": "vitest"
+        },
+        {
+          "hash": "f57d629f469cb93fd0fc3d1fe7ca87e18840e78c80c993c449cc4abada721925",
+          "importOrder": [
+            "src/guardrails/compileCheck.ts",
+            "src/tools/batchProofCheck.ts",
+            "src/killTree.ts"
+          ],
+          "importsFiles": [
+            "src/guardrails/compileCheck.ts",
+            "src/killTree.ts",
+            "src/tools/batchProofCheck.ts"
+          ],
+          "path": "tests/killTree.test.ts",
           "testFramework": "vitest"
         },
         {
@@ -7598,12 +7629,12 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 92
+          "files": 93
         },
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 101
+          "files": 102
         }
       ],
       "readers": [
@@ -7823,6 +7854,13 @@
         {
           "job": "verify",
           "matched": true,
+          "path": "tests/killTree.test.ts",
+          "runKind": "executes",
+          "via": "scripts/sync-doc-versions.mjs → vitest vitest.config.ts"
+        },
+        {
+          "job": "verify",
+          "matched": true,
           "path": "tests/logTailRoster.test.ts",
           "runKind": "executes",
           "via": "scripts/sync-doc-versions.mjs → vitest vitest.config.ts"
@@ -8011,7 +8049,7 @@
           "via": "docker build Dockerfile"
         }
       ],
-      "runsCount": 49,
+      "runsCount": 50,
       "secrets": [
         "OLLAMA_CLOUD"
       ],
@@ -8029,7 +8067,7 @@
       "tests": [
         {
           "config": "vitest.config.ts",
-          "files": 98,
+          "files": 99,
           "job": "verify",
           "runner": "vitest",
           "step": "Run tests",
@@ -8051,7 +8089,7 @@
         },
         {
           "config": "vitest.config.ts",
-          "files": 98,
+          "files": 99,
           "job": "verify",
           "runner": "vitest",
           "step": "Doc markers in sync (sync-docs:check)",
@@ -8345,7 +8383,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 101
+          "files": 102
         },
         {
           "boundary": "src",
@@ -8354,7 +8392,7 @@
             "file": "src/cloudCheck.ts",
             "from": "tests/cloudCheck.test.ts"
           },
-          "files": 90
+          "files": 91
         }
       ],
       "readers": [],
@@ -8478,6 +8516,13 @@
           "job": "drift",
           "matched": true,
           "path": "tests/integration/",
+          "runKind": "executes",
+          "via": "scripts/sync-doc-versions.mjs → vitest vitest.config.ts"
+        },
+        {
+          "job": "drift",
+          "matched": true,
+          "path": "tests/killTree.test.ts",
           "runKind": "executes",
           "via": "scripts/sync-doc-versions.mjs → vitest vitest.config.ts"
         },
@@ -8665,7 +8710,7 @@
           "via": "scripts/sync-doc-versions.mjs → vitest vitest.config.ts"
         }
       ],
-      "runsCount": 44,
+      "runsCount": 45,
       "secrets": [],
       "sends": {
         "deploysPages": false,
@@ -8681,7 +8726,7 @@
       "tests": [
         {
           "config": "vitest.config.ts",
-          "files": 98,
+          "files": 99,
           "job": "drift",
           "runner": "vitest",
           "step": "Check doc version/count markers (sync-docs:check)",
@@ -9100,12 +9145,12 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 92
+          "files": 93
         },
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 101
+          "files": 102
         }
       ],
       "readers": [],
@@ -9253,6 +9298,13 @@
           "job": "npm",
           "matched": true,
           "path": "tests/integration/",
+          "runKind": "executes",
+          "via": "vitest vitest.config.ts"
+        },
+        {
+          "job": "npm",
+          "matched": true,
+          "path": "tests/killTree.test.ts",
           "runKind": "executes",
           "via": "vitest vitest.config.ts"
         },
@@ -9447,7 +9499,7 @@
           "via": "docker build Dockerfile"
         }
       ],
-      "runsCount": 46,
+      "runsCount": 47,
       "secrets": [
         "GITHUB_TOKEN"
       ],
@@ -9465,7 +9517,7 @@
       "tests": [
         {
           "config": "vitest.config.ts",
-          "files": 98,
+          "files": 99,
           "job": "npm",
           "runner": "vitest",
           "step": "Verify (typecheck + build + test)",
@@ -9510,7 +9562,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 91
+          "files": 92
         }
       ],
       "readers": [],
@@ -9553,7 +9605,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 91
+          "files": 92
         }
       ],
       "readers": [],
@@ -9606,8 +9658,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "c67e21c96190f2bab5d0dee995e25b91c50e74a8",
-    "tracked": 352
+    "commit": "8cad98f5730cb13929a0babec675451bf7906c20",
+    "tracked": 354
   },
   "landings": [
     {
@@ -10159,6 +10211,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 101,
+  "testFiles": 102,
   "unassigned": []
 }

@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir, devNull } from "node:os";
 import { join } from "node:path";
+import { killTree, KILL_GRACE_MS } from "../killTree.js";
 
 export type SupportedLanguage = "typescript" | "javascript" | "python" | "rust" | "go";
 
@@ -109,7 +110,8 @@ function isCheckerUnavailable(exitCode: number, diagnostics: string): boolean {
   return false;
 }
 
-function runProcess(
+/** Exported for the timeout tests; the checkers above are its only production callers. */
+export function runProcess(
   cmd: string,
   args: string[],
   timeoutMs: number,
@@ -123,21 +125,30 @@ function runProcess(
     let stdout = "";
     let stderr = "";
     let settled = false;
-    const timer = setTimeout(() => proc.kill("SIGKILL"), timeoutMs);
+    let grace: NodeJS.Timeout | undefined;
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(grace);
+      resolve({ code: code ?? -1, stdout, stderr });
+    };
+    // On timeout, end the whole tree (see killTree.ts), then settle after a
+    // short grace even if something still holds the pipes and 'close' never comes.
+    const timer = setTimeout(() => {
+      killTree(proc);
+      grace = setTimeout(() => finish(null), KILL_GRACE_MS);
+    }, timeoutMs);
     proc.stdout?.on("data", (d) => (stdout += d.toString()));
     proc.stderr?.on("data", (d) => (stderr += d.toString()));
     proc.on("error", (err) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(grace);
       reject(err);
     });
-    proc.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ code: code ?? -1, stdout, stderr });
-    });
+    proc.on("close", (code) => finish(code));
   });
 }
 
