@@ -377,7 +377,7 @@
           "path": "Dockerfile"
         },
         {
-          "hash": "08b26f64b7a9476f0802399030482fd3aaf2d52c872bc84284b90f87aac6288d",
+          "hash": "3da73ae6ffb7f9517f0b04f43be7d0d39099b2efadea6ed5ecfe05377b34b359",
           "path": "HANDOFF.md"
         },
         {
@@ -429,7 +429,7 @@
           "path": "SECURITY.md"
         },
         {
-          "hash": "054a68daca0d946fc2a487d3b85b40707c810046a5f237d20ff1a5c7cd5d2b57",
+          "hash": "a2017c8b73937b518a2e6be2295bf4a1f3dd99380976df69f3f7115c3eecb90d",
           "path": "SHIP_GATE.md"
         },
         {
@@ -9606,7 +9606,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "306fadf94a8e02028c5670cdd6a617a0abed9d1c",
+    "commit": "c67e21c96190f2bab5d0dee995e25b91c50e74a8",
     "tracked": 352
   },
   "landings": [
