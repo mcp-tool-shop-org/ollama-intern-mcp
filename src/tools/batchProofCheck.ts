@@ -28,6 +28,7 @@ import { callEvent } from "../observability.js";
 import { strictStringArray } from "../guardrails/stringifiedArrayGuard.js";
 import { InternError } from "../errors.js";
 import type { RunContext } from "../runContext.js";
+import { killTree, KILL_GRACE_MS } from "../killTree.js";
 
 /**
  * Reject file paths containing shell metacharacters.
@@ -255,7 +256,8 @@ export interface SpawnOutcome {
 
 export type Spawner = (cmd: string, args: string[], opts: { cwd: string; timeout_ms: number }) => Promise<SpawnOutcome>;
 
-function defaultSpawner(
+/** Exported for the timeout tests; production reaches it through activeSpawner. */
+export function defaultSpawner(
   cmd: string,
   args: string[],
   opts: { cwd: string; timeout_ms: number },
@@ -266,6 +268,8 @@ function defaultSpawner(
     let stderr = "";
     let timedOut = false;
     let notFound = false;
+    let settled = false;
+    let grace: NodeJS.Timeout | undefined;
     let child;
     try {
       child = spawn(cmd, args, { cwd: opts.cwd, shell: process.platform === "win32" });
@@ -281,13 +285,26 @@ function defaultSpawner(
       });
       return;
     }
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(grace);
+      resolve({
+        stdout,
+        stderr,
+        exit_code: code,
+        timed_out: timedOut,
+        not_found: notFound,
+        elapsed_ms: Date.now() - started,
+      });
+    };
+    // On timeout, end the whole tree (see killTree.ts), then settle after a
+    // short grace even if something still holds the pipes and 'close' never comes.
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        /* ignore */
-      }
+      killTree(child);
+      grace = setTimeout(() => finish(null), KILL_GRACE_MS);
     }, opts.timeout_ms);
     child.stdout?.on("data", (buf) => {
       stdout += buf.toString("utf8");
@@ -302,17 +319,7 @@ function defaultSpawner(
       if (errno === "ENOENT") notFound = true;
       stderr += `\n${err.message}`;
     });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({
-        stdout,
-        stderr,
-        exit_code: code,
-        timed_out: timedOut,
-        not_found: notFound,
-        elapsed_ms: Date.now() - started,
-      });
-    });
+    child.on("close", (code) => finish(code));
   });
 }
 
