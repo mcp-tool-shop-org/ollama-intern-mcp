@@ -49,99 +49,30 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 2,
-      "changed": 9,
+      "added": 0,
+      "changed": 2,
       "moved": 0,
-      "parts": 4,
+      "parts": 1,
       "removed": 0
     },
     "items": [
       {
-        "kind": "door",
-        "sentence": "CI now also runs tests/killTree.test.ts.",
-        "subjects": [
-          ".github/workflows/ci.yml",
-          "tests/killTree.test.ts"
-        ]
-      },
-      {
-        "kind": "door",
-        "sentence": "Doc Drift now also runs tests/killTree.test.ts.",
-        "subjects": [
-          ".github/workflows/doc-drift.yml",
-          "tests/killTree.test.ts"
-        ]
-      },
-      {
-        "kind": "door",
-        "sentence": "Release now also runs tests/killTree.test.ts.",
-        "subjects": [
-          ".github/workflows/release.yml",
-          "tests/killTree.test.ts"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "2 files added and 9 changed content, across 4 parts.",
+        "sentence": "Nothing structural changed since 2026-11-11; 2 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "c67e21c96190f2bab5d0dee995e25b91c50e74a8",
-      "generatedAt": "2026-10-15T03:16:25.112Z"
+      "commit": "769b4a6fb8e1696d00149f17a190cffc9836a7d7",
+      "generatedAt": "2026-11-11T22:26:58.254Z"
     },
-    "unchanged": false
+    "unchanged": true
   },
   "changesTogether": [
     {
-      "a": "src/tools/changeBrief.ts",
-      "b": "src/tools/incidentBrief.ts",
-      "either": 6,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 6
-    },
-    {
-      "a": "src/tools/changeBrief.ts",
-      "b": "src/tools/repoBrief.ts",
-      "either": 6,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 6
-    },
-    {
-      "a": "src/tools/incidentBrief.ts",
-      "b": "src/tools/repoBrief.ts",
-      "either": 6,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 6
-    },
-    {
       "a": "src/tools/packs/changePack.ts",
       "b": "src/tools/packs/repoPack.ts",
-      "either": 8,
+      "either": 7,
       "partLabels": [
         "src",
         "src"
@@ -156,6 +87,36 @@
     {
       "a": "src/tools/packs/changePack.ts",
       "b": "src/tools/packs/incidentPack.ts",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 5
+    },
+    {
+      "a": "src/tools/packs/incidentPack.ts",
+      "b": "src/tools/packs/repoPack.ts",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 5
+    },
+    {
+      "a": "src/tools/batch.ts",
+      "b": "src/tools/runner.ts",
       "either": 8,
       "partLabels": [
         "src",
@@ -166,16 +127,16 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 6
+      "shared": 5
     }
   ],
   "changesTogetherNote": [
-    "2 files changed together with their own tests, as expected.",
+    "1 file changed together with its own test, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 9 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 4 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 2,
-  "commit": "8cad98f5730cb13929a0babec675451bf7906c20",
+  "changesTogetherWithTests": 1,
+  "commit": "4b28c620a17b3a7828a34f523dee8160f7375ccb",
   "defaultBranch": "main",
   "derived": "11 parts, mostly TypeScript (198 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.",
   "doors": [
@@ -615,7 +576,7 @@
       "to": "src"
     }
   ],
-  "engine": "1.24.0",
+  "engine": "1.26.0",
   "generated": [
     {
       "block": true,
@@ -625,7 +586,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-15T19:33:43.917Z",
+  "generatedAt": "2026-11-12T00:49:01.727Z",
   "limits": [
     "1 import could not be resolved: `scripts/gen-tool-docs.mjs` imports a path built at run time.",
     "3 writes and 9 reads use paths built at run time and are not named here.",
@@ -731,6 +692,16 @@
   "spawnTested": [
     "scripts"
   ],
+  "startBeside": [
+    {
+      "files": [
+        "src/ollama.ts",
+        "src/observability.ts",
+        "src/prewarm.ts"
+      ],
+      "from": "src/index.ts"
+    }
+  ],
   "startDoor": ".github/workflows/ci.yml",
   "startHere": [
     ".github/workflows/ci.yml",
@@ -748,6 +719,7 @@
     "smoke": 1,
     "src": 98
   },
+  "testedCodeParts": 5,
   "unnamedWrites": 3,
   "unread": [],
   "unreadFiles": 0,

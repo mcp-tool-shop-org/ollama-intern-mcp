@@ -29,11 +29,11 @@
           "path": ".github/pull_request_template.md"
         },
         {
-          "hash": "b610da13ba74af82b12e9ebef3887f7dcb0b9cc136863974836fcca79c40b061",
+          "hash": "3788225fe4a431e33bdfa02aa06a71a412b9bf7ac41d7d13b993cd0f62d3e3da",
           "path": ".github/workflows/ci.yml"
         },
         {
-          "hash": "74ab3208505cb19ff7d09ed353d273c8fb0b6b35b2313ed2f736db9bf815bada",
+          "hash": "489829861b175494af62a2066dfc3af8042ba8405b6770ff54d8962ed3521166",
           "path": ".github/workflows/codeql.yml"
         },
         {
@@ -45,11 +45,11 @@
           "path": ".github/workflows/doc-drift.yml"
         },
         {
-          "hash": "8d28db652bbe9c7d0d6cb2cb560914817bb88a12a25eb5f5dcce115f79902721",
+          "hash": "81303767b3aaf81bb9c139b7d7be00db94a18c97ccd2d0a30a26924a7f8ac95e",
           "path": ".github/workflows/pages.yml"
         },
         {
-          "hash": "2055526e236029a3e3d02652a71611f9d417b154b3c30bf82bc7a2b4b2052da1",
+          "hash": "270fd364738ec1c2d9eee1bfe008daf8773bd757b151fa4956962830023f0e80",
           "path": ".github/workflows/release.yml"
         }
       ],
@@ -377,7 +377,7 @@
           "path": "Dockerfile"
         },
         {
-          "hash": "f5515e404b455b6e86a3395ce59bc799a9ffcf6aedeb1762bb1a73be26d5bf4f",
+          "hash": "98f60366bc4ccb8faa888fa2f22f7f013e760bc915c4a0991a193c56b7cb6599",
           "path": "HANDOFF.md"
         },
         {
@@ -429,7 +429,7 @@
           "path": "SECURITY.md"
         },
         {
-          "hash": "b1c90efb7c1dd03d14f8d68bcaa1aa51aff23063875c9cea18741756150d0918",
+          "hash": "884b2be9fb4520baf9209d4b6a4a01ab9e0d25987d209e0123a7269e50059de5",
           "path": "SHIP_GATE.md"
         },
         {
@@ -441,11 +441,11 @@
           "path": "hermes.config.example.yaml"
         },
         {
-          "hash": "70ef328f2102e5c997010bbcd1d18e6e220e67bf02a82289b560bb305bff8fed",
+          "hash": "8d186c370a6b6ffacc6253060eb34fe7f9c353d04a10b7f9d06877f52a0a0b3e",
           "path": "package-lock.json"
         },
         {
-          "hash": "afc56a48129f5c456cc0d154060a5adb2369f19452883235d2641466cd67cb60",
+          "hash": "fcceac7b68ce15689fb26b775066d6dd80f8acb2b8837f32dc3264ce3b6f49e4",
           "path": "package.json"
         },
         {
@@ -453,7 +453,7 @@
           "path": "tsconfig.json"
         },
         {
-          "hash": "066af047f4889bf202a5a8449b38a518286600bf5f5bc8a2318016ff863838ae",
+          "hash": "22fb1575a888692e71c36000648c1ed5ceb1ab7b464d30d3b9fa6b1852e5fdbc",
           "path": "vitest.config.ts"
         }
       ],
@@ -9656,9 +9656,9 @@
       "to": "src"
     }
   ],
-  "engine": "1.24.0",
+  "engine": "1.26.0",
   "generatedFrom": {
-    "commit": "8cad98f5730cb13929a0babec675451bf7906c20",
+    "commit": "4b28c620a17b3a7828a34f523dee8160f7375ccb",
     "tracked": 354
   },
   "landings": [
