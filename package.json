@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "clean": "rimraf dist",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "prepack": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
@@ -59,7 +59,6 @@
   "devDependencies": {
     "@types/node": "^22.19.17",
     "@vitest/coverage-v8": "^4.1.11",
-    "rimraf": "^5.0.5",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
