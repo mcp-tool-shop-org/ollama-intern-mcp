@@ -50,74 +50,29 @@
   "changes": {
     "fileCounts": {
       "added": 0,
-      "changed": 7,
+      "changed": 2,
       "moved": 0,
-      "parts": 2,
+      "parts": 1,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-15; 7 files changed content.",
+        "sentence": "Nothing structural changed since 2026-11-11; 2 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "8cad98f5730cb13929a0babec675451bf7906c20",
-      "generatedAt": "2026-10-15T19:33:43.917Z"
+      "commit": "769b4a6fb8e1696d00149f17a190cffc9836a7d7",
+      "generatedAt": "2026-11-11T22:26:58.254Z"
     },
     "unchanged": true
   },
   "changesTogether": [
     {
-      "a": "src/tools/changeBrief.ts",
-      "b": "src/tools/incidentBrief.ts",
-      "either": 6,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 6
-    },
-    {
-      "a": "src/tools/changeBrief.ts",
-      "b": "src/tools/repoBrief.ts",
-      "either": 6,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 6
-    },
-    {
-      "a": "src/tools/incidentBrief.ts",
-      "b": "src/tools/repoBrief.ts",
-      "either": 6,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 6
-    },
-    {
       "a": "src/tools/packs/changePack.ts",
       "b": "src/tools/packs/repoPack.ts",
-      "either": 8,
+      "either": 7,
       "partLabels": [
         "src",
         "src"
@@ -132,6 +87,36 @@
     {
       "a": "src/tools/packs/changePack.ts",
       "b": "src/tools/packs/incidentPack.ts",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 5
+    },
+    {
+      "a": "src/tools/packs/incidentPack.ts",
+      "b": "src/tools/packs/repoPack.ts",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 5
+    },
+    {
+      "a": "src/tools/batch.ts",
+      "b": "src/tools/runner.ts",
       "either": 8,
       "partLabels": [
         "src",
@@ -142,16 +127,16 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 6
+      "shared": 5
     }
   ],
   "changesTogetherNote": [
-    "2 files changed together with their own tests, as expected.",
+    "1 file changed together with its own test, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 9 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 4 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 2,
-  "commit": "769b4a6fb8e1696d00149f17a190cffc9836a7d7",
+  "changesTogetherWithTests": 1,
+  "commit": "4b28c620a17b3a7828a34f523dee8160f7375ccb",
   "defaultBranch": "main",
   "derived": "11 parts, mostly TypeScript (198 files), JavaScript (10), CSS (2), Python (2) and Astro (1). Work enters through 8 doors; CI and Doc Drift each reach 4 parts, and CI is followed because it comes first by name. It publishes to npm and a container image. It deploys a site to GitHub Pages. People run ollama-intern-mcp. People import ollama-intern-mcp.",
   "doors": [
@@ -601,7 +586,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-11-11T22:26:58.254Z",
+  "generatedAt": "2026-11-12T00:49:01.727Z",
   "limits": [
     "1 import could not be resolved: `scripts/gen-tool-docs.mjs` imports a path built at run time.",
     "3 writes and 9 reads use paths built at run time and are not named here.",

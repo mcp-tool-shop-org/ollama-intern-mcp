@@ -441,11 +441,11 @@
           "path": "hermes.config.example.yaml"
         },
         {
-          "hash": "70ef328f2102e5c997010bbcd1d18e6e220e67bf02a82289b560bb305bff8fed",
+          "hash": "8d186c370a6b6ffacc6253060eb34fe7f9c353d04a10b7f9d06877f52a0a0b3e",
           "path": "package-lock.json"
         },
         {
-          "hash": "afc56a48129f5c456cc0d154060a5adb2369f19452883235d2641466cd67cb60",
+          "hash": "fcceac7b68ce15689fb26b775066d6dd80f8acb2b8837f32dc3264ce3b6f49e4",
           "path": "package.json"
         },
         {
@@ -9658,7 +9658,7 @@
   ],
   "engine": "1.26.0",
   "generatedFrom": {
-    "commit": "769b4a6fb8e1696d00149f17a190cffc9836a7d7",
+    "commit": "4b28c620a17b3a7828a34f523dee8160f7375ccb",
     "tracked": 354
   },
   "landings": [
